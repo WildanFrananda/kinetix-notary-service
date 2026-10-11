@@ -5,11 +5,11 @@ import {SumNode} from "../../src/SumNode.sol";
 import {SumTree} from "../../src/SumTree.sol";
 
 library TreeBuilder {
-    function build(uint64 epochNumber, bytes32[] memory commitments, uint64[] memory amounts)
-        internal
-        pure
-        returns (SumNode[][] memory)
-    {
+    function build(
+        uint64 epochNumber,
+        bytes32[] memory commitments,
+        uint64[] memory amounts
+    ) internal pure returns (SumNode[][] memory) {
         uint256 count = commitments.length;
         uint8 depth = SumTree.depthOf(uint64(count));
         uint256 width = uint256(1) << depth;

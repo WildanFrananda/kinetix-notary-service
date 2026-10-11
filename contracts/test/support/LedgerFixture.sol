@@ -46,11 +46,13 @@ abstract contract LedgerFixture is Test {
         return TreeBuilder.build(number, _commitments(seed, count), _amounts(seed, count));
     }
 
-    function _header(uint64 number, bytes32 previousDigest, SumNode[][] memory levels, uint256 count, uint64 asOf)
-        internal
-        pure
-        returns (EpochHeader memory)
-    {
+    function _header(
+        uint64 number,
+        bytes32 previousDigest,
+        SumNode[][] memory levels,
+        uint256 count,
+        uint64 asOf
+    ) internal pure returns (EpochHeader memory) {
         SumNode memory root = TreeBuilder.root(levels);
         return EpochHeader({
             number: number,

@@ -48,11 +48,11 @@ library SumTree {
         return total;
     }
 
-    function computeRoot(SumNode memory start, uint64 index, SumNode[] calldata siblings)
-        internal
-        pure
-        returns (SumNode memory)
-    {
+    function computeRoot(
+        SumNode memory start,
+        uint64 index,
+        SumNode[] calldata siblings
+    ) internal pure returns (SumNode memory) {
         SumNode memory node = start;
         uint64 position = index;
         for (uint256 level = 0; level < siblings.length; level++) {

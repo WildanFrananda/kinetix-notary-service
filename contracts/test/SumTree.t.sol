@@ -102,10 +102,11 @@ contract SumTreeTest is LedgerFixture {
         assertLt(uint256(1) << (depth - 1), leafCount);
     }
 
-    function testFuzz_TheSameAccountsInAnotherEpochCommitToADifferentRoot(uint256 seed, uint256 rawCount, uint64 other)
-        public
-        pure
-    {
+    function testFuzz_TheSameAccountsInAnotherEpochCommitToADifferentRoot(
+        uint256 seed,
+        uint256 rawCount,
+        uint64 other
+    ) public pure {
         uint256 count = bound(rawCount, 1, MAX_FUZZ_LEAVES);
         vm.assume(other != 0);
 
