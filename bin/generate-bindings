@@ -1,0 +1,29 @@
+#!/usr/bin/env sh
+set -eu
+
+HERE="$(cd "$(dirname "$0")/.." && pwd)"
+GEN="$HERE/internal/contractgen"
+WORK="$(mktemp -d)"
+trap 'rm -rf "$WORK"' EXIT
+
+cd "$HERE/contracts"
+forge build --silent
+forge inspect LiabilityLedger abi --json > "$WORK/LiabilityLedger.abi"
+forge inspect LiabilityLedger bytecode > "$WORK/LiabilityLedger.bin"
+forge inspect ILiabilityLedger abi --json > "$WORK/ILiabilityLedger.abi"
+
+rm -rf "$GEN"
+mkdir -p "$GEN/ledger" "$GEN/ledgerinterface"
+abigen --v2 \
+  --abi "$WORK/LiabilityLedger.abi" \
+  --bin "$WORK/LiabilityLedger.bin" \
+  --pkg ledger \
+  --type LiabilityLedger \
+  --out "$GEN/ledger/liability_ledger.go"
+abigen --v2 \
+  --abi "$WORK/ILiabilityLedger.abi" \
+  --pkg ledgerinterface \
+  --type ILiabilityLedger \
+  --out "$GEN/ledgerinterface/iliability_ledger.go"
+
+echo "generated $GEN"

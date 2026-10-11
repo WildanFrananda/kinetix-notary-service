@@ -1,0 +1,43 @@
+#!/usr/bin/env sh
+set -eu
+
+FOUNDRY_VERSION=v1.8.3
+FOUNDRY_SHA256_AMD64=7ca48e6ca3cac1bce1403ca67e5bc1dc3bc1fd818199c9957c7165079c228568
+FOUNDRY_SHA256_ARM64=93fc23be26c8a902ca58fe54aa6ca28c880b58af95d052674933161df7928e6d
+ABIGEN_VERSION=v1.17.8
+GOLANGCI_LINT_VERSION=v2.13.2
+
+PREFIX="${1:?usage: bin/install-toolchain <directory on PATH>}"
+
+case "$(uname -m)" in
+  x86_64 | amd64)
+    arch=amd64
+    expected=$FOUNDRY_SHA256_AMD64
+    ;;
+  aarch64 | arm64)
+    arch=arm64
+    expected=$FOUNDRY_SHA256_ARM64
+    ;;
+  *)
+    echo "no pinned Foundry build for $(uname -m)" >&2
+    exit 1
+    ;;
+esac
+
+work="$(mktemp -d)"
+trap 'rm -rf "$work"' EXIT
+
+archive="foundry_${FOUNDRY_VERSION}_linux_${arch}.tar.gz"
+curl -fsSL --retry 3 -o "$work/$archive" \
+  "https://github.com/foundry-rs/foundry/releases/download/${FOUNDRY_VERSION}/${archive}"
+echo "$expected  $work/$archive" | sha256sum -c -
+tar -xzf "$work/$archive" -C "$work" forge cast anvil
+mkdir -p "$PREFIX"
+install -m 0755 "$work/forge" "$work/cast" "$work/anvil" "$PREFIX/"
+
+GOBIN="$PREFIX" go install "github.com/ethereum/go-ethereum/cmd/abigen@${ABIGEN_VERSION}"
+GOBIN="$PREFIX" go install "github.com/golangci/golangci-lint/v2/cmd/golangci-lint@${GOLANGCI_LINT_VERSION}"
+
+"$PREFIX/forge" --version
+"$PREFIX/abigen" --version
+"$PREFIX/golangci-lint" --version

@@ -1,0 +1,16 @@
+.git
+.github
+.gitlab-ci.yml
+.env
+.env.*
+!.env.example
+coverage.out
+coverage.html
+internal/contractgen
+contracts/out
+contracts/cache
+contracts/broadcast
+contracts/dependencies
+toolchain
+PLAN.md
+CLAUDE.md

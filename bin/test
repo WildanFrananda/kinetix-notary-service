@@ -1,0 +1,12 @@
+#!/usr/bin/env sh
+set -eu
+
+HERE="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$HERE"
+
+COVERED="$(go list ./internal/... | grep -v /contractgen | paste -sd, -)"
+
+go test -count=1 -coverpkg="$COVERED" -coverprofile=coverage.out ./tests/... "$@"
+
+echo
+go tool cover -func=coverage.out | tail -1

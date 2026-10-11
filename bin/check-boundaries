@@ -1,0 +1,60 @@
+#!/usr/bin/env sh
+set -eu
+
+HERE="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$HERE"
+
+MODULE="$(go list -m)"
+failed=0
+
+external_deps() {
+  go list -deps "$1" | grep -v "^$MODULE" | awk -F/ '$1 ~ /\./' || true
+}
+
+offenders="$(external_deps "$MODULE/internal/notary")"
+if [ -n "$offenders" ]; then
+  echo "internal/notary must import only the standard library, but it reaches:"
+  echo "$offenders" | sed 's/^/  /'
+  failed=1
+fi
+
+offenders="$(
+  go list -deps "$MODULE/internal/verifying" \
+    | grep "^$MODULE/" \
+    | grep -v -e "^$MODULE/internal/verifying$" -e "^$MODULE/internal/notary$" \
+    || true
+)"
+offenders="$offenders$(external_deps "$MODULE/internal/verifying")"
+if [ -n "$offenders" ]; then
+  echo "internal/verifying may import only internal/notary and the standard library, but it reaches:"
+  echo "$offenders" | sed 's/^/  /'
+  failed=1
+fi
+
+imports() {
+  go list -f '{{.ImportPath}}{{range .Imports}} {{.}}{{end}}' ./cmd/... ./internal/... \
+    | awk -v dep="$1" '{ for (i = 2; i <= NF; i++) if (index($i, dep) == 1) { print $1; break } }'
+}
+
+offenders="$(imports go.uber.org/dig | grep -v -e "^$MODULE/cmd/" -e "^$MODULE/internal/wiring$" || true)"
+if [ -n "$offenders" ]; then
+  echo "dig belongs to the composition root (cmd/ and internal/wiring), but these import it:"
+  echo "$offenders" | sed 's/^/  /'
+  failed=1
+fi
+
+offenders="$(
+  imports github.com/ethereum/go-ethereum \
+    | grep -v -e "^$MODULE/cmd/" -e "^$MODULE/internal/ethereum$" -e "^$MODULE/internal/contractgen/" \
+    || true
+)"
+if [ -n "$offenders" ]; then
+  echo "go-ethereum belongs to internal/ethereum, but these import it:"
+  echo "$offenders" | sed 's/^/  /'
+  failed=1
+fi
+
+if [ "$failed" -ne 0 ]; then
+  exit 1
+fi
+echo "boundaries hold: notary is pure, verifying sees only notary, dig and go-ethereum stay at the edge"

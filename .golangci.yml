@@ -1,0 +1,53 @@
+version: "2"
+
+linters:
+  enable:
+    - errcheck
+    - govet
+    - staticcheck
+    - revive
+    - gosec
+    - ineffassign
+    - unconvert
+    - unparam
+    - bodyclose
+    - contextcheck
+    - errorlint
+    - gocritic
+    - nilerr
+    - wrapcheck
+
+  settings:
+    errcheck:
+      check-type-assertions: true
+    revive:
+      rules:
+        - name: exported
+          disabled: true
+        - name: package-comments
+          disabled: true
+    wrapcheck:
+      ignore-sigs:
+        - .Errorf(
+        - errors.New(
+        - .Errf(
+        - .Wrap(
+      ignore-package-globs:
+        - github.com/WildanFrananda/kinetix-notary-service/*
+
+  exclusions:
+    paths:
+      - contracts/
+      - internal/contractgen/
+    rules:
+      - path: tests/
+        linters: [gosec, unparam, wrapcheck]
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/WildanFrananda/kinetix-notary-service

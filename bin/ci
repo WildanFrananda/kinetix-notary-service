@@ -1,0 +1,33 @@
+#!/usr/bin/env sh
+set -eu
+
+HERE="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$HERE"
+
+: "${KINETIX_NOTARY_TEST_RPC_URL:?bin/ci needs a node: run it as bin/dev bin/ci, or start anvil and set KINETIX_NOTARY_TEST_RPC_URL}"
+
+echo "== contracts"
+(
+  cd contracts
+  forge soldeer install
+  forge fmt --check
+  forge build --sizes
+  FOUNDRY_PROFILE=ci forge test
+  forge snapshot --check --match-contract LiabilityLedgerTest
+)
+
+echo "== bindings"
+sh bin/generate-bindings
+
+echo "== go"
+unformatted="$(gofmt -l cmd internal tests)"
+if [ -n "$unformatted" ]; then
+  echo "gofmt would rewrite:"
+  echo "$unformatted"
+  exit 1
+fi
+go mod verify
+go vet ./...
+sh bin/check-boundaries
+golangci-lint run ./...
+sh bin/test

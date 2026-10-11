@@ -1,0 +1,20 @@
+#!/usr/bin/env sh
+set -eu
+
+HERE="$(cd "$(dirname "$0")/.." && pwd)"
+COMPOSE="docker compose -f $HERE/toolchain/compose.yaml"
+
+case "${1:-}" in
+  down)
+    exec $COMPOSE down
+    ;;
+  "")
+    echo "usage: bin/dev <command...> | bin/dev down" >&2
+    exit 64
+    ;;
+esac
+
+if [ -t 0 ] && [ -t 1 ]; then
+  exec $COMPOSE run --build --rm toolchain "$@"
+fi
+exec $COMPOSE run --build --rm -T toolchain "$@"
