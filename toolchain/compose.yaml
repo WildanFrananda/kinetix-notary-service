@@ -16,11 +16,26 @@ services:
       timeout: 2s
       retries: 15
 
+  postgres:
+    image: postgres:16-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea
+    environment:
+      POSTGRES_USER: notary_test
+      POSTGRES_DB: notary_test
+      POSTGRES_HOST_AUTH_METHOD: trust
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "notary_test", "-d", "notary_test"]
+      interval: 2s
+      timeout: 2s
+      retries: 15
+
   toolchain:
     <<: *toolchain-image
     working_dir: /workspace
     environment:
       KINETIX_NOTARY_TEST_RPC_URL: http://anvil:8545
+      KINETIX_NOTARY_TEST_DATABASE_URL: postgres://notary_test@postgres:5432/notary_test?sslmode=disable
     volumes:
       - ..:/workspace
       - go-mod:/go/pkg/mod
@@ -29,6 +44,8 @@ services:
       - foundry-home:/root/.foundry
     depends_on:
       anvil:
+        condition: service_healthy
+      postgres:
         condition: service_healthy
 
 volumes:

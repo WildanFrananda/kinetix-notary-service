@@ -28,10 +28,18 @@ func (l *Ledger) Epoch(_ context.Context, number uint64) (notary.AnchoredEpoch, 
 	if l.EpochErr != nil {
 		return notary.AnchoredEpoch{}, l.EpochErr
 	}
+
 	epoch, ok := l.Epochs[number]
 	if !ok {
-		return notary.AnchoredEpoch{}, notary.Errf(notary.KindEpochNotAnchored, "notarytest.Ledger.Epoch", nil, "no epoch %d", number)
+		return notary.AnchoredEpoch{}, notary.Errf(
+			notary.KindEpochNotAnchored,
+			"notarytest.Ledger.Epoch",
+			nil,
+			"no epoch %d",
+			number,
+		)
 	}
+
 	return epoch, nil
 }
 

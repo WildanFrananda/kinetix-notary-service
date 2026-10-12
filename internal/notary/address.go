@@ -9,6 +9,7 @@ func ParseAddress(text string) (Address, error) {
 	if err != nil {
 		return Address{}, Errf(KindInvalidArgument, "notary.ParseAddress", err, "")
 	}
+
 	return Address(raw), nil
 }
 

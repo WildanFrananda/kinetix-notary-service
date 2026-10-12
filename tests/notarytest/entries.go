@@ -16,6 +16,7 @@ func Entries(seed uint64, count int) []notary.Entry {
 			Amount:     amount(seed, i, count),
 		}
 	}
+
 	return entries
 }
 
@@ -29,11 +30,13 @@ func amount(seed uint64, i, count int) uint64 {
 	if count <= 1 {
 		return raw
 	}
+
 	return raw % (math.MaxUint64/uint64(count) + 1)
 }
 
 func label(seed uint64, purpose string, i int) []byte {
 	out := binary.BigEndian.AppendUint64(nil, seed)
 	out = append(out, purpose...)
+
 	return binary.BigEndian.AppendUint64(out, uint64(i))
 }

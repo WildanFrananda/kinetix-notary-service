@@ -9,11 +9,12 @@ import (
 )
 
 const (
-	version  uint16 = 1
-	leafTag  byte   = 0x00
-	nodeTag  byte   = 0x01
-	emptyTag byte   = 0x02
-	epochTag byte   = 0x03
+	version    uint16 = 1
+	leafTag    byte   = 0x00
+	nodeTag    byte   = 0x01
+	emptyTag   byte   = 0x02
+	epochTag   byte   = 0x03
+	accountTag byte   = 0x04
 )
 
 type Scheme struct{}
@@ -28,12 +29,23 @@ func (Scheme) Version() uint16 {
 	return version
 }
 
+func (Scheme) Commitment(holder notary.Holder, kind notary.AccountKind, salt notary.Salt) notary.Digest {
+	name := holder.String()
+	packed := make([]byte, 0, 1+1+32+len(name))
+	packed = append(packed, accountTag, byte(kind))
+	packed = append(packed, salt[:]...)
+	packed = append(packed, name...)
+
+	return digest(packed)
+}
+
 func (Scheme) LeafHash(epoch uint64, entry notary.Entry) notary.Digest {
 	packed := make([]byte, 0, 1+8+32+8)
 	packed = append(packed, leafTag)
 	packed = binary.BigEndian.AppendUint64(packed, epoch)
 	packed = append(packed, entry.Commitment[:]...)
 	packed = binary.BigEndian.AppendUint64(packed, entry.Amount)
+
 	return digest(packed)
 }
 
@@ -44,6 +56,7 @@ func (Scheme) NodeHash(left, right notary.Node) notary.Digest {
 	packed = binary.BigEndian.AppendUint64(packed, left.Sum)
 	packed = append(packed, right.Hash[:]...)
 	packed = binary.BigEndian.AppendUint64(packed, right.Sum)
+
 	return digest(packed)
 }
 
@@ -61,13 +74,16 @@ func (Scheme) EpochDigest(header notary.EpochHeader) notary.Digest {
 	packed = binary.BigEndian.AppendUint64(packed, header.Total)
 	packed = binary.BigEndian.AppendUint64(packed, header.LeafCount)
 	packed = binary.BigEndian.AppendUint64(packed, header.AsOf.Seconds())
+
 	return digest(packed)
 }
 
 func digest(packed []byte) notary.Digest {
 	hasher := sha3.NewLegacyKeccak256()
 	hasher.Write(packed)
+
 	var out notary.Digest
 	copy(out[:], hasher.Sum(nil))
+
 	return out
 }

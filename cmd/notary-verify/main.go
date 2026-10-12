@@ -26,6 +26,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 		_, _ = fmt.Fprintln(stderr, "usage: notary-verify <proof.json>")
 		return verifycli.ExitUsage
 	}
+
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
@@ -34,9 +35,12 @@ func run(args []string, stdout, stderr io.Writer) int {
 		_, _ = fmt.Fprintln(stderr, err)
 		return verifycli.ExitConfig
 	}
+
 	code := verifycli.ExitUnknown
+
 	err = container.Invoke(func(client *ethclient.Client, scheme notary.Scheme, verifier *verifying.Verifier) {
 		defer client.Close()
+
 		code = verifycli.Run(ctx, args[0], scheme.Version(), verifier, stdout)
 	})
 	if err != nil {
@@ -44,8 +48,11 @@ func run(args []string, stdout, stderr io.Writer) int {
 		if notary.KindOf(cause) != notary.KindUnknown {
 			return verifycli.Fail(stdout, cause)
 		}
+
 		_, _ = fmt.Fprintln(stderr, cause)
+
 		return verifycli.ExitConfig
 	}
+
 	return code
 }

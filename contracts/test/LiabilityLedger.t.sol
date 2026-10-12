@@ -51,7 +51,13 @@ contract LiabilityLedgerTest is LedgerFixture {
 
         vm.expectEmit(address(ledger));
         emit ILiabilityLedger.EpochAnchored(
-            0, EpochChain.digest(header), bytes32(0), header.root, header.total, header.leafCount, header.asOf
+            0,
+            EpochChain.digest(header),
+            bytes32(0),
+            header.root,
+            header.total,
+            header.leafCount,
+            header.asOf
         );
         _anchor(header);
     }
@@ -153,7 +159,12 @@ contract LiabilityLedgerTest is LedgerFixture {
 
     function test_RevertWhen_AnEmptyEpochCarriesARoot() public {
         EpochHeader memory header = EpochHeader({
-            number: 0, previousDigest: bytes32(0), root: keccak256("root"), total: 0, leafCount: 0, asOf: _now() - 1
+            number: 0,
+            previousDigest: bytes32(0),
+            root: keccak256("root"),
+            total: 0,
+            leafCount: 0,
+            asOf: _now() - 1
         });
 
         vm.expectRevert(abi.encodeWithSelector(ILiabilityLedger.EmptyEpochMismatch.selector, header.root, 0));
@@ -163,7 +174,12 @@ contract LiabilityLedgerTest is LedgerFixture {
     function test_RevertWhen_AnEmptyEpochCarriesATotal() public {
         bytes32 emptyRoot = SumTree.empty().hash;
         EpochHeader memory header = EpochHeader({
-            number: 0, previousDigest: bytes32(0), root: emptyRoot, total: 7, leafCount: 0, asOf: _now() - 1
+            number: 0,
+            previousDigest: bytes32(0),
+            root: emptyRoot,
+            total: 7,
+            leafCount: 0,
+            asOf: _now() - 1
         });
 
         vm.expectRevert(abi.encodeWithSelector(ILiabilityLedger.EmptyEpochMismatch.selector, emptyRoot, 7));

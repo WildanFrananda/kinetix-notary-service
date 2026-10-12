@@ -29,6 +29,12 @@ bin/dev go test ./tests/fixtures -update        # regenerate the differential fi
 bin/dev down                                    # stop the chain
 ```
 
+The image built from `Dockerfile` carries three binaries and runs `notaryd` by default:
+`notary-migrate` is the one-shot migrator, and an account holder verifies with
+`docker run <image> notary-verify proof.json` (the image used to start `notary-verify` itself).
+`bin/generate` runs every generator — abigen, protoc through `bin/sync-contracts` (contracts pinned to a
+tag and its commit), sqlc — and nothing it writes is ever committed.
+
 Operations on a real network have their own scripts, all through the same image:
 
 ```sh
@@ -56,8 +62,11 @@ script, so local and CI cannot drift. Bump a version there and nowhere else.
 | `internal/notary` | the standard library. **Nothing else.** |
 | `internal/verifying` | `internal/notary` only |
 | `internal/keccak`, `prooffile`, `config`, `verifycli` | `internal/notary` + their own library |
-| `internal/ethereum` | the above + go-ethereum + `internal/contractgen` — the only home of go-ethereum |
-| `internal/wiring` | everything; the only package outside `cmd/` allowed to import dig |
+| `internal/ethereum` | the above + go-ethereum + `internal/contractgen` — the only adapter that touches a chain |
+| `internal/payment`, `internal/mesh` | `internal/notary` + gRPC + `internal/protogen` — the only adapters that speak gRPC |
+| `internal/postgres` | `internal/notary` + pgx + goose + `internal/storegen` — the only adapter that touches Postgres |
+| `internal/anchoring` | `internal/notary` only, like `internal/verifying` |
+| `internal/wiring` | everything; the composition root, and the only package outside `cmd/` allowed to import dig |
 | `cmd/…` | everything |
 
 Package names say what a package provides (`keccak.NewScheme`, `ethereum.NewLedger`,
@@ -82,6 +91,9 @@ Package names say what a package provides (`keccak.NewScheme`, `ethereum.NewLedg
   constructor's `_grantRole` (it cannot fail there, and the deployed ledger's source is frozen: an edit
   would make the repository disagree with the verified bytecode). An accepted entry that stops being
   reported also fails, so the list cannot rot.
+- **One lint setting is a decision, not a silencing.** `wrapcheck` ignores `.RecvMsg(`: the gRPC
+  client interceptor that counts calls must hand the stream's own error back unchanged, because callers
+  compare `io.EOF` by identity and a wrapped end of stream reads as a failure.
 - **The differential fixture is a contract between the languages.** `tests/fixtures` regenerates
   `contracts/test/fixtures/scheme-v1.json` and fails when the committed file differs; Foundry's
   `Differential.t.sol` re-verifies every tree, proof, rejection and digest in it. Proven on
@@ -96,24 +108,43 @@ Package names say what a package provides (`keccak.NewScheme`, `ethereum.NewLedg
   file: the compiler warns without it and `deny = "warnings"` would then fail the build. Lint
   findings are fixed in code, never silenced with an inline directive — there is no `nolint`, no
   `forge-lint: disable`.
+- **Directives are not comments.** The goose annotations in `internal/migrations/*.sql` and
+  `//go:embed` are instructions to a tool, and stay.
 - **Explicit `return`** in every Solidity function, named returns included, as in the Rust service.
 - **One type per file** in both languages: each Solidity struct, interface, library and contract has
   its own file; each Go type in `internal/notary` has its own file.
+- **Go layout is enforced, not remembered** (the user's style, restated 2026-10-12 for every repository):
+  a call, composite literal or signature that does not fit on one line puts **every element on its own
+  line** and the closing bracket alone — slog's key/value pairs included, a key and its value on
+  separate lines. The one exception is the trailing-block idiom, `t.Run(name, func(...) {…})`, whose
+  head fits on its first line. And **a blank line between contexts**: after a closing brace, before a
+  return that ends a longer block, between groups of statements; an assignment stays cuddled with the
+  `if err != nil` that checks it. Three tools hold this in `bin/ci`: `golines` (120 columns),
+  `tools/arglayout` (a wrapped call that still shares lines; `go run ./tools/arglayout -fix …` rewrites
+  it) and golangci-lint's `wsl_v5` (`golangci-lint run --fix` adds the blank lines).
 - **Braces on the same line**; long calls one argument per line. For Solidity this is
   `forge fmt` with `multiline_func_header = "params_first_multi"`: a header that does not fit breaks
   its parameters one per line and keeps `) … {` together. The default (`attributes_first`) puts `{`
   alone on its own line, and that mismatch turned CI red on 2026-10-11 the moment the code was
   formatted by hand to the house style. Fix the formatter's configuration, never the house style.
+  `prefer_compact = "none"` (2026-10-12) makes a wrapped call put every argument on its own line,
+  the same rule the Go tools enforce. `src/**` is in forge fmt's `ignore`: those files are the
+  verified source of the deployed ledger and stay byte-identical, so they keep the older compact
+  wrapping until a successor ledger is written.
 - **Go tests live in `tests/`**, never beside the code; use `bin/test`, because plain
   `go test -cover` reports 0% for every package under `internal/`. Foundry tests live in
   `contracts/test/`, Foundry's own convention.
 - **Hand-written fakes** (`tests/notarytest`), no mocking framework.
 - **Errors carry a `notary.Kind`**, read back with `notary.KindOf`. Only the edge (`verifycli`) turns a
   kind into a verdict and an exit code.
-- **dig is used only to compose.** Constructors are plain functions taking their dependencies;
-  `internal/wiring` registers them, binding concrete types to ports with `dig.As`. No `dig.In`
-  structs, no named values, no container passed around. `tests/wiring` resolves the whole graph so a
-  wiring mistake fails a test rather than a start-up.
+- **dig composes through parameter and result objects, in `internal/wiring` only** (the user's
+  choice, 2026-10-12). Every provider takes one `dig.In` struct naming what it needs and returns either
+  a plain value or a `dig.Out` struct; a `dig.Out` field typed as a port (`Ledger notary.Ledger`) is how
+  a concrete adapter is bound to its interface. The constructors those providers call stay plain
+  functions in their own packages, so no package outside `cmd/` and `internal/wiring` imports dig
+  (`bin/check-boundaries` enforces it) and every adapter is tested by calling its constructor. No
+  container is passed around. `tests/wiring` resolves the whole graph so a wiring mistake fails a test
+  rather than a start-up.
 
 ## The house failure mode, applied here
 
@@ -169,21 +200,32 @@ A failure must never be reported as a definite answer. In this service that mean
 - **A pinned Debian base is not a patched one.** Trivy found three fixable CRITICALs in
   `debian:bookworm-slim`, including its newest digest; the final stage runs `apt-get upgrade`. Scan
   the image locally before the first `build-and-push`, never after.
-- **A multi-line `sh -c '…'` typed into the agent's shell tool can lose its script** to the command
-  rewriter, and the remaining lines then run on the Mac. Trial scripts go in a file that is mounted
-  into the toolchain container.
+- **A `sh -c '…'` typed into the agent's shell tool can lose its script** to the command rewriter,
+  and the rest then runs on the Mac. It happened with a multi-line script, and again on 2026-10-12 with
+  a one-line script that had pipes inside the quotes: every Postgres test came back `SKIP`, because the
+  `go test` that answered ran on the host, where the test database does not exist. Run commands
+  directly (`bin/dev go test …`), keep pipes outside, and put anything longer in a mounted file.
 - **`cast wallet new --json` changed shape in Foundry 1.8**: the wallet is under `data[0]` inside an
   envelope, not a bare list.
+- **A replacement must not be estimated again.** On anvil (and any node that estimates against the
+  pending block) `eth_estimateGas` for a second attempt at the same nonce sees the first attempt already
+  applied and reverts `EpochAlreadyAnchored`. A stuck anchor is replaced by `Resign`: same calldata, gas
+  and nonce, new fees.
+- **Reading at `finalized` before the ledger itself is final returns "no contract code",** not
+  `UnknownEpoch`. Both mean the epoch is not final yet.
+- **A broadcast is not a receipt.** Even anvil mines asynchronously after `eth_sendRawTransaction`;
+  tests wait for the receipt, and the daemon treats its absence as pending.
+- **anvil's clock is shared and only moves forward.** `evm_increaseTime` from earlier tests and earlier
+  runs leaves chain time hours ahead of the wall clock, so a test that steers the daemon's clock starts
+  it at the latest block's time, never at `time.Now()`.
+- **A dependency days old is not yet a dependency.** client_golang v1.25.0 was four days old on
+  2026-10-12; v1.24.1 is pinned until it ages.
 - **gosec G115** flags every narrowing integer conversion; `UnixTime` is a sealed type whose
   constructors check the range, so the conversions happen after a visible bound.
 
 ## Not built yet
 
-Step 2 is done: the ledger is live on Base Sepolia at `0x4E869A55031DE3B0d030AEBECc66E523686761a2`
-and verified on Sourcify (PLAN.md step 2). From step 3 on nothing exists yet: no
-payment snapshot RPC, no `notaryd`, no database, no proof API, no compose entry in
-`kinetix-infrastructure`. The GitHub and GitLab pipelines are written and **have never run**.
-
-**CI/CD runs on GitHub** (the user's standing choice); GitLab only mirrors CI. GitHub still owes
-`build-and-push.yml`, `release.yml`, a Slither/Aderyn job and the branch ruleset — the list and its
-constraints are in PLAN.md, "Owed next to step 2". Contract deploys stay manual, never in CI.
+Steps 1–3 are done and released (contracts v1.0.23, payment v0.1.11). Step 4's code is built and green
+(PLAN.md step 4, "Status"); what is left of it lives in `kinetix-infrastructure` — database, leaf,
+secrets, compose entries, alerts, deploy dispatch — and the anchorer still holds no ETH, so no epoch has
+ever been anchored on Base Sepolia. Steps 5–14 do not exist yet. Contract deploys stay manual, never in CI.

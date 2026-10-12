@@ -35,12 +35,13 @@ timestamped record that no single party controls.
 | 2 | Off-chain language | **Go**, enterprise layout, **`go.uber.org/dig`** for dependency injection. search moves to dig later as well. |
 | 3 | Network | A **testnet, permanently**, with production-grade code: switching networks is RPC URL + chain id + keys + ledger address, nothing else. Chosen: **Base Sepolia** (chain id 84532). Gas must not need constant faucet trips — see §7. |
 | 4 | Upgradeability | **Immutable contracts**, versioned by redeploying, with a hash-chained history that lets a successor continue an epoch chain exactly. Built for the long term — see §6. |
-| 5 | Publish the total? | Scheme v1 publishes the total (the money is sandbox money, so nothing real is disclosed). **Scheme v2 hides it with a zero-knowledge proof** — §10 step 8. |
+| 5 | Publish the total? | Scheme v1 publishes the total (the money is sandbox money, so nothing real is disclosed). **Scheme v2 hides it with a zero-knowledge proof** — §10 step 13. |
 | 6 | Key custody | Whatever is least effort: **the existing SOPS store**, three separate keys — §8. |
 | 7 | Phase 1 scope | **Proof of liabilities only.** Evidence anchoring (orders, proof of delivery, reviews) follows as phase 2. |
 | 8 | Comments | **Zero comments** in Solidity and Go. The reasoning lives here and in `CLAUDE.md`. |
 | 9 | Timing | Start now; the user releases the pending identity/order work independently. |
 | — | Toolchain | **Docker only.** Nothing is installed on the laptop; `bin/dev <command>` runs inside a pinned toolchain image with a local chain beside it. |
+| 10 | Where the code lives (2026-10-12) | **On chain first.** The user wants most of this repository to be Solidity. The rule that serves it without padding: whatever a stranger must be able to check or enforce without trusting Kinetix lives in a contract; whatever is expensive per account or private (building trees, salts, pulling snapshots) stays in Go. Steps 6–10 move accountability, quorum, discovery and gas sponsorship on chain. |
 
 ## 3. What the proof does and does not prove
 
@@ -61,7 +62,8 @@ It does **not** prove:
   of reserves would need those custodians to attest, which they do not. Liabilities without reserves
   shows what is owed, not that it can be paid.
 - **That every account is included.** An account holder who never checks can be left out unnoticed.
-  The defence is that anyone *can* check, at any time, against any epoch.
+  The defence is that anyone *can* check, at any time, against any epoch — and steps 6 and 7 make
+  a lie or a silence about it provable on chain.
 - **That payment's numbers are right.** The tree commits to whatever the snapshot says.
 
 ## 4. Scheme v1
@@ -94,9 +96,10 @@ leaf can ever be mistaken for a node, a node for padding, or any of them for an 
   sums`, so comparing that sum (in 256-bit arithmetic on chain, carry-checked in Go) with the
   anchored total first rejects cheap forgeries and guarantees the hashing loop can never overflow.
   This is also why an overflowing proof returns `false` instead of reverting.
-- An account's commitment is `bytes32`, opaque to the tree. In step 3 it becomes
-  `H(principal ‖ accountKind ‖ salt)` with a fresh salt per account per epoch, so the public tree
-  reveals neither who holds an account nor whether two epochs contain the same holder.
+- An account's commitment is `bytes32`, opaque to the tree. From step 4 it is
+  `H(holder ‖ accountKind ‖ salt)` with a fresh salt per account per epoch, so the public tree
+  reveals neither who holds an account nor whether two epochs contain the same holder. The holder is a
+  principal, or the suspense purpose for money that is owed to nobody yet (step 3).
 
 The scheme is implemented twice — `contracts/src/SumTree.sol` + `EpochChain.sol`, and
 `internal/notary` + `internal/keccak` — and the two are held together by three independent checks:
@@ -354,30 +357,197 @@ Three things went differently from the plan, and all three are now handled:
 - **The store write left the prod secrets in plaintext for about a minute.** Contained and fixed in
   `kinetix-infrastructure`; see its `docs/SECRETS.md` rule 6.
 
-### Step 3 — the snapshot contract (owner-side work)
+### Step 3 — the snapshot contract (owner-side work). **Built 2026-10-12; waiting on release.**
 
-A new RPC on payment, built **in payment** under the estate's rule that a service never takes another
-service's job: a consistent snapshot of every liability (one `REPEATABLE READ` transaction, so the
-total matches a real instant), streamed or paged, with an account kind per row (customer wallet,
-merchant available, merchant pending, driver available, driver pending, escrow held, suspense — the
-exact list is payment's to define). Published in `kinetix-contracts` as an additive `payment/v1`
-change, plus a new `notary/v1` package. The notary's allow-list names payment as its only source.
+Built **in payment**, under the estate's rule that a service never takes another service's job. The
+notary never reads payment's database: this RPC is the whole interface. The full reasoning and evidence
+are in `kinetix-payment-service/CLAUDE.md`, "The liability snapshot, for the notary".
+
+| Piece | Where | State |
+|---|---|---|
+| `payment.v1.LiabilityService/StreamLiabilitySnapshot` | `kinetix-contracts/proto/payment/v1/liability.proto`, a new file | `buf lint`, `format` and `breaking` exit 0; moneylint shown red on a `double` balance |
+| the snapshot | payment: `LiabilitySnapshotService`, `PostgresLiabilitySnapshot`, `LiabilityGrpcServerService` | 231 tests, 0 skipped, against Postgres 16 |
+| caller scoping | payment's `PeerAuthorizationInterceptor` now reads `caller@package.Service` | proven over real mTLS with a throwaway CA |
+| allow-list | `kinetix-infrastructure/compose.yaml`: `order,notary@payment.v1.LiabilityService` | |
+
+**The shape a reader must hold to** (step 4 builds this side):
+
+- The stream is one header (`as_of`, currency), then batches of up to 500 accounts, then one trailer
+  (`account_count`, `total`). A snapshot is complete only when the trailer arrives **and** the call ends
+  `OK`. Anything else is no snapshot: never anchor a prefix. The reader recounts and re-sums the accounts
+  itself and refuses a mismatch.
+- An account is a `LiabilityKind` and a holder: a `principal_id`, or a `suspense_purpose` for money held
+  for nobody yet (`UNASSIGNED_DRIVER_SHIPPING_FEE`). The kinds are customer balance, merchant
+  available/pending escrow, driver available/pending escrow and suspense available/pending escrow, with
+  zero balances included. **Escrow holds are not in it, on purpose:** the money of a `HELD` order already
+  sits in the merchant's and driver's pending balances, and counting the hold too would double it.
+- `as_of` is the instant the database took the snapshot (`REPEATABLE READ`, read-only, verified by the
+  adapter). It becomes the epoch's `asOf`, which the ledger requires to strictly increase.
+- Errors: `INVALID_ARGUMENT` (a currency that is not ISO 4217), `FAILED_PRECONDITION
+  LIABILITY_SNAPSHOT_REFUSED` (payment's own data is inconsistent: an incident, alert on it),
+  `UNAVAILABLE LIABILITY_SNAPSHOT_UNAVAILABLE` (retry), `DEADLINE_EXCEEDED` (the reader stopped reading
+  for 30 s).
+
+**Measured on 2026-10-12.** Under load from concurrent escrow traffic, `READ COMMITTED` let 295 of 1024
+snapshots see money in flight; `REPEATABLE READ` let none. Over real mTLS, a notary leaf streamed 2,232
+accounts in 7 messages with a matching count and sum, and was refused by `PaymentService`; a catalog leaf
+was refused by `LiabilityService`.
+
+**Release order:**
+
+1. ✅ `kinetix-contracts` **v1.0.23** = `dfbe0221f783070dd65fdd868a15108d97db59cc`, published by the user
+   2026-10-12. The tag adds exactly `liability.proto`, byte-identical to the file tested; npm, PyPI,
+   RubyGems and Packagist all serve 1.0.23.
+2. ✅ payment's `scripts/sync-contracts` pinned to v1.0.23 + that commit, `.contracts` re-fetched from the
+   remote, and the CI sequence re-run on it (fresh Postgres, migrate profile, 231 tests, 0 skipped).
+   Releasing payment is the user's.
+3. Release `kinetix-infrastructure` with the allow-list. The order of 2 and 3 does not matter: an older
+   payment treats `notary@…` as a caller that does not exist.
+
+The `notary/v1` package moved to step 5, where its first message is written: an empty package is a
+placeholder, and the contracts repository does not keep placeholders.
+
+**Deferred, on purpose.** Scoping `order` to `order@payment.v1.PaymentService,order@grpc.reflection.v1.ServerReflection`
+was run end to end and works, but a payment image older than this change would refuse every escrow call
+from order under that value, so it waits until no such image can be rolled back to.
 
 ### Step 4 — `notaryd`, the anchorer
 
-Postgres of its own (goose migrations, sqlc), and the epoch as a persisted state machine:
-`Planned → Built → Submitted → Mined → Finalized`, plus `Abandoned` needing a person — the checkout
-saga's pattern: the row is written before the transaction is broadcast, so a crash leaves a record
-rather than an orphaned transaction.
+The daemon that turns payment's snapshot into an anchored epoch, once an hour, and can prove afterwards
+exactly what it committed to. Designed on 2026-10-12, after step 3 fixed the shape of the snapshot.
 
-- One writer, by lease with fencing, because nonces are per sender and two writers corrupt them.
-- EIP-1559 fees with a configured ceiling; a stuck transaction is replaced at the same nonce, never
-  duplicated at a new one.
-- An epoch counts as anchored only at `finalized`. A reorg that drops the transaction re-submits it;
-  `EpochAlreadyAnchored` on re-submission means it already landed.
-- Salts generated per account per epoch from `crypto/rand`, stored encrypted, never logged.
-- Runway metrics and alerts (§7). Metrics conformance, gRPC reflection and health like every service;
-  SPIFFE mTLS with an explicit allow-list.
+**Processes.** `cmd/notaryd` (the daemon: anchoring loop, HTTP health and metrics) and
+`cmd/notary-migrate` (goose, migrations embedded, a one-shot like every estate migrator). No gRPC server
+yet: the first gRPC surface is `notary.v1.ProofService` in step 5, and reflection and gRPC health arrive
+with it.
+
+**One epoch in flight.** The next epoch is built only after the previous one is final. That keeps one
+nonce in play at a time, makes `previousDigest` simply the ledger's head, and costs nothing at an
+hourly cadence.
+
+**The epoch, persisted.** `built → submitted → mined → finalized`, plus `abandoned`, which needs a
+person. There is no `planned` state: pulling the snapshot and building the tree happen in one tick and
+leave nothing worth recording when they fail; the next tick starts again. A `built` row is written in
+one transaction with every leaf, so a header never exists without the accounts it commits to.
+
+| State | Means | Leaves it when |
+|---|---|---|
+| `built` | snapshot read, salts drawn, tree built, header and digest stored | an attempt is written and broadcast |
+| `submitted` | at least one signed attempt is broadcast | the ledger at `latest` holds the epoch with our digest |
+| `mined` | it is on chain, not yet final | the ledger at `finalized` holds it (→ `finalized`), a reorg removed it (→ `submitted`), or the chain finalized a different digest (→ `abandoned`) |
+| `finalized` | the ledger at the `finalized` block holds our digest | never |
+| `abandoned` | the chain refused it for a reason no retry fixes | a person decides |
+
+**Finality is a fact about the ledger, not about a receipt.** An epoch is final when `epochAt(n)`, read
+at the `finalized` block, returns our digest. Which attempt landed does not matter; that is what makes
+replacements, reorgs and re-broadcasts safe to reason about, and it is the same rule the verifier uses.
+
+**Attempts.** Each signed transaction is written to the database (raw bytes, nonce, fees) **before** it
+is broadcast, so a crash leaves a record and the next writer sees the pending nonce instead of
+reusing it. Gas is `eth_estimateGas` + 20%, and the estimate doubles as a dry run: a revert there is
+decoded before any gas is spent. EIP-1559: tip from `eth_maxPriorityFeePerGas`, fee cap
+`2 × baseFee + tip`, both under `KINETIX_NOTARY_MAX_FEE_PER_GAS_WEI` (required, no default). An attempt
+still unmined after five minutes is replaced at the **same nonce** with both fees raised 12.5% (nodes
+require 10%); at the ceiling it is re-broadcast unchanged and counted, never raised past it.
+
+**What a revert means.** `EpochAlreadyAnchored` with our digest: it landed, carry on watching.
+`SnapshotInFuture`: the chain's clock is behind ours, try again later. `EpochConflict`,
+`PreviousDigestMismatch`, `EpochOutOfSequence`, `LedgerIsSealed`, or a missing anchorer role:
+`abandoned`, because another writer, a sealed ledger or a revoked key is an incident, not a retry.
+
+**One writer, by lease with fencing.** A single-row lease (`holder`, `token`, `expires_at`; 30 s, renewed
+every 10 s). Every write opens its transaction by re-reading the lease `FOR SHARE` and aborts unless this
+process still holds the token it was given, so a writer that lost the lease mid-tick cannot record or
+broadcast anything after losing it.
+
+**The database must agree with the chain before anything is built.** The last finalized epoch in the
+database must be the ledger's `nextEpoch − 1` with the ledger's `head`; for the very first epoch, the
+database is empty and the ledger is at its genesis. A ledger holding epochs this database never built
+stops the daemon: someone else holds the anchorer key.
+
+**Accounts and commitments.** An account is a holder (a principal id, or the suspense purpose for
+money owed to nobody yet), one of payment's seven kinds, and an amount in minor units. Its commitment is
+`keccak256(0x04 ‖ kind:u8 ‖ salt:bytes32 ‖ holder)`: tag 0x04 is the next free domain tag, the holder
+comes last because it is the only variable-length field, and it is capped at 255 bytes. Kinds keep
+payment's numbers (1 customer balance … 7 suspense pending escrow). Leaves are sorted by commitment,
+which is a fresh random permutation every epoch: a proof reveals its siblings' sums, and payment's
+row order (customers first, by id) must not leak through them.
+
+**Salts.** 32 bytes per account per epoch from `crypto/rand`, never logged. **Stored as they are, not
+encrypted** — a change from the first version of this plan, for a reason: a leaf row has to hold the
+holder and the amount to serve proofs later, so a column-encrypted salt beside a plaintext holder,
+amount and commitment protects nothing the row does not already give away. The protection is the same
+as payment's: a database of its own, reachable by this service alone, and backups encrypted with age
+before they leave the server.
+
+**Snapshot client.** mTLS to `payment.v1.LiabilityService` with the estate's SPIFFE leaf, the contract
+of step 3 enforced to the letter: one header first, batches, one trailer last, then `OK`; the client
+recounts and re-sums and refuses any difference; the currency must be `KINETIX_NOTARY_CURRENCY`.
+
+**Metrics** (estate contract on `GET /metrics`, plus the notary's own):
+
+| Metric | Type | For |
+|---|---|---|
+| `kinetix_build_info`, `kinetix_http_requests_total`, `kinetix_http_request_duration_seconds` | estate | conformance |
+| `kinetix_grpc_client_calls_total{peer="payment"}` | counter | the snapshot calls |
+| `kinetix_notary_last_finalized_epoch` | gauge | progress |
+| `kinetix_notary_last_finalized_as_of_seconds` | gauge, unix time | **alert**: nothing final for 3 hours |
+| `kinetix_notary_abandoned_epochs` | gauge | **alert**: any |
+| `kinetix_notary_anchorer_balance_wei` | gauge | runway |
+| `kinetix_notary_anchor_cost_wei` | gauge | mean of the last 24 finalized epochs, L2 execution + L1 data fee from the receipt |
+| `kinetix_notary_runway_seconds` | gauge | **alert**: under 14 days (§7) |
+| `kinetix_notary_fee_ceiling_hits_total` | counter | a ceiling set too low |
+
+**Configuration** (fail fast, no defaults for anything that is a credential, an address or a bound):
+`KINETIX_NOTARY_DATABASE_URL`, the four ledger variables the verifier already reads,
+`KINETIX_NOTARY_ANCHORER_PRIVATE_KEY`, `KINETIX_NOTARY_PAYMENT_GRPC_ADDR`, `KINETIX_PKI_DIR`,
+`KINETIX_NOTARY_CURRENCY`, `KINETIX_NOTARY_MAX_FEE_PER_GAS_WEI`, `KINETIX_NOTARY_HTTP_PORT`. Cadences may
+default, as the estate allows: `KINETIX_NOTARY_EPOCH_INTERVAL` (1h), `KINETIX_NOTARY_TICK` (15s). The
+daemon refuses to start when its key is not the ledger's anchorer.
+
+**Status, 2026-10-12: 4a–4g built and green; 4h half done.** `bin/dev bin/ci` exits 0: 56 Foundry tests,
+Slither 0, Aderyn nothing new, generation, `go mod verify`, vet, boundaries, golangci-lint 0, every Go
+test including anvil and Postgres, Go coverage 85.6%. What each part proved:
+
+| Part | Proof |
+|---|---|
+| 4a | protoc 36.2, sqlc 1.31.1 (SHA-256 from GitHub's own asset digests), protoc-gen-go v1.36.12, protoc-gen-go-grpc v1.6.2; Postgres 16 in the toolchain compose |
+| 4b | commitment vectors equal `cast keccak`; every planned account proves inclusion; leaf order differs from the source and between epochs |
+| 4c | over real mTLS with a CA made in the test: 20 kinds of broken stream all refused, never anchored; only a server whose SPIFFE id is `payment` is believed |
+| 4d | lease race: 16 writers, 1 winner; a writer whose lease lapsed writes nothing; an epoch and its accounts are stored together or not at all |
+| 4e | on anvil: anchor, receipt, finality, cost equal to the balance drop; every ledger refusal decoded before gas is spent; a stuck anchor replaced at the same nonce |
+| 4f | 13 scenarios against a hand-written ledger simulator: replacement, fee ceiling, reorg, a dropped transaction, conflict, revert, a foreign nonce, divergence |
+| 4g | end to end through the production wiring: payment's snapshot over mTLS, Postgres, the anvil ledger, final, and **every account verified by the contract**; a daemon killed mid-epoch is finished by the next with **one** transaction |
+| 4h (repo) | one image with `notaryd`, `notary-migrate` and `notary-verify`, uid and gid 10001, Trivy: 0 fixable CRITICAL or HIGH; build-and-push passes the commit as the version |
+
+**Left in 4h, all in `kinetix-infrastructure` and most of it the user's hands** (written up as a first-deploy
+document there, the way search's was): the `kinetix_notary` database and role on the production cluster
+(and the cluster healthcheck's database count), the `notary` leaf in `pki-prod` (CA password),
+`KINETIX_NOTARY_DB_PASSWORD` in the SOPS store, the compose entries for the daemon and its migrator, the
+image digest in `deploy/prod/versions.env`, the deploy dispatch in `release.yml`, three Grafana rules (no
+final epoch for 3 hours, any abandoned epoch, runway under 14 days), the handshake rows, and funding the
+anchorer with Base Sepolia ETH. The lab question is open: the lab has no chain, and the production
+ledger must never receive lab data, so the lab either runs anvil with a ledger of its own or does not
+run the notary at all.
+
+**Work order**, each part green before the next:
+
+- **4a** toolchain and generation: protoc and sqlc pinned by SHA-256, protoc-gen-go and
+  protoc-gen-go-grpc by version, `bin/sync-contracts` pinned to contracts `v1.0.23`, Postgres 16 beside
+  anvil in the toolchain compose. Generated code (abigen, protobuf, sqlc) is never committed.
+- **4b** the core: accounts, kinds, commitments (known-answer vectors from `cast`), epoch states and
+  their transitions, fee arithmetic, runway arithmetic — all in `internal/notary`, standard library only.
+- **4c** the snapshot client (`internal/payment`), against a fake server over real mTLS.
+- **4d** the store (`internal/postgres`): migrations, queries, lease and fencing, tested on Postgres.
+- **4e** the chain writer (`internal/ethereum`): sign, send, replace, receipts with the L1 fee, tested
+  on anvil.
+- **4f** the use case (`internal/anchoring`): one tick of the state machine, every row of the tables
+  above driven by hand-written fakes.
+- **4g** `cmd/notaryd`, `cmd/notary-migrate`, HTTP, metrics, dig wiring; an end-to-end run on anvil
+  with a fake payment that anchors, finalizes and survives a restart mid-epoch.
+- **4h** the estate: images, compose entries, `notary` in `bin/kinetix-pki`, the handshake rows, Grafana
+  rules for the three alerts, CD dispatch. Then the first epoch on Base Sepolia, once the anchorer is
+  funded.
 
 ### Step 5 — the proof API
 
@@ -386,12 +556,84 @@ caller's principal comes from identity's token; a principal receives the proofs 
 and nothing else, and the response is exactly the `kinetix.notary.inclusion.v1` document the CLI
 already verifies. Unknown, not final and unavailable stay distinct all the way to the HTTP status.
 
-### Step 6 — verification without Kinetix
+### Steps 6–10 — accountability on chain
+
+Five contracts that sit **beside** the deployed v1 ledger and never require changing it: the court and
+the directory only read the ledger's public views, and the council becomes the ledger's anchorer when
+the admin grants it `ANCHORER_ROLE` and revokes the notary's own key. Each gets the same treatment as
+v1 — unit, fuzz and handler-based invariant suites, Go↔Solidity differential fixtures for every hash
+and EIP-712 digest the two languages share, a fork test against the live Base Sepolia ledger,
+Slither and Aderyn clean, immutable deployment through the CREATE2 factory, Sourcify verification.
+
+#### Step 6 — signed statements and fraud proofs (`StatementCourt`, part 1)
+
+Every proof the notary issues becomes a binding, publicly punishable claim.
+
+- With each proof (step 5), and pushed to the holder when the epoch is final (through notification,
+  which owns delivery), the notary issues an EIP-712 `EpochStatement`: ledger, epoch, commitment,
+  amount, index, and `keccak256` of the siblings. Signed by a statement key the court knows.
+- `proveBadProof(statement, signature, siblings)`: the signature is a registered signer's, the
+  siblings hash to the signed value, the epoch exists — and `ledger.verifyInclusion` returns `false`.
+  The notary signed a proof that does not prove anything: fault.
+- `proveEquivocation(a, sigA, b, sigB)`: two signed statements for one epoch that cannot both be true
+  — one commitment at two amounts or two indexes, or two commitments at one index: fault.
+- Faults are permanent, per epoch, readable by anyone (`faultsOf(epoch)`, `FaultProven` events). The
+  verifier and the browser page show them beside every verdict. There is no way to clear one.
+- Signer rotation goes through the admin with a delay; a statement signed by a key at a time it was
+  not registered proves nothing, so rotation cannot be used to disown old statements.
+
+#### Step 7 — withholding (`StatementCourt`, part 2)
+
+Step 6 punishes a lie the notary signed; this step punishes the silence that would hide an omitted
+account — the limit PLAN §3 admits today. A holder registers a statement address (a key in their own
+browser or wallet) through the authenticated proof API; on chain the holder may then
+`requestStatement(epoch)` within a window after the epoch is final, and the notary must `answer` with
+a statement naming that holder before a deadline, or anyone can record the epoch as
+`Unanswered(epoch, holder)`. **Design to settle before building**, because each choice moves a
+boundary: who attests that a holder exists (identity owns who a person is; payment owns whether they
+hold anything), how a registration is itself made provable, how requests stay private (the holder
+address, never the principal, goes on chain), and the rate limit that keeps a free challenge from
+becoming a way to exhaust the notary's gas.
+
+#### Step 8 — threshold anchoring (`AnchorCouncil`)
+
+One hot key can anchor anything today. The council holds `ANCHORER_ROLE` and anchors an epoch only
+with k-of-n EIP-712 signatures over its header (domain-separated by chain id and ledger address).
+
+- Members: the notary's signer and **`notary-watch`**, an independent process with its own key that
+  pulls the same snapshot from payment, rebuilds the tree on its own, and signs only when the root
+  matches. Long term the watcher belongs to a different operator.
+- Anyone holding enough signatures may submit (a relayer, or step 10's sponsored transaction).
+- A member signing two different headers for one epoch is provable equivocation, recorded through
+  the court's fault list.
+- Membership and threshold change through the admin with a delay, and never below 2-of-n once the
+  watcher exists.
+
+#### Step 9 — ledger directory (`LedgerDirectory`)
+
+A ledger succeeds another by sealing it (§6), but today only a config file says which one is current.
+The directory is an append-only, on-chain list of generations — ledger address, genesis epoch,
+genesis digest, scheme, registration time. Registering a successor on the same chain requires the
+predecessor sealed and the successor's genesis equal to the predecessor's sealed head and next epoch,
+both checked on chain; a successor on another chain is recorded with the values it declares and marked
+as such. The v1 ledger is generation 0. Verifiers resolve the current ledger from the directory, so
+their configuration shrinks to one address that never changes.
+
+#### Step 10 — sponsored gas (`NotaryPaymaster`, ERC-4337)
+
+A holder who wants to request a statement or prove a fault should not need testnet ETH first. The
+paymaster sponsors user operations whose calls go only to the court's request and fault functions and
+the council's submit, with a per-sender rate limit and a budget whose runway is monitored like the
+anchorer's (§7). The EntryPoint version is pinned and its presence on the network checked before
+deploy, the way the CREATE2 factory was.
+
+### Step 11 — verification without Kinetix
 
 A browser verifier in the public docs: it reads the chain directly from the visitor's browser, so
-checking a proof involves no Kinetix server at all. The CLI image is published for auditors.
+checking a proof involves no Kinetix server at all. It resolves the current ledger through the
+directory and shows any fault recorded against the epoch. The CLI image is published for auditors.
 
-### Step 7 — phase 2: evidence anchoring
+### Step 12 — phase 2: evidence anchoring
 
 `EvidenceRegistry`, batched Merkle roots of:
 
@@ -403,7 +645,7 @@ checking a proof involves no Kinetix server at all. The CLI image is published f
 - **review integrity**: review content hashes, so a review cannot be quietly edited or removed.
   review serves no gRPC today; it needs a server and a `ChangedSince` first.
 
-### Step 8 — scheme v2: zero-knowledge proof of liabilities
+### Step 13 — scheme v2: zero-knowledge proof of liabilities
 
 The total stops being public, and the proof gets stronger.
 
@@ -412,20 +654,23 @@ The total stops being public, and the proof gets stronger.
 - The circuit proves: every leaf amount is in `[0, 2^64)`; the tree's root is built from those
   leaves with **Poseidon2** (cheap inside a circuit, unlike keccak); the leaves sum to a total `T`;
   and the ledger stores only `C = Poseidon(T, blinding)`.
-- gnark exports a Solidity verifier; it becomes `LiabilityLedgerV2` (scheme 2), tested in Foundry
-  the same way v1 is, with differential fixtures from the Go prover.
+- gnark exports a Solidity verifier. The handwritten part is `LiabilityLedgerV2` (scheme 2) around it,
+  registered in the directory as a new generation and judged by a court that speaks scheme 2, tested
+  in Foundry the same way v1 is, with differential fixtures from the Go prover. The generated
+  verifier is not counted as this repository's own Solidity.
 - Account holders still verify inclusion with a Merkle path — Poseidon instead of keccak — in the
   browser (WASM) or the CLI.
 - Beyond one circuit's capacity: recursive aggregation of per-batch proofs.
 - Budget to measure before committing: proving time and memory per 2^16 and 2^20 accounts on the
   production VPS, which shares 16 GB with the whole estate.
 
-### Step 9 — the next service: product passport
+### Step 14 — the next service: product passport
 
 After the notary is complete: per-unit provenance for serialized goods (ERC-721), minted by a
 verified merchant and transferred to the buyer on delivery. It needs serial-level inventory, which
 warehouse does not have today (no serial column anywhere in its schema), and buyer wallets
-(account abstraction), so it starts with that owner-side work.
+(account abstraction — the step 10 paymaster is the first piece of that), so it starts with that
+owner-side work.
 
 ## 11. Open questions
 

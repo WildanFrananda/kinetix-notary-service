@@ -24,10 +24,12 @@ func Run(ctx context.Context, path string, scheme uint16, verifier ClaimVerifier
 	if err != nil {
 		return emit(stdout, report{Verdict: "malformed_proof", Reason: err.Error()}, ExitMalformedProof)
 	}
+
 	verification, err := verifier.Verify(ctx, claim)
 	if err != nil {
 		return Fail(stdout, err)
 	}
+
 	out := report{
 		Verdict:    verification.Verdict.String(),
 		ChainID:    strconv.FormatUint(verification.Ledger.ChainID, 10),
@@ -41,6 +43,7 @@ func Run(ctx context.Context, path string, scheme uint16, verifier ClaimVerifier
 	if verification.Verdict == notary.VerdictIncluded {
 		return emit(stdout, out, ExitIncluded)
 	}
+
 	return emit(stdout, out, ExitRejected)
 }
 
@@ -69,8 +72,10 @@ func emit(stdout io.Writer, out report, code int) int {
 	if err != nil {
 		return ExitUnknown
 	}
+
 	if _, err := stdout.Write(append(encoded, '\n')); err != nil {
 		return ExitUnknown
 	}
+
 	return code
 }

@@ -15,8 +15,10 @@ import (
 func encoded(t *testing.T) (notary.Claim, string) {
 	t.Helper()
 	_, claim := notarytest.AnchoredClaim(t, 7, 9, 4)
+
 	var buf bytes.Buffer
 	require.NoError(t, prooffile.Encode(&buf, claim, 1))
+
 	return claim, buf.String()
 }
 
@@ -40,12 +42,14 @@ func TestNumbersTravelAsDecimalStrings(t *testing.T) {
 
 func requireMalformed(t *testing.T, doc string) {
 	t.Helper()
+
 	_, err := prooffile.Decode(strings.NewReader(doc), 1)
 	require.Equal(t, notary.KindInvalidArgument, notary.KindOf(err), "%v", err)
 }
 
 func TestMalformedDocumentsAreRefused(t *testing.T) {
 	_, doc := encoded(t)
+
 	cases := map[string]string{
 		"unknown field":      strings.Replace(doc, `"scheme": 1,`, `"scheme": 1, "extra": true,`, 1),
 		"another format":     strings.Replace(doc, "inclusion.v1", "inclusion.v2", 1),
@@ -69,6 +73,7 @@ func TestMalformedDocumentsAreRefused(t *testing.T) {
 func TestAProofDeeperThanTheSchemeIsRefused(t *testing.T) {
 	_, claim := notarytest.AnchoredClaim(t, 7, 9, 4)
 	claim.Proof.Siblings = make([]notary.Node, notary.MaxDepth+1)
+
 	var buf bytes.Buffer
 	require.NoError(t, prooffile.Encode(&buf, claim, 1))
 

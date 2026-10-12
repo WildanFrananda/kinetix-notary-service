@@ -18,18 +18,23 @@ if [ -n "$offenders" ]; then
   failed=1
 fi
 
-offenders="$(
-  go list -deps "$MODULE/internal/verifying" \
-    | grep "^$MODULE/" \
-    | grep -v -e "^$MODULE/internal/verifying$" -e "^$MODULE/internal/notary$" \
-    || true
-)"
-offenders="$offenders$(external_deps "$MODULE/internal/verifying")"
-if [ -n "$offenders" ]; then
-  echo "internal/verifying may import only internal/notary and the standard library, but it reaches:"
-  echo "$offenders" | sed 's/^/  /'
-  failed=1
-fi
+for usecase in verifying anchoring; do
+  if ! go list "$MODULE/internal/$usecase" >/dev/null 2>&1; then
+    continue
+  fi
+  offenders="$(
+    go list -deps "$MODULE/internal/$usecase" \
+      | grep "^$MODULE/" \
+      | grep -v -e "^$MODULE/internal/$usecase$" -e "^$MODULE/internal/notary$" \
+      || true
+  )"
+  offenders="$offenders$(external_deps "$MODULE/internal/$usecase")"
+  if [ -n "$offenders" ]; then
+    echo "internal/$usecase may import only internal/notary and the standard library, but it reaches:"
+    echo "$offenders" | sed 's/^/  /'
+    failed=1
+  fi
+done
 
 imports() {
   go list -f '{{.ImportPath}}{{range .Imports}} {{.}}{{end}}' ./cmd/... ./internal/... \
@@ -45,7 +50,7 @@ fi
 
 offenders="$(
   imports github.com/ethereum/go-ethereum \
-    | grep -v -e "^$MODULE/cmd/" -e "^$MODULE/internal/ethereum$" -e "^$MODULE/internal/contractgen/" \
+    | grep -v -e "^$MODULE/cmd/" -e "^$MODULE/internal/wiring$" -e "^$MODULE/internal/ethereum$" -e "^$MODULE/internal/contractgen/" \
     || true
 )"
 if [ -n "$offenders" ]; then
@@ -54,7 +59,30 @@ if [ -n "$offenders" ]; then
   failed=1
 fi
 
+offenders="$(
+  { imports google.golang.org/grpc; imports google.golang.org/protobuf; } \
+    | grep -v -e "^$MODULE/cmd/" -e "^$MODULE/internal/wiring$" -e "^$MODULE/internal/payment$" \
+      -e "^$MODULE/internal/mesh$" -e "^$MODULE/internal/metrics$" -e "^$MODULE/internal/protogen/" \
+    || true
+)"
+if [ -n "$offenders" ]; then
+  echo "gRPC belongs to the gRPC adapters (payment, mesh, metrics), but these import it:"
+  echo "$offenders" | sed 's/^/  /'
+  failed=1
+fi
+
+offenders="$(
+  { imports github.com/jackc/pgx; imports github.com/pressly/goose; } \
+    | grep -v -e "^$MODULE/cmd/" -e "^$MODULE/internal/wiring$" -e "^$MODULE/internal/postgres$" -e "^$MODULE/internal/storegen$" \
+    || true
+)"
+if [ -n "$offenders" ]; then
+  echo "Postgres belongs to internal/postgres, but these import it:"
+  echo "$offenders" | sed 's/^/  /'
+  failed=1
+fi
+
 if [ "$failed" -ne 0 ]; then
   exit 1
 fi
-echo "boundaries hold: notary is pure, verifying sees only notary, dig and go-ethereum stay at the edge"
+echo "boundaries hold: notary is pure, the use cases see only notary, dig, go-ethereum, gRPC and Postgres stay at the edge"

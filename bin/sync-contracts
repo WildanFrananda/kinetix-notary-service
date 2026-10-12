@@ -1,0 +1,58 @@
+#!/usr/bin/env sh
+set -eu
+
+HERE="$(cd "$(dirname "$0")/.." && pwd)"
+REPO="https://github.com/WildanFrananda/kinetix-contracts.git"
+TAG="v1.0.23"
+COMMIT="dfbe0221f783070dd65fdd868a15108d97db59cc"
+DEST="$HERE/.contracts"
+GEN="$HERE/internal/protogen"
+MODULE="github.com/WildanFrananda/kinetix-notary-service/internal/protogen"
+SPOKEN="common/v1/common.proto payment/v1/liability.proto"
+
+if [ -d "$DEST/.git" ] && [ "$(git -C "$DEST" rev-parse HEAD)" != "$COMMIT" ]; then
+  rm -rf "$DEST"
+fi
+
+if [ ! -d "$DEST/.git" ]; then
+  git -c advice.detachedHead=false clone --depth 1 --branch "$TAG" --quiet "$REPO" "$DEST"
+  got="$(git -C "$DEST" rev-parse HEAD)"
+  if [ "$got" != "$COMMIT" ]; then
+    echo "$TAG resolves to $got, but this service is pinned to $COMMIT" >&2
+    echo "either the tag was moved or the pin is stale; neither is worked around here" >&2
+    rm -rf "$DEST"
+    exit 1
+  fi
+fi
+
+for path in $SPOKEN; do
+  if [ ! -f "$DEST/proto/$path" ]; then
+    echo "$TAG has no proto/$path" >&2
+    exit 1
+  fi
+done
+
+rm -rf "$GEN"
+mkdir -p "$GEN"
+
+set --
+for path in $SPOKEN; do
+  package="$(dirname "$path")"
+  set -- "$@" "--go_opt=M$path=$MODULE/$package" "--go-grpc_opt=M$path=$MODULE/$package"
+done
+
+protoc \
+  --proto_path="$DEST/proto" \
+  --go_out="$GEN" --go_opt=paths=source_relative \
+  --go-grpc_out="$GEN" --go-grpc_opt=paths=source_relative \
+  "$@" \
+  $SPOKEN
+
+for expected in common/v1/common.pb.go payment/v1/liability.pb.go payment/v1/liability_grpc.pb.go; do
+  if [ ! -s "$GEN/$expected" ]; then
+    echo "protoc reported success but wrote no $expected" >&2
+    exit 1
+  fi
+done
+
+echo "contracts $TAG ($COMMIT) generated into $GEN"

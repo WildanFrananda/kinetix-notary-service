@@ -9,6 +9,7 @@ func ParseDigest(text string) (Digest, error) {
 	if err != nil {
 		return Digest{}, Errf(KindInvalidArgument, "notary.ParseDigest", err, "")
 	}
+
 	return Digest(raw), nil
 }
 

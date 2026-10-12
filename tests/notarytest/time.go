@@ -10,7 +10,9 @@ import (
 
 func Unix(t testing.TB, seconds uint64) notary.UnixTime {
 	t.Helper()
+
 	u, err := notary.UnixTimeFromSeconds(seconds)
 	require.NoError(t, err)
+
 	return u
 }

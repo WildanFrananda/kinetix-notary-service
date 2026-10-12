@@ -19,10 +19,13 @@ type anchoredTree struct {
 
 func anchor(t *testing.T, seed uint64, count int) anchoredTree {
 	t.Helper()
+
 	entries := notarytest.Entries(seed, count)
 	tree, err := notary.BuildTree(keccak.NewScheme(), 11, entries)
 	require.NoError(t, err)
+
 	root := tree.Root()
+
 	return anchoredTree{
 		epoch: notary.AnchoredEpoch{
 			Number:    11,
@@ -37,8 +40,10 @@ func anchor(t *testing.T, seed uint64, count int) anchoredTree {
 
 func (a anchoredTree) proof(t *testing.T, index uint64) notary.InclusionProof {
 	t.Helper()
+
 	proof, err := a.tree.Prove(index)
 	require.NoError(t, err)
+
 	return proof
 }
 
@@ -78,6 +83,7 @@ func TestValueMovedFromASiblingOntoTheAmountIsRejected(t *testing.T) {
 	a := anchor(t, 1, 5)
 	proof := a.proof(t, 2)
 	entry := a.entries[2]
+
 	require.Positive(t, proof.Siblings[0].Sum)
 	entry.Amount += proof.Siblings[0].Sum
 	proof.Siblings[0].Sum = 0
@@ -119,6 +125,7 @@ func TestAProofOfTheWrongLengthIsRejected(t *testing.T) {
 
 func TestSumsThatOverflowAreRejectedRatherThanWrapped(t *testing.T) {
 	a := anchor(t, 1, 5)
+
 	proof := a.proof(t, 2)
 	for i := range proof.Siblings {
 		proof.Siblings[i].Sum = math.MaxUint64
@@ -142,9 +149,11 @@ func FuzzAnyChangeToAClaimIsRejected(f *testing.F) {
 	f.Fuzz(func(t *testing.T, seed uint64, rawCount, rawIndex, rawLevel, tamper uint8, delta uint64) {
 		count := int(rawCount%64) + 2
 		index := uint64(rawIndex) % uint64(count)
+
 		if delta == 0 {
 			delta = 1
 		}
+
 		a := anchor(t, seed, count)
 		proof := a.proof(t, index)
 		entry := a.entries[index]
