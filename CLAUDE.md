@@ -76,7 +76,11 @@ Package names say what a package provides (`keccak.NewScheme`, `ethereum.NewLedg
 - **Explicit `return`** in every Solidity function, named returns included, as in the Rust service.
 - **One type per file** in both languages: each Solidity struct, interface, library and contract has
   its own file; each Go type in `internal/notary` has its own file.
-- **Braces on the same line**; long calls one argument per line.
+- **Braces on the same line**; long calls one argument per line. For Solidity this is
+  `forge fmt` with `multiline_func_header = "params_first_multi"`: a header that does not fit breaks
+  its parameters one per line and keeps `) … {` together. The default (`attributes_first`) puts `{`
+  alone on its own line, and that mismatch turned CI red on 2026-10-11 the moment the code was
+  formatted by hand to the house style. Fix the formatter's configuration, never the house style.
 - **Go tests live in `tests/`**, never beside the code; use `bin/test`, because plain
   `go test -cover` reports 0% for every package under `internal/`. Foundry tests live in
   `contracts/test/`, Foundry's own convention.
