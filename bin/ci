@@ -16,6 +16,9 @@ echo "== contracts"
   forge snapshot --check --match-contract LiabilityLedgerTest
 )
 
+echo "== static analysis"
+sh bin/analyze
+
 echo "== bindings"
 sh bin/generate-bindings
 

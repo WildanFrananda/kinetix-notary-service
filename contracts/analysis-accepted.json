@@ -1,0 +1,6 @@
+{
+  "aderyn": [
+    { "detector": "centralization-risk", "path": "src/LiabilityLedger.sol" },
+    { "detector": "unchecked-return", "path": "src/LiabilityLedger.sol" }
+  ]
+}
