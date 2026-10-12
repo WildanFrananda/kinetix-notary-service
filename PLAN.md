@@ -266,29 +266,39 @@ workflows and two rulesets. The bar, taken from search and the estate's
 
 - [x] **`ci.yml`** — `verify` runs `bin/ci` on every pull request and every push to `main`. First run
   green on 2026-10-11.
-- [ ] **`build-and-push.yml`** — on every push to `main` and on `workflow_dispatch`, one run at a time
+- [x] **`build-and-push.yml`** (written 2026-10-12; its first run is the next merge to `main`) — on every push to `main` and on `workflow_dispatch`, one run at a time
   per ref: build the root `Dockerfile`; **Trivy gate on `CRITICAL`, `ignore-unfixed`, exit code 1, before
   anything is pushed**; an SPDX SBOM uploaded as an artifact; push
   `ghcr.io/wildanfrananda/kinetix-notary-service:<sha>` only after the scan passes; print the digest.
   Permissions `contents: read`, `packages: write`, nothing more. The image carries `notary-verify` now
   and `notaryd` from step 4, one image for every binary as in search.
-- [ ] **`release.yml`** — on `vMAJOR.MINOR.PATCH` tags only: refuse any other tag shape; refuse a tag
+- [x] **`release.yml`** (written 2026-10-12; first run on the first tag) — on `vMAJOR.MINOR.PATCH` tags only: refuse any other tag shape; refuse a tag
   not reachable from `main`; refuse a tag whose commit has no image already built and scanned —
   **promote, never rebuild**; point the release tag at that digest. The deploy dispatch to
   `kinetix-infrastructure` stays **out** until step 4 has put the notary into the production model:
   a dispatch for a service infra does not know fails, and a digest pinned before the image exists
   blocks every deploy in the estate (the notification lesson).
-- [ ] **Contract analysis job** — Slither and Aderyn, failing on findings; an accepted finding is
-  recorded in `CLAUDE.md`, never silenced in the source. Stricter than the other services because a
-  deployed contract cannot be patched.
+- [x] **Contract analysis** — Slither 0.11.6 (hash-locked, `toolchain/slither-requirements.txt`) and
+  Aderyn 0.6.8 (SHA-256 pinned) run as `bin/analyze`, a step of `bin/ci`, so `verify` covers them and
+  the ruleset needs no second check. Any new finding fails; the accepted ones are per detector and
+  file in `contracts/analysis-accepted.json` and `contracts/slither.config.json`, with reasons in
+  `CLAUDE.md`. Proven red twice: a planted `tx.origin` contract (Slither, exit 255) and a removed
+  exception (Aderyn, `NEW`, exit 1). Stricter than the other services because a deployed contract
+  cannot be patched.
 - [x] **Ruleset `main`** — active; target the default branch; restrict deletions; block force pushes;
   require a pull request with **0** approvals; require the status check `verify` (and the analysis
   job once it exists); "up to date before merging" left off. Same as BRANCH-PROTECTION.md §2.
 - [x] **Ruleset `release-tags`** — active; target **all tags**; restrict deletions and block force
   pushes, nothing else. A released tag is never moved or deleted; a bad release gets a patch tag.
   Same as §7. Both rulesets confirmed active through the API on 2026-10-12.
-- [ ] **`kinetix-infrastructure/docs/BRANCH-PROTECTION.md`** — the notary's row in §3 (`verify`) and
+- [x] **`kinetix-infrastructure/docs/BRANCH-PROTECTION.md`** — the notary's row in §3 (`verify`) and
   its name in the §7 list.
+
+The image passed the same Trivy gate locally before the workflow ever ran: the pinned
+`debian:bookworm-slim` carried three fixable CRITICALs (`libpcre2-8-0`, `perl-base`) — even its newest
+digest did — so the final stage runs `apt-get upgrade`, and Go moved to 1.26.9 for three fixable
+HIGHs in the standard library. Result: no fixable CRITICAL or HIGH in either layer. search pins the
+same Debian digest without an upgrade, so its next `build-and-push` is expected to fail the same gate.
 
 Contract deployment is deliberately **not** CD. The admin key never sits in a CI secret store;
 deploys and seals run by hand through `bin/dev` with keys from SOPS (§8).

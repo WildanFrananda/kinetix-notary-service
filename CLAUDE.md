@@ -42,8 +42,11 @@ bin/inspect-ledger base-sepolia                 # every on-chain fact checked ag
 admin keystores live in `KINETIX_NOTARY_KEYSTORE_DIR` (refused when inside a git work tree), the
 anchorer lives in SOPS. Why the split is in PLAN.md §8.
 
-Every tool version lives in **one** place, `bin/install-toolchain` (Foundry by release tarball and
-SHA-256, abigen, golangci-lint). The toolchain image, the GitHub job and the GitLab job all run that
+Every tool version lives in **one** place, `bin/install-toolchain`, installed by component
+(`foundry`, `abigen`, `lint`, `analysis`): Foundry and Aderyn by release tarball and SHA-256, abigen
+and golangci-lint by `go install @version`, Slither from a hash-locked requirements file. The
+production image installs only `foundry abigen`. GitHub CI runs `bin/ci` inside the toolchain image
+itself (`sh bin/dev bin/ci`), so the laptop and GitHub run the same Python, Go and tools. The toolchain image, the GitHub job and the GitLab job all run that
 script, so local and CI cannot drift. Bump a version there and nowhere else.
 
 ## Layout, and the rule it encodes
@@ -72,6 +75,13 @@ Package names say what a package provides (`keccak.NewScheme`, `ethereum.NewLedg
   `deny = "warnings"`), `forge test` on the CI profile, `forge snapshot --check`, binding generation,
   `gofmt`, `go mod verify`, `go vet`, the boundary check, golangci-lint, and `bin/test`. It refuses to
   run without a node, because a skipped integration test proves nothing.
+- **`bin/analyze`** runs Slither and Aderyn over `contracts/src` and fails on anything not already
+  accepted. Accepted, and why: Slither `timestamp` (refusing a future snapshot needs
+  `block.timestamp`; a validator moves it by seconds), Aderyn `centralization-risk` (the admin and
+  anchorer roles are the design; the admin key never goes online), Aderyn `unchecked-return` on the
+  constructor's `_grantRole` (it cannot fail there, and the deployed ledger's source is frozen: an edit
+  would make the repository disagree with the verified bytecode). An accepted entry that stops being
+  reported also fails, so the list cannot rot.
 - **The differential fixture is a contract between the languages.** `tests/fixtures` regenerates
   `contracts/test/fixtures/scheme-v1.json` and fails when the committed file differs; Foundry's
   `Differential.t.sol` re-verifies every tree, proof, rejection and digest in it. Proven on
@@ -156,6 +166,12 @@ A failure must never be reported as a definite answer. In this service that mean
 - **forge reports verification optimistically.** It printed "All (1) contracts were verified!" over
   Blockscout's `Fail - Unable to verify` (Blockscout had no solc 0.8.37). Verification goes to
   Sourcify, and `bin/inspect-ledger` asks Sourcify itself.
+- **A pinned Debian base is not a patched one.** Trivy found three fixable CRITICALs in
+  `debian:bookworm-slim`, including its newest digest; the final stage runs `apt-get upgrade`. Scan
+  the image locally before the first `build-and-push`, never after.
+- **A multi-line `sh -c '…'` typed into the agent's shell tool can lose its script** to the command
+  rewriter, and the remaining lines then run on the Mac. Trial scripts go in a file that is mounted
+  into the toolchain container.
 - **`cast wallet new --json` changed shape in Foundry 1.8**: the wallet is under `data[0]` inside an
   envelope, not a bare list.
 - **gosec G115** flags every narrowing integer conversion; `UnixTime` is a sealed type whose

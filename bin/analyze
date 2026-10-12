@@ -1,0 +1,40 @@
+#!/usr/bin/env sh
+set -eu
+
+HERE="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$HERE/contracts"
+
+report_dir="$(mktemp -d)"
+trap 'rm -rf "$report_dir"' EXIT
+
+echo "== slither"
+slither . --config-file slither.config.json
+
+echo "== aderyn"
+aderyn . -o "$report_dir/aderyn.json" >/dev/null
+python3 - "$report_dir/aderyn.json" analysis-accepted.json <<'PY'
+import json
+import sys
+
+report = json.load(open(sys.argv[1]))
+accepted = {(entry["detector"], entry["path"]) for entry in json.load(open(sys.argv[2]))["aderyn"]}
+seen = set()
+unexpected = []
+for severity in ("high_issues", "low_issues"):
+    for issue in report.get(severity, {}).get("issues", []):
+        for instance in issue["instances"]:
+            key = (issue["detector_name"], instance["contract_path"])
+            location = f'{instance["contract_path"]}:{instance["line_no"]} {issue["detector_name"]} ({severity.split("_")[0]})'
+            if severity == "low_issues" and key in accepted:
+                seen.add(key)
+                print(f"  accepted   {location}")
+            else:
+                unexpected.append(location)
+for key in sorted(accepted - seen):
+    print(f"  no longer reported, remove from analysis-accepted.json: {key[0]} {key[1]}")
+for location in unexpected:
+    print(f"  NEW        {location}")
+if unexpected or accepted - seen:
+    sys.exit(1)
+print("aderyn: nothing new")
+PY

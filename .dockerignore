@@ -12,5 +12,6 @@ contracts/cache
 contracts/broadcast
 contracts/dependencies
 toolchain
+!toolchain/slither-requirements.txt
 PLAN.md
 CLAUDE.md

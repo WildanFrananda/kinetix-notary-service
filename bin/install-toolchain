@@ -6,20 +6,37 @@ FOUNDRY_SHA256_AMD64=7ca48e6ca3cac1bce1403ca67e5bc1dc3bc1fd818199c9957c7165079c2
 FOUNDRY_SHA256_ARM64=93fc23be26c8a902ca58fe54aa6ca28c880b58af95d052674933161df7928e6d
 ABIGEN_VERSION=v1.17.8
 GOLANGCI_LINT_VERSION=v2.13.2
+ADERYN_VERSION=v0.6.8
+ADERYN_SHA256_X86_64=ffd6ca658962e211a3ac821c646f69c8e14bf1b1001cbfe091bcd4535a691e46
+ADERYN_SHA256_AARCH64=961070bf5ee4ed0f82f67a261c616e1525ec1b036bae60cdaec94d087eb5e405
 
-PREFIX="${1:?usage: bin/install-toolchain <directory on PATH>}"
+HERE="$(cd "$(dirname "$0")/.." && pwd)"
+
+usage() {
+  echo "usage: bin/install-toolchain <directory on PATH> <foundry|abigen|lint|analysis>..." >&2
+  exit 64
+}
+
+[ "$#" -ge 2 ] || usage
+PREFIX="$1"
+shift
+mkdir -p "$PREFIX"
 
 case "$(uname -m)" in
   x86_64 | amd64)
     arch=amd64
-    expected=$FOUNDRY_SHA256_AMD64
+    rust_arch=x86_64
+    foundry_sum=$FOUNDRY_SHA256_AMD64
+    aderyn_sum=$ADERYN_SHA256_X86_64
     ;;
   aarch64 | arm64)
     arch=arm64
-    expected=$FOUNDRY_SHA256_ARM64
+    rust_arch=aarch64
+    foundry_sum=$FOUNDRY_SHA256_ARM64
+    aderyn_sum=$ADERYN_SHA256_AARCH64
     ;;
   *)
-    echo "no pinned Foundry build for $(uname -m)" >&2
+    echo "no pinned toolchain for $(uname -m)" >&2
     exit 1
     ;;
 esac
@@ -27,17 +44,50 @@ esac
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 
-archive="foundry_${FOUNDRY_VERSION}_linux_${arch}.tar.gz"
-curl -fsSL --retry 3 -o "$work/$archive" \
-  "https://github.com/foundry-rs/foundry/releases/download/${FOUNDRY_VERSION}/${archive}"
-echo "$expected  $work/$archive" | sha256sum -c -
-tar -xzf "$work/$archive" -C "$work" forge cast anvil
-mkdir -p "$PREFIX"
-install -m 0755 "$work/forge" "$work/cast" "$work/anvil" "$PREFIX/"
+fetch() {
+  curl -fsSL --retry 3 -o "$2" "$1"
+  echo "$3  $2" | sha256sum -c -
+}
 
-GOBIN="$PREFIX" go install "github.com/ethereum/go-ethereum/cmd/abigen@${ABIGEN_VERSION}"
-GOBIN="$PREFIX" go install "github.com/golangci/golangci-lint/v2/cmd/golangci-lint@${GOLANGCI_LINT_VERSION}"
+install_foundry() {
+  archive="foundry_${FOUNDRY_VERSION}_linux_${arch}.tar.gz"
+  fetch "https://github.com/foundry-rs/foundry/releases/download/${FOUNDRY_VERSION}/${archive}" \
+    "$work/$archive" "$foundry_sum"
+  tar -xzf "$work/$archive" -C "$work" forge cast anvil
+  install -m 0755 "$work/forge" "$work/cast" "$work/anvil" "$PREFIX/"
+  "$PREFIX/forge" --version
+}
 
-"$PREFIX/forge" --version
-"$PREFIX/abigen" --version
-"$PREFIX/golangci-lint" --version
+install_abigen() {
+  GOBIN="$PREFIX" go install "github.com/ethereum/go-ethereum/cmd/abigen@${ABIGEN_VERSION}"
+  "$PREFIX/abigen" --version
+}
+
+install_lint() {
+  GOBIN="$PREFIX" go install "github.com/golangci/golangci-lint/v2/cmd/golangci-lint@${GOLANGCI_LINT_VERSION}"
+  "$PREFIX/golangci-lint" --version
+}
+
+install_analysis() {
+  venv="$(dirname "$PREFIX")/lib/kinetix-slither"
+  python3 -m venv "$venv"
+  "$venv/bin/pip" install --quiet --require-hashes --no-deps -r "$HERE/toolchain/slither-requirements.txt"
+  ln -sf "$venv/bin/slither" "$PREFIX/slither"
+  archive="aderyn-${rust_arch}-unknown-linux-gnu.tar.xz"
+  fetch "https://github.com/Cyfrin/aderyn/releases/download/aderyn-${ADERYN_VERSION}/${archive}" \
+    "$work/$archive" "$aderyn_sum"
+  tar -xJf "$work/$archive" -C "$work"
+  install -m 0755 "$work/aderyn-${rust_arch}-unknown-linux-gnu/aderyn" "$PREFIX/"
+  "$PREFIX/slither" --version
+  "$PREFIX/aderyn" --version
+}
+
+for component in "$@"; do
+  case "$component" in
+    foundry) install_foundry ;;
+    abigen) install_abigen ;;
+    lint) install_lint ;;
+    analysis) install_analysis ;;
+    *) usage ;;
+  esac
+done
