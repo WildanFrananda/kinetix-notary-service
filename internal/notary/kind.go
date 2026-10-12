@@ -13,6 +13,15 @@ const (
 	KindWrongLedger
 	KindLedgerUnavailable
 	KindDisagreement
+	KindSourceUnavailable
+	KindSourceRefused
+	KindStoreUnavailable
+	KindLeaseLost
+	KindAnchorDeferred
+	KindAnchorRefused
+	KindAlreadyAnchored
+	KindLedgerDiverged
+	KindNotAnchorer
 )
 
 func (k Kind) String() string {
@@ -35,6 +44,24 @@ func (k Kind) String() string {
 		return "ledger_unavailable"
 	case KindDisagreement:
 		return "disagreement"
+	case KindSourceUnavailable:
+		return "source_unavailable"
+	case KindSourceRefused:
+		return "source_refused"
+	case KindStoreUnavailable:
+		return "store_unavailable"
+	case KindLeaseLost:
+		return "lease_lost"
+	case KindAnchorDeferred:
+		return "anchor_deferred"
+	case KindAnchorRefused:
+		return "anchor_refused"
+	case KindAlreadyAnchored:
+		return "already_anchored"
+	case KindLedgerDiverged:
+		return "ledger_diverged"
+	case KindNotAnchorer:
+		return "not_anchorer"
 	default:
 		return "unknown"
 	}

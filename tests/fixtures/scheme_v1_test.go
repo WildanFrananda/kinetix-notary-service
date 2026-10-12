@@ -80,11 +80,13 @@ func encodeProof(proof notary.InclusionProof) proofCase {
 		out.SiblingHashes[i] = s.Hash.Hex()
 		out.SiblingSums[i] = u64(s.Sum)
 	}
+
 	return out
 }
 
 func buildFixture(t *testing.T) fixture {
 	t.Helper()
+
 	scheme := keccak.NewScheme()
 	out := fixture{Scheme: scheme.Version()}
 
@@ -92,14 +94,26 @@ func buildFixture(t *testing.T) fixture {
 		epoch uint64
 		count int
 	}{
-		{0, 0}, {0, 1}, {1, 2}, {2, 3}, {3, 4}, {4, 5}, {5, 7}, {6, 8},
-		{7, 9}, {1 << 40, 16}, {math.MaxUint64 - 1, 17}, {12, 33},
+		{0, 0},
+		{0, 1},
+		{1, 2},
+		{2, 3},
+		{3, 4},
+		{4, 5},
+		{5, 7},
+		{6, 8},
+		{7, 9},
+		{1 << 40, 16},
+		{math.MaxUint64 - 1, 17},
+		{12, 33},
 	}
 	for i, shape := range shapes {
 		entries := notarytest.Entries(uint64(i)+100, shape.count)
 		tree, err := notary.BuildTree(scheme, shape.epoch, entries)
 		require.NoError(t, err)
+
 		root := tree.Root()
+
 		tc := treeCase{
 			Epoch:       u64(shape.epoch),
 			LeafCount:   u64(tree.LeafCount()),
@@ -113,18 +127,23 @@ func buildFixture(t *testing.T) fixture {
 		for j, e := range entries {
 			proof, err := tree.Prove(uint64(j))
 			require.NoError(t, err)
+
 			tc.Commitments[j] = e.Commitment.Hex()
 			tc.Amounts[j] = u64(e.Amount)
 			tc.Proofs[j] = encodeProof(proof)
 		}
+
 		out.Trees = append(out.Trees, tc)
 	}
+
 	out.TreeCount = len(out.Trees)
 
 	const target = 5
+
 	entries := notarytest.Entries(uint64(target)+100, shapes[target].count)
 	tree, err := notary.BuildTree(scheme, shapes[target].epoch, entries)
 	require.NoError(t, err)
+
 	anchored := notary.AnchoredEpoch{
 		Number:    shapes[target].epoch,
 		Root:      tree.Root().Hash,
@@ -134,9 +153,12 @@ func buildFixture(t *testing.T) fixture {
 	fresh := func() (notary.Entry, notary.InclusionProof) {
 		proof, err := tree.Prove(2)
 		require.NoError(t, err)
+
 		siblings := append([]notary.Node(nil), proof.Siblings...)
+
 		return entries[2], notary.InclusionProof{Index: proof.Index, Siblings: siblings}
 	}
+
 	tampers := []struct {
 		reason string
 		apply  func(*notary.Entry, *notary.InclusionProof)
@@ -172,15 +194,18 @@ func buildFixture(t *testing.T) fixture {
 			Proof:      encodeProof(proof),
 		})
 	}
+
 	out.RejectionCount = len(out.Rejections)
 
 	previous := notary.Digest{}
 	asOfSeconds := uint64(1760000000)
+
 	for number := uint64(0); number < 6; number++ {
 		chainTree, err := notary.BuildTree(scheme, number, notarytest.Entries(number+500, int(number)*3))
 		require.NoError(t, err)
 		header, err := chainTree.Header(previous, notarytest.Unix(t, asOfSeconds))
 		require.NoError(t, err)
+
 		digest := scheme.EpochDigest(header)
 		out.Chain = append(out.Chain, chainLink{
 			Number:         u64(header.Number),
@@ -194,21 +219,29 @@ func buildFixture(t *testing.T) fixture {
 		previous = digest
 		asOfSeconds += 3600
 	}
+
 	out.ChainLength = len(out.Chain)
+
 	return out
 }
 
 func TestTheSolidityFixturesMatchTheGoScheme(t *testing.T) {
 	encoded, err := json.MarshalIndent(buildFixture(t), "", "  ")
 	require.NoError(t, err)
+
 	encoded = append(encoded, '\n')
 
 	if *update {
 		require.NoError(t, os.WriteFile(fixturePath, encoded, 0o644))
 		return
 	}
+
 	committed, err := os.ReadFile(fixturePath)
 	require.NoError(t, err, "no fixture yet: run `bin/dev go test ./tests/fixtures -update`")
-	require.True(t, bytes.Equal(committed, encoded),
-		"%s is out of date with the Go scheme: run `bin/dev go test ./tests/fixtures -update`", fixturePath)
+	require.True(
+		t,
+		bytes.Equal(committed, encoded),
+		"%s is out of date with the Go scheme: run `bin/dev go test ./tests/fixtures -update`",
+		fixturePath,
+	)
 }

@@ -24,13 +24,16 @@ func revertData(err error) ([]byte, bool) {
 	if !errors.As(err, &dataErr) {
 		return nil, false
 	}
+
 	text, ok := dataErr.ErrorData().(string)
 	if !ok {
 		return nil, false
 	}
+
 	raw, decodeErr := hexutil.Decode(text)
 	if decodeErr != nil || len(raw) < selectorLength {
 		return nil, false
 	}
+
 	return raw, true
 }

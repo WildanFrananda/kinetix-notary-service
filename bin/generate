@@ -1,0 +1,15 @@
+#!/usr/bin/env sh
+set -eu
+
+HERE="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$HERE"
+
+sh bin/generate-bindings
+sh bin/sync-contracts
+rm -rf internal/storegen
+sqlc generate
+test -s internal/storegen/queries.sql.go || {
+  echo "sqlc reported success but wrote no internal/storegen/queries.sql.go" >&2
+  exit 1
+}
+echo "generated internal/storegen"

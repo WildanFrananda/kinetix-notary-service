@@ -43,6 +43,7 @@ func TestAnAddressAcceptsEitherCase(t *testing.T) {
 
 	require.Equal(t, lower, mixed)
 	require.Equal(t, "0x5fbdb2315678afecb367f032d93f642f64180aa3", mixed.Hex())
+
 	_, err = notary.ParseAddress("0x5fbdb2315678afecb367f032d93f642f64180a")
 	require.Equal(t, notary.KindInvalidArgument, notary.KindOf(err))
 }

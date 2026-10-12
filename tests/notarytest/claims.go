@@ -13,11 +13,13 @@ var LedgerIdentity = notary.LedgerIdentity{ChainID: 84532, Address: notary.Addre
 
 func AnchoredClaim(t *testing.T, epochNumber uint64, count int, index uint64) (notary.AnchoredEpoch, notary.Claim) {
 	t.Helper()
+
 	entries := Entries(epochNumber+1000, count)
 	tree, err := notary.BuildTree(keccak.NewScheme(), epochNumber, entries)
 	require.NoError(t, err)
 	proof, err := tree.Prove(index)
 	require.NoError(t, err)
+
 	root := tree.Root()
 	epoch := notary.AnchoredEpoch{
 		Number:     epochNumber,
@@ -28,5 +30,6 @@ func AnchoredClaim(t *testing.T, epochNumber uint64, count int, index uint64) (n
 		AnchoredAt: Unix(t, 1760000060),
 	}
 	claim := notary.Claim{Ledger: LedgerIdentity, Epoch: epochNumber, Entry: entries[index], Proof: proof}
+
 	return epoch, claim
 }

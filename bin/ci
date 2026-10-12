@@ -5,6 +5,7 @@ HERE="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$HERE"
 
 : "${KINETIX_NOTARY_TEST_RPC_URL:?bin/ci needs a node: run it as bin/dev bin/ci, or start anvil and set KINETIX_NOTARY_TEST_RPC_URL}"
+: "${KINETIX_NOTARY_TEST_DATABASE_URL:?bin/ci needs Postgres: run it as bin/dev bin/ci, or set KINETIX_NOTARY_TEST_DATABASE_URL}"
 
 echo "== contracts"
 (
@@ -19,8 +20,8 @@ echo "== contracts"
 echo "== static analysis"
 sh bin/analyze
 
-echo "== bindings"
-sh bin/generate-bindings
+echo "== generated code"
+sh bin/generate
 
 echo "== go"
 unformatted="$(gofmt -l cmd internal tests)"
@@ -32,5 +33,7 @@ fi
 go mod verify
 go vet ./...
 sh bin/check-boundaries
+go run ./tools/arglayout ./cmd ./internal ./tests ./tools
+golangci-lint fmt --diff ./...
 golangci-lint run ./...
 sh bin/test

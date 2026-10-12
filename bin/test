@@ -4,7 +4,7 @@ set -eu
 HERE="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$HERE"
 
-COVERED="$(go list ./internal/... | grep -v /contractgen | paste -sd, -)"
+COVERED="$(go list ./internal/... | grep -v -e /contractgen -e /protogen -e /storegen -e /migrations | paste -sd, -)"
 
 go test -count=1 -coverpkg="$COVERED" -coverprofile=coverage.out ./tests/... "$@"
 

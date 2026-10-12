@@ -85,6 +85,7 @@ func TestAProofIssuedOnAnotherChainIsRefused(t *testing.T) {
 
 func TestAnUnreachableLedgerIsNeverAVerdict(t *testing.T) {
 	epoch, claim := notarytest.AnchoredClaim(t, 4, 6, 3)
+
 	cases := map[string]func(*notarytest.Ledger){
 		"identity": func(l *notarytest.Ledger) {
 			l.IdentityErr = notary.Errf(notary.KindLedgerUnavailable, "fake", errors.New("refused"), "")

@@ -41,16 +41,20 @@ func anchorEpochZero(t *testing.T, count int, final bool) anchored {
 	tree, err := notary.BuildTree(keccak.NewScheme(), 0, entries)
 	require.NoError(t, err)
 	c.anchor(t, address, tree, notary.Digest{})
+
 	if final {
 		c.finalize(t)
 	}
+
 	return anchored{chain: c, address: address, identity: c.identity(address), tree: tree, entries: entries}
 }
 
 func (a anchored) claim(t *testing.T, index uint64) notary.Claim {
 	t.Helper()
+
 	proof, err := a.tree.Prove(index)
 	require.NoError(t, err)
+
 	return notary.Claim{Ledger: a.identity, Epoch: 0, Entry: a.entries[index], Proof: proof}
 }
 
@@ -114,6 +118,7 @@ func TestAnAddressWithNoContractIsTheWrongLedger(t *testing.T) {
 
 func TestAContractThatIsNotALedgerIsTheWrongLedger(t *testing.T) {
 	c := connect(t)
+
 	cases := map[string]string{
 		"answers nothing": "0x6001600c60003960016000f300",
 		"always reverts":  "0x6005600c60003960056000f360006000fd",
@@ -143,7 +148,9 @@ func TestAnUnreachableRPCIsUnknownAndNeverAVerdict(t *testing.T) {
 	a := anchorEpochZero(t, 3, true)
 	client, err := ethclient.Dial("http://127.0.0.1:1")
 	require.NoError(t, err)
+
 	defer client.Close()
+
 	settings := ethereum.Settings{RPCURL: "http://127.0.0.1:1", Ledger: a.identity, Timeout: 2 * time.Second}
 	verifier := verifying.NewVerifier(ethereum.NewLedger(client, settings, keccak.NewScheme()), keccak.NewScheme())
 
@@ -155,10 +162,12 @@ func TestAnUnreachableRPCIsUnknownAndNeverAVerdict(t *testing.T) {
 
 func TestTheComposedVerifierAnswersFromAProofFile(t *testing.T) {
 	a := anchorEpochZero(t, 6, true)
+
 	var doc bytes.Buffer
 	require.NoError(t, prooffile.Encode(&doc, a.claim(t, 2), keccak.NewScheme().Version()))
 	path := filepath.Join(t.TempDir(), "proof.json")
 	require.NoError(t, os.WriteFile(path, doc.Bytes(), 0o600))
+
 	env := map[string]string{
 		config.RPCURLKey:        a.chain.url,
 		config.ChainIDKey:       strconv.FormatUint(a.identity.ChainID, 10),
@@ -172,14 +181,17 @@ func TestTheComposedVerifierAnswersFromAProofFile(t *testing.T) {
 	require.NoError(t, err)
 
 	var out bytes.Buffer
+
 	code := -1
 	err = container.Invoke(func(client *ethclient.Client, scheme notary.Scheme, v *verifying.Verifier) {
 		defer client.Close()
+
 		code = verifycli.Run(context.Background(), path, scheme.Version(), v, &out)
 	})
 
 	require.NoError(t, err)
 	require.Equal(t, verifycli.ExitIncluded, code, out.String())
+
 	var report map[string]string
 	require.NoError(t, json.Unmarshal(out.Bytes(), &report))
 	require.Equal(t, "included", report["verdict"])

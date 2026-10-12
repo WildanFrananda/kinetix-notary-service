@@ -34,17 +34,22 @@ func TestACompleteEnvironmentLoads(t *testing.T) {
 	require.NoError(t, err)
 	address, err := notary.ParseAddress("0x5fbdb2315678afecb367f032d93f642f64180aa3")
 	require.NoError(t, err)
-	require.Equal(t, config.Verifier{
-		RPCURL:     "https://rpc.example.org/v2/secret-api-key",
-		Ledger:     notary.LedgerIdentity{ChainID: 84532, Address: address},
-		RPCTimeout: 10 * time.Second,
-	}, cfg)
+	require.Equal(
+		t,
+		config.Verifier{
+			RPCURL:     "https://rpc.example.org/v2/secret-api-key",
+			Ledger:     notary.LedgerIdentity{ChainID: 84532, Address: address},
+			RPCTimeout: 10 * time.Second,
+		},
+		cfg,
+	)
 }
 
 func TestEveryMissingKeyIsNamedAtOnce(t *testing.T) {
 	_, err := config.LoadVerifier(lookup(map[string]string{}))
 
 	require.Error(t, err)
+
 	for _, key := range []string{config.RPCURLKey, config.ChainIDKey, config.LedgerAddressKey, config.RPCTimeoutKey} {
 		require.Contains(t, err.Error(), key+" is not set")
 	}

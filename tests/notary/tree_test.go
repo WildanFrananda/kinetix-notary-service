@@ -36,6 +36,7 @@ func TestASingleAccountIsItsOwnRoot(t *testing.T) {
 func TestTheRootSumIsTheTotalOfEveryAccount(t *testing.T) {
 	for count := 0; count <= 40; count++ {
 		entries := notarytest.Entries(uint64(count), count)
+
 		var want uint64
 		for _, e := range entries {
 			want += e.Amount
@@ -90,19 +91,24 @@ func TestAProofIsRefusedForAnIndexOutsideTheAccounts(t *testing.T) {
 func TestAHeaderCarriesTheRootAndTheSnapshotTime(t *testing.T) {
 	tree, err := notary.BuildTree(keccak.NewScheme(), 4, notarytest.Entries(2, 3))
 	require.NoError(t, err)
+
 	previous := notary.Digest{1}
 
 	header, err := tree.Header(previous, notarytest.Unix(t, 1760000000))
 
 	require.NoError(t, err)
-	require.Equal(t, notary.EpochHeader{
-		Number:         4,
-		PreviousDigest: previous,
-		Root:           tree.Root().Hash,
-		Total:          tree.Root().Sum,
-		LeafCount:      3,
-		AsOf:           notarytest.Unix(t, 1760000000),
-	}, header)
+	require.Equal(
+		t,
+		notary.EpochHeader{
+			Number:         4,
+			PreviousDigest: previous,
+			Root:           tree.Root().Hash,
+			Total:          tree.Root().Sum,
+			LeafCount:      3,
+			AsOf:           notarytest.Unix(t, 1760000000),
+		},
+		header,
+	)
 }
 
 func TestAHeaderWithoutASnapshotTimeIsRefused(t *testing.T) {

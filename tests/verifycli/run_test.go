@@ -28,19 +28,25 @@ func (s stubVerifier) Verify(context.Context, notary.Claim) (notary.Verification
 func proofFile(t *testing.T) (string, notary.AnchoredEpoch) {
 	t.Helper()
 	epoch, claim := notarytest.AnchoredClaim(t, 3, 5, 1)
+
 	var buf bytes.Buffer
 	require.NoError(t, prooffile.Encode(&buf, claim, 1))
 	path := filepath.Join(t.TempDir(), "proof.json")
 	require.NoError(t, os.WriteFile(path, buf.Bytes(), 0o600))
+
 	return path, epoch
 }
 
 func runWith(t *testing.T, path string, verifier verifycli.ClaimVerifier) (int, map[string]string) {
 	t.Helper()
+
 	var out bytes.Buffer
+
 	code := verifycli.Run(context.Background(), path, 1, verifier, &out)
+
 	var report map[string]string
 	require.NoError(t, json.Unmarshal(out.Bytes(), &report), out.String())
+
 	return code, report
 }
 
@@ -80,6 +86,7 @@ func TestARejectedClaimCarriesItsReason(t *testing.T) {
 
 func TestEveryFailureHasItsOwnVerdictAndExitCode(t *testing.T) {
 	path, _ := proofFile(t)
+
 	cases := []struct {
 		kind    notary.Kind
 		verdict string

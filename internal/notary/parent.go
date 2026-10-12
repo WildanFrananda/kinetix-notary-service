@@ -7,5 +7,6 @@ func Parent(scheme Scheme, left, right Node) (Node, error) {
 	if carry != 0 {
 		return Node{}, Errf(KindOverflow, "notary.Parent", nil, "%d + %d does not fit in 64 bits", left.Sum, right.Sum)
 	}
+
 	return Node{Hash: scheme.NodeHash(left, right), Sum: sum}, nil
 }

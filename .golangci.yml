@@ -16,6 +16,7 @@ linters:
     - gocritic
     - nilerr
     - wrapcheck
+    - wsl_v5
 
   settings:
     errcheck:
@@ -32,6 +33,7 @@ linters:
         - errors.New(
         - .Errf(
         - .Wrap(
+        - .RecvMsg(
       ignore-package-globs:
         - github.com/WildanFrananda/kinetix-notary-service/*
 
@@ -47,7 +49,12 @@ formatters:
   enable:
     - gofmt
     - goimports
+    - golines
   settings:
+    golines:
+      max-len: 120
+      shorten-comments: false
+      reformat-tags: false
     goimports:
       local-prefixes:
         - github.com/WildanFrananda/kinetix-notary-service
