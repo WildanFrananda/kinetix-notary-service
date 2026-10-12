@@ -23,9 +23,13 @@ contract LedgerHandler is Test {
         anchorer = anchorer_;
     }
 
-    function anchorNext(uint256 rootSeed, uint64 rawLeafCount, uint64 total, uint256 rawAdvance, uint256 rawLag)
-        external
-    {
+    function anchorNext(
+        uint256 rootSeed,
+        uint64 rawLeafCount,
+        uint64 total,
+        uint256 rawAdvance,
+        uint256 rawLag
+    ) external {
         vm.warp(vm.getBlockTimestamp() + bound(rawAdvance, 1, 7 days));
         uint64 leafCount = uint64(bound(rawLeafCount, 1, SumTree.MAX_LEAVES));
         uint64 last = ledger.lastAsOf();

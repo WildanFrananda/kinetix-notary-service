@@ -14,7 +14,8 @@ case "${1:-}" in
     ;;
 esac
 
+$COMPOSE build --quiet toolchain >&2
 if [ -t 0 ] && [ -t 1 ]; then
-  exec $COMPOSE run --build --rm toolchain "$@"
+  exec $COMPOSE run --rm toolchain "$@"
 fi
-exec $COMPOSE run --build --rm -T toolchain "$@"
+exec $COMPOSE run --rm -T toolchain "$@"

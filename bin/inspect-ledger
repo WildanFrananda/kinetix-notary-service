@@ -1,0 +1,74 @@
+#!/usr/bin/env sh
+set -eu
+
+HERE="$(cd "$(dirname "$0")/.." && pwd)"
+NETWORK="${1:-}"
+
+if [ -z "$NETWORK" ] || [ ! -f "$HERE/deploy/$NETWORK.env" ]; then
+  echo "usage: bin/inspect-ledger <network>   (reads deploy/<network>.env)" >&2
+  exit 64
+fi
+: "${KINETIX_NOTARY_RPC_URL:?set KINETIX_NOTARY_RPC_URL to the network RPC endpoint}"
+
+docker compose -f "$HERE/toolchain/compose.yaml" build --quiet toolchain >&2
+exec docker compose -f "$HERE/toolchain/compose.yaml" run --rm --no-deps -T \
+  -e KINETIX_NOTARY_RPC_URL toolchain sh -c '
+  set -eu
+  network="$1"
+  set -a
+  . "./deploy/$network.env"
+  set +a
+  ledger="${KINETIX_NOTARY_LEDGER_ADDRESS:-}"
+  if [ -z "$ledger" ]; then
+    echo "KINETIX_NOTARY_LEDGER_ADDRESS is empty in deploy/$network.env" >&2
+    exit 78
+  fi
+  rpc="$KINETIX_NOTARY_RPC_URL"
+  failed=0
+  expect() {
+    if [ "$(printf %s "$2" | tr A-F a-f)" = "$(printf %s "$3" | tr A-F a-f)" ]; then
+      printf "  ok    %-22s %s\n" "$1" "$2"
+    else
+      printf "  WRONG %-22s %s (expected %s)\n" "$1" "$2" "$3"
+      failed=1
+    fi
+  }
+  show() {
+    printf "        %-22s %s\n" "$1" "$2"
+  }
+  call() {
+    cast call "$ledger" "$@" --rpc-url "$rpc" | sed "s/ \[.*\]\$//"
+  }
+
+  echo "ledger $ledger on deploy/$network.env"
+  expect "chain id" "$(cast chain-id --rpc-url "$rpc")" "$KINETIX_NOTARY_CHAIN_ID"
+  code="$(cast code "$ledger" --rpc-url "$rpc")"
+  if [ "$code" = "0x" ]; then
+    echo "  WRONG no contract at $ledger"
+    exit 1
+  fi
+  show "code bytes" "$(( (${#code} - 2) / 2 ))"
+  expect "scheme" "$(call "scheme()(uint16)")" "1"
+  expect "default admin" "$(call "defaultAdmin()(address)")" "$KINETIX_NOTARY_ADMIN_ADDRESS"
+  expect "admin delay seconds" "$(call "defaultAdminDelay()(uint48)")" "$KINETIX_NOTARY_ADMIN_TRANSFER_DELAY_SECONDS"
+  role="$(call "ANCHORER_ROLE()(bytes32)")"
+  expect "anchorer holds role" "$(call "hasRole(bytes32,address)(bool)" "$role" "$KINETIX_NOTARY_ANCHORER_ADDRESS")" "true"
+  expect "genesis epoch" "$(call "genesisEpoch()(uint64)")" "$KINETIX_NOTARY_GENESIS_EPOCH"
+  expect "genesis digest" "$(call "genesisDigest()(bytes32)")" "$KINETIX_NOTARY_GENESIS_DIGEST"
+  show "next epoch" "$(call "nextEpoch()(uint64)")"
+  show "head" "$(call "head()(bytes32)")"
+  show "last snapshot" "$(call "lastAsOf()(uint64)")"
+  show "sealed" "$(call "isSealed()(bool)")"
+  show "anchorer balance" "$(cast balance "$KINETIX_NOTARY_ANCHORER_ADDRESS" --ether --rpc-url "$rpc") ETH"
+  if [ "${KINETIX_NOTARY_VERIFY_SOURCE:-}" = "true" ] && [ "${KINETIX_NOTARY_VERIFIER:-}" = "sourcify" ]; then
+    verdict="$(curl -fsS --max-time 30 "https://sourcify.dev/server/v2/contract/$KINETIX_NOTARY_CHAIN_ID/$ledger" \
+      | python3 -c "import json, sys; print(json.load(sys.stdin).get(\"runtimeMatch\") or \"none\")" 2>/dev/null \
+      || echo "unreachable")"
+    case "$verdict" in
+      match | exact_match) expect "source on sourcify" "$verdict" "$verdict" ;;
+      unreachable) printf "  ?     %-22s %s\n" "source on sourcify" "sourcify could not be asked" ; failed=1 ;;
+      *) expect "source on sourcify" "$verdict" "match" ;;
+    esac
+  fi
+  exit "$failed"
+' sh "$NETWORK"

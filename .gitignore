@@ -8,3 +8,4 @@ coverage.out
 coverage.html
 .env
 .DS_Store
+/contracts/broadcast/*/*/dry-run/

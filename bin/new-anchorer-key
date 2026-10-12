@@ -1,0 +1,37 @@
+#!/usr/bin/env sh
+set -eu
+
+HERE="$(cd "$(dirname "$0")/.." && pwd)"
+ENVIRONMENT="${1:?usage: bin/new-anchorer-key <prod|staging|dev>}"
+KEY=KINETIX_NOTARY_ANCHORER_PRIVATE_KEY
+
+: "${KINETIX_INFRA_DIR:?set KINETIX_INFRA_DIR to the kinetix-infrastructure checkout}"
+SECRETS="$KINETIX_INFRA_DIR/bin/kinetix-secrets"
+if [ ! -x "$SECRETS" ]; then
+  echo "no kinetix-secrets at $SECRETS" >&2
+  exit 1
+fi
+
+stored="$(cd "$KINETIX_INFRA_DIR" && "$SECRETS" list "$ENVIRONMENT")"
+if printf '%s\n' "$stored" | grep -qx "$KEY"; then
+  echo "$KEY already exists in $ENVIRONMENT; a new anchorer is granted on the ledger first, then stored" >&2
+  exit 1
+fi
+
+COMPOSE="$HERE/toolchain/compose.yaml"
+docker compose -f "$COMPOSE" build --quiet toolchain >&2
+
+private_key="$(
+  docker compose -f "$COMPOSE" run --rm --no-deps -T toolchain sh -c '
+    cast wallet new --json | python3 -c "
+import json, sys
+wallet = json.load(sys.stdin)[\"data\"][0]
+print(\"anchorer address: \" + wallet[\"address\"], file=sys.stderr)
+print(wallet[\"private_key\"])
+"'
+)"
+if ! printf '%s' "$private_key" | grep -qE '^0x[0-9a-f]{64}$'; then
+  echo "the generator did not return exactly one private key; nothing was stored" >&2
+  exit 1
+fi
+printf '%s\n' "$private_key" | (cd "$KINETIX_INFRA_DIR" && "$SECRETS" set "$ENVIRONMENT" "$KEY")
