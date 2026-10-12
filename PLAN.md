@@ -157,8 +157,9 @@ by redeploying, and continuity is a property of the data, not of an address.
   digest and epoch, publish which epochs are disowned and why, and point the notary at the
   successor.
 - **Pinned toolchain.** Solidity 0.8.37 exactly, EVM version `cancun` (accepted by every L2 that
-  matters, now and after future forks), no metadata hash in the bytecode, CREATE2 with a configured
-  salt — the same sources always produce the same contract at a predictable address.
+  matters, now and after future forks), no metadata hash in the bytecode, and deployment through the
+  canonical CREATE2 factory with a configured salt (`always_use_create_2_factory`), so a successor's
+  address is known before it exists. The first ledger is the exception — see step 2.
 
 ## 7. Network and gas
 
@@ -181,14 +182,22 @@ What "no constant faucet trips" means in practice, honestly:
 
 ## 8. Keys
 
-Three keys, three jobs, all in the SOPS store (`kinetix-secrets set <env> <KEY>`), generated with
-`cast wallet new` inside the toolchain:
+Three keys, three jobs. Corrected on 2026-10-12, before any key existed: the first version put all
+three in the SOPS store, but `bin/prod-deploy` runs `kinetix-secrets render prod`, which decrypts the
+**whole** prod store into the server's `.env` on every deploy. Anything in that store is online. So
+only the key that is meant to be online lives there:
 
-| Key | Used by | Holds |
-|---|---|---|
-| deployer | `forge script` only, at deploy time | enough gas to deploy |
-| admin | `forge script` / `cast` only: rotate the anchorer, seal | the admin role; never online |
-| anchorer | the running notary | the anchorer role and the gas budget |
+| Key | Lives in | Used by | Holds |
+|---|---|---|---|
+| anchorer | SOPS `prod` as `KINETIX_NOTARY_ANCHORER_PRIVATE_KEY` (`bin/new-anchorer-key`) | the running notary, from step 4 | the anchorer role and the gas budget |
+| deployer | encrypted Foundry keystore `notary-deployer` on the laptop (`bin/new-keystore`) | `bin/deploy-ledger` only | enough gas to deploy |
+| admin | encrypted Foundry keystore `notary-admin` on the laptop | rotating the anchorer, sealing | the admin role; never online |
+
+The keystores sit in `KINETIX_NOTARY_KEYSTORE_DIR`, a directory the scripts refuse when it is inside
+any git work tree — the same arrangement as the production CA keys in `pki-prod/`. Each is
+scrypt-encrypted with its own password, typed at a prompt and never passed as an argument. **The
+directory and both passwords must be backed up outside the laptop**: losing the admin keystore means
+the anchorer can never be rotated and the ledger can never be sealed.
 
 The anchorer is the only hot key, and it can do exactly one thing: append the next epoch. A leaked
 anchorer cannot rewrite history, cannot seal, and cannot grant itself anything. A Safe multisig as
@@ -247,37 +256,93 @@ and only reports a verdict when both agree.
 - `bin/check-boundaries`, golangci-lint, `bin/ci` as the single gate, GitHub and GitLab pipelines
   that both run it. **Neither pipeline has run yet.**
 
-### Owed next to step 2 — CI/CD on GitHub
+### Owed next to step 2 — CI/CD on GitHub, as strict as every other service
 
-The user runs CI/CD on GitHub; GitLab carries the paired CI only (`verify`, `secret-scan`,
-`build-image`) and never publishes or deploys. Step 1 shipped `ci.yml` alone. Still to write, with
-search's three workflows as the model:
+The user runs CI/CD on GitHub and asked for it to be **exactly as strict as the other services** —
+"jangan lupa itu". GitLab carries the paired CI only (`verify`, `secret-scan`, `build-image`) and never
+publishes or deploys. Step 1 shipped `ci.yml` alone; every other service repository has three
+workflows and two rulesets. The bar, taken from search and the estate's
+`kinetix-infrastructure/docs/BRANCH-PROTECTION.md` on 2026-10-12:
 
-- **`build-and-push.yml`** — on every push to `main`: build the root `Dockerfile`, push
-  `ghcr.io/wildanfrananda/kinetix-notary-service:<sha>`, gate on Trivy (HIGH/CRITICAL) as search
-  does, and print the digest. Today the image carries `notary-verify`; from step 4 the same image
-  also carries `notaryd`, one image for every binary as in search.
-- **`release.yml`** — on a `vMAJOR.MINOR.PATCH` tag: promote the digest already built from `main`,
-  never rebuild. It must **not** dispatch a deploy to `kinetix-infrastructure` until step 4 has put
-  the notary into the production model; a dispatch for a service infra does not know fails, and a
-  digest pinned before the image exists blocks every deploy in the estate (the notification lesson).
-- **Static analysis for the contracts** — Slither and Aderyn as their own job, failing on findings,
-  with any accepted finding recorded in `CLAUDE.md` rather than silenced in the source.
-- **Branch protection** — a ruleset requiring `verify` (and the analysis job), created after the
-  first pull request has shown those checks; the picker only offers checks it has already seen.
-  Every change then reaches `main` only through a pull request whose checks are green, the same as
-  every other repository, and the notary gets its row in `kinetix-infrastructure`'s
-  `docs/BRANCH-PROTECTION.md`.
+- [x] **`ci.yml`** — `verify` runs `bin/ci` on every pull request and every push to `main`. First run
+  green on 2026-10-11.
+- [ ] **`build-and-push.yml`** — on every push to `main` and on `workflow_dispatch`, one run at a time
+  per ref: build the root `Dockerfile`; **Trivy gate on `CRITICAL`, `ignore-unfixed`, exit code 1, before
+  anything is pushed**; an SPDX SBOM uploaded as an artifact; push
+  `ghcr.io/wildanfrananda/kinetix-notary-service:<sha>` only after the scan passes; print the digest.
+  Permissions `contents: read`, `packages: write`, nothing more. The image carries `notary-verify` now
+  and `notaryd` from step 4, one image for every binary as in search.
+- [ ] **`release.yml`** — on `vMAJOR.MINOR.PATCH` tags only: refuse any other tag shape; refuse a tag
+  not reachable from `main`; refuse a tag whose commit has no image already built and scanned —
+  **promote, never rebuild**; point the release tag at that digest. The deploy dispatch to
+  `kinetix-infrastructure` stays **out** until step 4 has put the notary into the production model:
+  a dispatch for a service infra does not know fails, and a digest pinned before the image exists
+  blocks every deploy in the estate (the notification lesson).
+- [ ] **Contract analysis job** — Slither and Aderyn, failing on findings; an accepted finding is
+  recorded in `CLAUDE.md`, never silenced in the source. Stricter than the other services because a
+  deployed contract cannot be patched.
+- [x] **Ruleset `main`** — active; target the default branch; restrict deletions; block force pushes;
+  require a pull request with **0** approvals; require the status check `verify` (and the analysis
+  job once it exists); "up to date before merging" left off. Same as BRANCH-PROTECTION.md §2.
+- [x] **Ruleset `release-tags`** — active; target **all tags**; restrict deletions and block force
+  pushes, nothing else. A released tag is never moved or deleted; a bad release gets a patch tag.
+  Same as §7. Both rulesets confirmed active through the API on 2026-10-12.
+- [ ] **`kinetix-infrastructure/docs/BRANCH-PROTECTION.md`** — the notary's row in §3 (`verify`) and
+  its name in the §7 list.
 
 Contract deployment is deliberately **not** CD. The admin key never sits in a CI secret store;
 deploys and seals run by hand through `bin/dev` with keys from SOPS (§8).
 
-### Step 2 — Base Sepolia deployment
+### Step 2 — Base Sepolia deployment. **Done 2026-10-12.**
 
-Generate the three keys, store them in SOPS, fund deployer and anchorer once. Run
-`DeployLiabilityLedger` through `bin/dev`, verify the source on the chain's explorer, and commit the
-broadcast record (`contracts/broadcast/…/84532/`). Record the address and deployment block in
-`deploy/base-sepolia.json`. Nothing about the contract changes for this step.
+Tooling built and rehearsed end to end on anvil on 2026-10-12 (dry run, broadcast, inspection, a
+second deploy refused, a wrong chain id caught). The operator's sequence:
+
+1. `bin/new-keystore notary-deployer` and `bin/new-keystore notary-admin` — password prompts; each
+   prints only its address.
+2. `bin/new-anchorer-key prod` — generates the key inside the toolchain, checks it is exactly one
+   32-byte key, and pipes it into `kinetix-secrets set prod`; prints only the address.
+3. Both public addresses go into `deploy/base-sepolia.env`.
+4. Fund the deployer once from a Base Sepolia faucet. Measured: the deploy uses **2,314,843 gas** and
+   11,098 bytes of calldata; at the 0.006 gwei seen on 2026-10-12 that is about 0.000014 ETH plus the
+   L1 data fee, so 0.01 ETH is ample.
+5. `bin/deploy-ledger base-sepolia` — a dry run against the real chain: chain id checked, the
+   contract simulated, nothing sent.
+6. `bin/deploy-ledger base-sepolia --broadcast` — deploys through CREATE2 and verifies the source on
+   Blockscout (no API key needed).
+7. The ledger's address goes into `deploy/base-sepolia.env`; `bin/inspect-ledger base-sepolia` must
+   report every line `ok`.
+8. Commit `deploy/base-sepolia.env` and `contracts/broadcast/DeployLiabilityLedger.s.sol/84532/`;
+   the store change in `kinetix-infrastructure` goes through its own pull request.
+
+The result, every line checked by `bin/inspect-ledger` against the chain:
+
+| | |
+|---|---|
+| ledger | `0x4E869A55031DE3B0d030AEBECc66E523686761a2`, Base Sepolia (84532) |
+| deployed | block 48005190, tx `0x79e3a73fff93e5ce23a751d9c202fea44abced2c6d47cb5454e98ff34df14231` |
+| cost | 2,309,865 gas × 0.006 gwei = 0.00001385919 ETH |
+| admin | `0x2BfBa1D3d8595ad7d1E10a71BB4ec4Ac3671748E`, transfer delay 259200 s |
+| anchorer | `0x51B2941aE55FC91D32D5595D7241612Bc3a166cc` — unfunded; fund it before step 4 |
+| genesis | epoch 0, digest zero, no epochs anchored |
+| source | verified on **Sourcify**: `match` for creation and runtime bytecode |
+
+Three things went differently from the plan, and all three are now handled:
+
+- **This ledger was deployed by plain CREATE, not CREATE2.** Foundry 1.8 sends `new X{salt: …}` in a
+  broadcast as an ordinary contract creation unless `always_use_create_2_factory` is set, so the
+  configured salt was not used and the address follows from the deployer and its nonce. The ledger is
+  correct either way; only the predictability claim did not hold for it. The setting is now on, and a
+  rehearsal on anvil showed the transaction going to the factory and the address equal to the one
+  computed from the salt. The deploy test passed throughout — inside `forge test` a salted `new` is
+  always CREATE2, which is exactly why it could not see this.
+- **Blockscout cannot verify it yet**: its newest Solidity compiler is 0.8.36 and the ledger is built
+  with 0.8.37. forge printed "All (1) contracts were verified!" over Blockscout's own
+  `Fail - Unable to verify`. Verification moved to Sourcify, which needs no key; `bin/inspect-ledger`
+  now asks Sourcify directly instead of trusting forge's summary. Submitting to Blockscout as well,
+  once it lists 0.8.37, is optional.
+- **The store write left the prod secrets in plaintext for about a minute.** Contained and fixed in
+  `kinetix-infrastructure`; see its `docs/SECRETS.md` rule 6.
 
 ### Step 3 — the snapshot contract (owner-side work)
 

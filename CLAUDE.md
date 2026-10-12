@@ -29,6 +29,19 @@ bin/dev go test ./tests/fixtures -update        # regenerate the differential fi
 bin/dev down                                    # stop the chain
 ```
 
+Operations on a real network have their own scripts, all through the same image:
+
+```sh
+bin/new-keystore notary-deployer|notary-admin   # encrypted keystore outside every repository
+bin/new-anchorer-key prod                       # hot key straight into the SOPS store
+bin/deploy-ledger base-sepolia [--broadcast]    # dry run by default; reads deploy/<network>.env
+bin/inspect-ledger base-sepolia                 # every on-chain fact checked against the config
+```
+
+`deploy/<network>.env` holds only public values and is committed. Keys never are: the deployer and
+admin keystores live in `KINETIX_NOTARY_KEYSTORE_DIR` (refused when inside a git work tree), the
+anchorer lives in SOPS. Why the split is in PLAN.md §8.
+
 Every tool version lives in **one** place, `bin/install-toolchain` (Foundry by release tarball and
 SHA-256, abigen, golangci-lint). The toolchain image, the GitHub job and the GitLab job all run that
 script, so local and CI cannot drift. Bump a version there and nowhere else.
@@ -124,12 +137,34 @@ A failure must never be reported as a definite answer. In this service that mean
 - **A call into a contract that is not a ledger can return empty data with no error.** Identity
   probes use `CallContract` directly and require exactly one ABI word back.
 - **forge 1.8 migrated `soldeer.lock` to format v2** on the first install. The committed file is v2.
+- **`docker compose run --build` without a TTY writes BuildKit's log to stdout.** Piped into
+  `kinetix-secrets set`, the first log line would have been stored as the anchorer's private key, with
+  no error. Every script now builds the image first (`build --quiet`, to stderr) and runs without
+  `--build`, and `bin/new-anchorer-key` refuses anything that is not exactly `0x` + 64 hex. A stub
+  store caught this on 2026-10-12, before the real store was ever touched.
+- **A stub proves the pipe, not the tool.** The stub store above passed while the real
+  `kinetix-secrets`, called from this repository, decrypted the prod store, could not find
+  `.sops.yaml` (sops searches from the caller's working directory) and left every production secret
+  in plaintext on 2026-10-12. Re-encrypted within a minute, verified identical to `HEAD`, nothing
+  rotated; fixed in infra with an explicit `--config` and a bats test, and `bin/new-anchorer-key` now
+  calls the tool from its own repository. Anything that writes a real store is rehearsed against the
+  real tool with a throwaway store and age key before it touches one.
+- **Without `always_use_create_2_factory`, a salted `new` in a broadcast is plain CREATE.** The first
+  ledger went out that way; `forge test` could not notice, because a salted `new` inside a test is
+  always CREATE2. The setting is on in `foundry.toml` now. Prove a deploy's address from the
+  broadcast record (`to` must be the factory), not from the script's return value.
+- **forge reports verification optimistically.** It printed "All (1) contracts were verified!" over
+  Blockscout's `Fail - Unable to verify` (Blockscout had no solc 0.8.37). Verification goes to
+  Sourcify, and `bin/inspect-ledger` asks Sourcify itself.
+- **`cast wallet new --json` changed shape in Foundry 1.8**: the wallet is under `data[0]` inside an
+  envelope, not a bare list.
 - **gosec G115** flags every narrowing integer conversion; `UnixTime` is a sealed type whose
   constructors check the range, so the conversions happen after a visible bound.
 
 ## Not built yet
 
-Everything from PLAN.md step 2 on: no deployment on Base Sepolia, no keys in the SOPS store, no
+Step 2 is done: the ledger is live on Base Sepolia at `0x4E869A55031DE3B0d030AEBECc66E523686761a2`
+and verified on Sourcify (PLAN.md step 2). From step 3 on nothing exists yet: no
 payment snapshot RPC, no `notaryd`, no database, no proof API, no compose entry in
 `kinetix-infrastructure`. The GitHub and GitLab pipelines are written and **have never run**.
 
