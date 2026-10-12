@@ -265,6 +265,9 @@ search's three workflows as the model:
   with any accepted finding recorded in `CLAUDE.md` rather than silenced in the source.
 - **Branch protection** — a ruleset requiring `verify` (and the analysis job), created after the
   first pull request has shown those checks; the picker only offers checks it has already seen.
+  Every change then reaches `main` only through a pull request whose checks are green, the same as
+  every other repository, and the notary gets its row in `kinetix-infrastructure`'s
+  `docs/BRANCH-PROTECTION.md`.
 
 Contract deployment is deliberately **not** CD. The admin key never sits in a CI secret store;
 deploys and seals run by hand through `bin/dev` with keys from SOPS (§8).
