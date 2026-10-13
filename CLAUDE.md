@@ -22,7 +22,9 @@ Nothing is installed on the laptop. `bin/dev` runs any command inside the pinned
 with a local chain (anvil) started beside it and `KINETIX_NOTARY_TEST_RPC_URL` pointing at it.
 
 ```sh
-bin/dev bin/ci                                  # the whole gate, exactly as CI runs it
+bin/dev bin/ci                                  # the whole gate: bin/ci-contracts, then bin/ci-go
+bin/dev bin/ci-contracts                        # one half: forge fmt/build/test/snapshot, Slither, Aderyn
+bin/dev bin/ci-go                               # the other: generation, gofmt, vet, boundaries, lint, bin/test
 bin/dev sh -c 'cd contracts && forge test'      # contracts only
 bin/dev bin/test                                # Go suite with true coverage
 bin/dev go test ./tests/fixtures -update        # regenerate the differential fixtures
@@ -51,9 +53,17 @@ anchorer lives in SOPS. Why the split is in PLAN.md §8.
 Every tool version lives in **one** place, `bin/install-toolchain`, installed by component
 (`foundry`, `abigen`, `lint`, `analysis`): Foundry and Aderyn by release tarball and SHA-256, abigen
 and golangci-lint by `go install @version`, Slither from a hash-locked requirements file. The
-production image installs only `foundry abigen`. GitHub CI runs `bin/ci` inside the toolchain image
-itself (`sh bin/dev bin/ci`), so the laptop and GitHub run the same Python, Go and tools. The toolchain image, the GitHub job and the GitLab job all run that
-script, so local and CI cannot drift. Bump a version there and nowhere else.
+production image installs only `foundry abigen`. The toolchain image, the GitHub jobs and the GitLab
+jobs all run that script, so local and CI cannot drift. Bump a version there and nowhere else.
+
+GitHub CI runs the two halves of the gate as parallel jobs, `gate (contracts)` and `gate (go)`, each
+with `sh bin/dev bin/ci-<half>` inside the toolchain image, so the laptop and GitHub run the same
+Python, Go and tools. The image is built from `toolchain/Dockerfile` by `docker/build-push-action`
+with its layers in the Actions cache (scope `toolchain`, written only on pushes to `main`), and
+`KINETIX_NOTARY_TOOLCHAIN_PREBUILT=1` tells `bin/dev` not to build it again. A job named `verify`
+passes only when both halves passed: it is the check the `main` ruleset requires, and it runs with
+`if: always()` because GitHub counts a skipped required check as passed. GitLab runs the same halves
+as `verify-contracts` and `verify-go`.
 
 ## Layout, and the rule it encodes
 
@@ -80,10 +90,12 @@ Package names say what a package provides (`keccak.NewScheme`, `ethereum.NewLedg
   outside `cmd/` and `internal/wiring`; go-ethereum imported outside `internal/ethereum`,
   `internal/contractgen` and `cmd/`. Controlled both ways on 2026-10-11: four planted violations, four
   reports, exit 1; removed, clean.
-- **`bin/ci`** is the single gate: `forge fmt --check`, `forge build` (forge-lint with
-  `deny = "warnings"`), `forge test` on the CI profile, `forge snapshot --check`, binding generation,
-  `gofmt`, `go mod verify`, `go vet`, the boundary check, golangci-lint, and `bin/test`. It refuses to
-  run without a node, because a skipped integration test proves nothing.
+- **`bin/ci`** is the single gate, `bin/ci-contracts` and then `bin/ci-go`: `forge fmt --check`,
+  `forge build` (forge-lint with `deny = "warnings"`), `forge test` on the CI profile,
+  `forge snapshot --check`, Slither and Aderyn; then binding generation, `gofmt`, `go mod verify`,
+  `go vet`, the boundary check, golangci-lint, and `bin/test`. `bin/ci` and `bin/ci-go` refuse to run
+  without a node, because a skipped integration test proves nothing. `bin/ci-go` installs the
+  Soldeer dependencies itself, so it passes from a clean checkout without the other half.
 - **`bin/analyze`** runs Slither and Aderyn over `contracts/src` and fails on anything not already
   accepted. Accepted, and why: Slither `timestamp` (refusing a future snapshot needs
   `block.timestamp`; a validator moves it by seconds), Aderyn `centralization-risk` (the admin and
@@ -200,6 +212,12 @@ A failure must never be reported as a definite answer. In this service that mean
 - **A pinned Debian base is not a patched one.** Trivy found three fixable CRITICALs in
   `debian:bookworm-slim`, including its newest digest; the final stage runs `apt-get upgrade`. Scan
   the image locally before the first `build-and-push`, never after.
+- **`go install` leaves its caches in the layer.** abigen, protoc-gen-* and golangci-lint left 1.1 GB
+  of module cache and 1.1 GB of build cache behind: the toolchain image was 5.06 GB and GitHub CI
+  rebuilt it from nothing on every run (3m12s of a 7-minute gate), while `build-and-push` spent
+  109–140 s of each build uploading those layers to the Actions cache. Both Dockerfiles now run
+  `go clean -cache -modcache` in the same `RUN` (toolchain 2.1 GB, its tool layer 572 MB), and the
+  production `go build` keeps its build cache in a `--mount=type=cache`, never in a layer.
 - **A `sh -c '…'` typed into the agent's shell tool can lose its script** to the command rewriter,
   and the rest then runs on the Mac. It happened with a multi-line script, and again on 2026-10-12 with
   a one-line script that had pipes inside the quotes: every Postgres test came back `SKIP`, because the
@@ -225,7 +243,6 @@ A failure must never be reported as a definite answer. In this service that mean
 
 ## Not built yet
 
-Steps 1–4 are done: contracts v1.0.23, payment v0.1.11, and notaryd v0.2.0 live in production with
-epoch 0 final on Base Sepolia. Step 5 (the proof API) is built and green, with its Kong route, prod
-environment and lab written in the other repositories; it waits on a release (PLAN.md step 5,
-"Left"). Steps 6–14 do not exist yet. Contract deploys stay manual, never in CI.
+Steps 1–5 are done: contracts v1.0.23, payment v0.1.11, notaryd v0.2.0 anchoring on Base Sepolia, and
+the proof API (v0.3.0, gateway v1.0.0) live and proven end to end in the lab on 2026-10-13. Steps
+6–14 do not exist yet. Contract deploys stay manual, never in CI.

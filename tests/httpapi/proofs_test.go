@@ -152,36 +152,56 @@ func TestTheProofsComeBackAsDocumentsTheVerifierReads(t *testing.T) {
 
 func TestEveryFailureHasItsOwnStatus(t *testing.T) {
 	cases := map[string]struct {
-		path   string
-		err    error
-		auth   error
-		status int
-		code   string
+		path    string
+		err     error
+		auth    error
+		status  int
+		code    string
+		message string
 	}{
 		"no token": {
-			path:   "latest",
-			auth:   notary.Errf(notary.KindUnauthenticated, "t", nil, "x"),
-			status: 401,
-			code:   "unauthenticated",
+			path: "latest",
+			auth: notary.Errf(
+				notary.KindUnauthenticated,
+				"tokens.Authenticator.Principal",
+				errors.New("token has invalid claims: token is expired"),
+				"the token was refused",
+			),
+			status:  401,
+			code:    "unauthenticated",
+			message: "the token was refused",
 		},
-		"bad epoch": {path: "first", status: 400, code: "invalid_epoch"},
+		"bad epoch": {
+			path:    "first",
+			status:  400,
+			code:    "invalid_epoch",
+			message: `"first" is neither an epoch number nor latest`,
+		},
 		"never built": {
-			path:   "7",
-			err:    notary.Errf(notary.KindEpochNotAnchored, "t", nil, "x"),
-			status: 404,
-			code:   "epoch_not_found",
+			path:    "7",
+			err:     notary.Errf(notary.KindEpochNotAnchored, "proving.Prover.resolve", nil, "epoch 7 was never built"),
+			status:  404,
+			code:    "epoch_not_found",
+			message: "epoch 7 was never built",
 		},
 		"not final": {
-			path:   "7",
-			err:    notary.Errf(notary.KindEpochNotFinal, "t", nil, "x"),
-			status: 409,
-			code:   "epoch_not_final",
+			path: "7",
+			err: notary.Errf(
+				notary.KindEpochNotFinal,
+				"proving.Prover.Proofs",
+				nil,
+				"epoch 7 is submitted, not final yet",
+			),
+			status:  409,
+			code:    "epoch_not_final",
+			message: "epoch 7 is submitted, not final yet",
 		},
 		"abandoned": {
-			path:   "7",
-			err:    notary.Errf(notary.KindEpochAbandoned, "t", nil, "x"),
-			status: 410,
-			code:   "epoch_abandoned",
+			path:    "7",
+			err:     notary.Errf(notary.KindEpochAbandoned, "proving.Prover.Proofs", nil, "epoch 7 was abandoned"),
+			status:  410,
+			code:    "epoch_abandoned",
+			message: "epoch 7 was abandoned",
 		},
 		"store down": {
 			path:   "7",
@@ -209,6 +229,10 @@ func TestEveryFailureHasItsOwnStatus(t *testing.T) {
 
 			if c.status == http.StatusUnauthorized {
 				require.Contains(t, response.Header().Get("WWW-Authenticate"), "Bearer")
+			}
+
+			if c.message != "" {
+				require.Equal(t, c.message, body["message"])
 			}
 
 			if c.status >= http.StatusInternalServerError {

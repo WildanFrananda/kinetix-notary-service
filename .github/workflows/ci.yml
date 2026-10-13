@@ -6,11 +6,41 @@ on:
     branches: [main]
 
 jobs:
-  verify:
+  gate:
+    name: gate (${{ matrix.half }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        half: [contracts, go]
     steps:
       - uses: actions/checkout@v6
-      - name: The gate, in the same toolchain image the laptop runs
-        run: sh bin/dev bin/ci
+
+      - uses: docker/setup-buildx-action@v4
+
+      - name: The toolchain image the laptop runs, layers from the Actions cache
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: toolchain/Dockerfile
+          load: true
+          tags: kinetix-notary-toolchain:local
+          cache-from: type=gha,scope=toolchain
+          cache-to: ${{ github.event_name == 'push' && 'type=gha,mode=max,scope=toolchain,ignore-error=true' || '' }}
+          provenance: false
+
+      - name: The ${{ matrix.half }} half of the gate, in that image
+        env:
+          KINETIX_NOTARY_TOOLCHAIN_PREBUILT: "1"
+        run: sh bin/dev bin/ci-${{ matrix.half }}
+
       - if: always()
         run: sh bin/dev down
+
+  verify:
+    needs: gate
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Both halves of the gate passed
+        run: test "${{ needs.gate.result }}" = success
