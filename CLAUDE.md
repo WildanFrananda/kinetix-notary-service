@@ -65,7 +65,7 @@ script, so local and CI cannot drift. Bump a version there and nowhere else.
 | `internal/ethereum` | the above + go-ethereum + `internal/contractgen` — the only adapter that touches a chain |
 | `internal/payment`, `internal/mesh` | `internal/notary` + gRPC + `internal/protogen` — the only adapters that speak gRPC |
 | `internal/postgres` | `internal/notary` + pgx + goose + `internal/storegen` — the only adapter that touches Postgres |
-| `internal/anchoring` | `internal/notary` only, like `internal/verifying` |
+| `internal/anchoring`, `internal/proving` | `internal/notary` only, like `internal/verifying` |
 | `internal/wiring` | everything; the composition root, and the only package outside `cmd/` allowed to import dig |
 | `cmd/…` | everything |
 
@@ -225,7 +225,7 @@ A failure must never be reported as a definite answer. In this service that mean
 
 ## Not built yet
 
-Steps 1–3 are done and released (contracts v1.0.23, payment v0.1.11). Step 4's code is built and green
-(PLAN.md step 4, "Status"); what is left of it lives in `kinetix-infrastructure` — database, leaf,
-secrets, compose entries, alerts, deploy dispatch — and the anchorer still holds no ETH, so no epoch has
-ever been anchored on Base Sepolia. Steps 5–14 do not exist yet. Contract deploys stay manual, never in CI.
+Steps 1–4 are done: contracts v1.0.23, payment v0.1.11, and notaryd v0.2.0 live in production with
+epoch 0 final on Base Sepolia. Step 5 (the proof API) is built and green, with its Kong route, prod
+environment and lab written in the other repositories; it waits on a release (PLAN.md step 5,
+"Left"). Steps 6–14 do not exist yet. Contract deploys stay manual, never in CI.

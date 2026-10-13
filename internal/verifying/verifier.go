@@ -41,6 +41,18 @@ func (v *Verifier) Verify(ctx context.Context, claim notary.Claim) (notary.Verif
 		return notary.Verification{}, err
 	}
 
+	if opening := claim.Opening; opening != nil {
+		if v.scheme.Commitment(opening.Holder, opening.Kind, opening.Salt) != claim.Entry.Commitment {
+			return notary.Verification{
+				Verdict: notary.VerdictRejected,
+				Ledger:  identity,
+				Epoch:   epoch,
+				Reason:  "the account named in the proof does not open its commitment",
+				Opening: opening,
+			}, nil
+		}
+	}
+
 	local := notary.VerifyInclusion(v.scheme, epoch, claim.Entry, claim.Proof)
 	if local != nil && notary.KindOf(local) != notary.KindProofRejected {
 		return notary.Verification{}, local
@@ -63,7 +75,12 @@ func (v *Verifier) Verify(ctx context.Context, claim notary.Claim) (notary.Verif
 		)
 	}
 
-	verification := notary.Verification{Verdict: notary.VerdictIncluded, Ledger: identity, Epoch: epoch}
+	verification := notary.Verification{
+		Verdict: notary.VerdictIncluded,
+		Ledger:  identity,
+		Epoch:   epoch,
+		Opening: claim.Opening,
+	}
 	if local != nil {
 		verification.Verdict = notary.VerdictRejected
 		verification.Reason = local.Error()

@@ -357,7 +357,7 @@ Three things went differently from the plan, and all three are now handled:
 - **The store write left the prod secrets in plaintext for about a minute.** Contained and fixed in
   `kinetix-infrastructure`; see its `docs/SECRETS.md` rule 6.
 
-### Step 3 — the snapshot contract (owner-side work). **Built 2026-10-12; waiting on release.**
+### Step 3 — the snapshot contract (owner-side work). **Done 2026-10-12** (contracts v1.0.23, payment v0.1.11).
 
 Built **in payment**, under the estate's rule that a service never takes another service's job. The
 notary never reads payment's database: this RPC is the whole interface. The full reasoning and evidence
@@ -411,7 +411,7 @@ placeholder, and the contracts repository does not keep placeholders.
 was run end to end and works, but a payment image older than this change would refuse every escrow call
 from order under that value, so it waits until no such image can be rolled back to.
 
-### Step 4 — `notaryd`, the anchorer
+### Step 4 — `notaryd`, the anchorer. **Live 2026-10-12** (notary v0.2.0; epoch 0 final on Base Sepolia).
 
 The daemon that turns payment's snapshot into an anchored epoch, once an hour, and can prove afterwards
 exactly what it committed to. Designed on 2026-10-12, after step 3 fixed the shape of the snapshot.
@@ -520,15 +520,11 @@ test including anvil and Postgres, Go coverage 85.6%. What each part proved:
 | 4g | end to end through the production wiring: payment's snapshot over mTLS, Postgres, the anvil ledger, final, and **every account verified by the contract**; a daemon killed mid-epoch is finished by the next with **one** transaction |
 | 4h (repo) | one image with `notaryd`, `notary-migrate` and `notary-verify`, uid and gid 10001, Trivy: 0 fixable CRITICAL or HIGH; build-and-push passes the commit as the version |
 
-**Left in 4h, all in `kinetix-infrastructure` and most of it the user's hands** (written up as a first-deploy
-document there, the way search's was): the `kinetix_notary` database and role on the production cluster
-(and the cluster healthcheck's database count), the `notary` leaf in `pki-prod` (CA password),
-`KINETIX_NOTARY_DB_PASSWORD` in the SOPS store, the compose entries for the daemon and its migrator, the
-image digest in `deploy/prod/versions.env`, the deploy dispatch in `release.yml`, three Grafana rules (no
-final epoch for 3 hours, any abandoned epoch, runway under 14 days), the handshake rows, and funding the
-anchorer with Base Sepolia ETH. The lab question is open: the lab has no chain, and the production
-ledger must never receive lab data, so the lab either runs anvil with a ledger of its own or does not
-run the notary at all.
+**4h done 2026-10-12.** Everything listed for it — database and role, the `notary` leaf in `pki-prod`,
+the SOPS secrets, compose entries, the image digest, the deploy dispatch in `release.yml`, three Grafana
+rules, the handshake rows, the anchorer funded — is in `kinetix-infrastructure` and deployed; epoch 0
+went final on Base Sepolia and `bin/inspect-ledger base-sepolia` reports every fact as expected. The
+lab question was answered the same day: anvil with a ledger of its own (step 5, "Lab").
 
 **Work order**, each part green before the next:
 
@@ -550,6 +546,31 @@ run the notary at all.
   funded.
 
 ### Step 5 — the proof API
+
+**Code built 2026-10-12, `bin/ci` green (coverage 86.5%); not deployed.** `GET
+/api/v1/proofs/liabilities/{epoch|latest}` on notaryd's HTTP port: identity's RS256 access token
+(JWKS, issuer, audience, `token_use=access`), `sub` is the holder, and only that holder's accounts are
+proven. The rebuilt tree must reproduce the anchored root or nothing is served. 404 unknown, 409 not
+final, 410 abandoned, 503 store unreachable. Each document carries `account` (holder, kind, salt), and
+`notary-verify` checks the account opens the commitment and verifies a whole API response. JWKS
+refresh is limited to once per 10 s and never waits more than 100 ms (a forged `kid` held a request
+10 s under keyfunc's default — measured). No gRPC `ProofService` until a service needs one.
+**Estate pieces written 2026-10-12, not yet committed:** the Kong route `notary-proofs-route`
+(`GET /api/v1/proofs`, the jwt plugin, `kinetix-api-gateway/config/gateway.pkl`); the notary's
+environment moved to one `x-notary-env` block in `compose.yaml`, so prod's override carries the JWT
+issuer like every other service; and the lab.
+
+**Lab** (the user's choice of 2026-10-12, `kinetix-infrastructure/docs/NOTARY-LAB.md`): anvil on chain
+31337 with a block every 5 s, and a ledger deployed by a one-shot container through the canonical
+CREATE2 factory at a fixed address, `0xF049C3811184CE357Ef1ba3FF4EcfA623f1f1d78`, anchorer anvil's
+first default account. Rehearsed twice on a throwaway network: the first run deploys and checks the
+address and the role, the second finds it and does nothing. The deployer runs as root, because Docker
+creates the solc volume owned by root and the image's own user cannot write it.
+
+**Left:** three dev secrets (the lab doc lists them), then the release order — infrastructure, then a
+notary release (step 5 refuses to start without the JWT settings infrastructure now supplies), then
+the gateway — and `route_conformance` against the lab.
+
 
 `notary.v1.ProofService` over gRPC and `GET /api/v1/proofs/liabilities/{epoch}` through Kong. The
 caller's principal comes from identity's token; a principal receives the proofs for its own accounts

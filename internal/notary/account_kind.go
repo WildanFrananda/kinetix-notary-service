@@ -21,6 +21,16 @@ func AccountKindOf(code uint8) (AccountKind, error) {
 	return kind, nil
 }
 
+func AccountKindNamed(name string) (AccountKind, error) {
+	for kind := AccountCustomerBalance; kind <= AccountSuspensePendingEscrow; kind++ {
+		if kind.String() == name {
+			return kind, nil
+		}
+	}
+
+	return 0, Errf(KindInvalidArgument, "notary.AccountKindNamed", nil, "%q is not an account kind", name)
+}
+
 func (k AccountKind) Valid() bool {
 	return k >= AccountCustomerBalance && k <= AccountSuspensePendingEscrow
 }

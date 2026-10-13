@@ -17,6 +17,7 @@ type httpParams struct {
 	Metrics *metrics.Metrics
 	Runner  *anchoring.Runner
 	Pool    *pgxpool.Pool
+	Proofs  *httpapi.ProofHandler
 }
 
 func provideHTTP(p httpParams) http.Handler {
@@ -32,5 +33,5 @@ func provideHTTP(p httpParams) http.Handler {
 		return nil
 	}
 
-	return httpapi.NewRouter(p.Metrics.Instrument, p.Metrics.Handler(), ready)
+	return httpapi.NewRouter(p.Metrics.Instrument, p.Metrics.Handler(), ready, p.Proofs)
 }

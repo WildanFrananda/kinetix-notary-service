@@ -25,6 +25,9 @@ func daemonValues() map[string]string {
 		config.CurrencyKey:       "IDR",
 		config.MaxFeeKey:         "50000000000",
 		config.HTTPPortKey:       "8010",
+		config.JWKSURLKey:        "http://kinetix-identity-service:5000/.well-known/jwks.json",
+		config.JWTIssuerKey:      "https://identity.kinetix.local",
+		config.JWTAudienceKey:    "kinetix",
 	}
 }
 
@@ -70,6 +73,9 @@ func TestEveryMissingOrBrokenSettingIsNamedAtOnce(t *testing.T) {
 	values[config.HTTPPortKey] = "70000"
 	values[config.EpochIntervalKey] = "10s"
 	values[config.TickKey] = "1h"
+	values[config.JWKSURLKey] = "ftp://identity/keys"
+	delete(values, config.JWTIssuerKey)
+	delete(values, config.JWTAudienceKey)
 
 	_, err := config.LoadDaemon(from(values))
 
@@ -85,6 +91,9 @@ func TestEveryMissingOrBrokenSettingIsNamedAtOnce(t *testing.T) {
 		config.HTTPPortKey,
 		config.EpochIntervalKey,
 		config.TickKey,
+		config.JWKSURLKey,
+		config.JWTIssuerKey,
+		config.JWTAudienceKey,
 	} {
 		require.ErrorContains(t, err, key)
 	}

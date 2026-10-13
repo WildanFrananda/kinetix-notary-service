@@ -63,3 +63,12 @@ JOIN epochs e ON e.number = a.epoch_number
 WHERE e.state = 'finalized' AND a.outcome = 'included'
 ORDER BY e.number DESC
 LIMIT sqlc.arg(row_limit);
+
+-- name: EpochByNumber :one
+SELECT * FROM epochs WHERE number = $1;
+
+-- name: EpochAccounts :many
+SELECT position, holder, kind, amount, salt, commitment
+FROM accounts
+WHERE epoch_number = $1
+ORDER BY position;

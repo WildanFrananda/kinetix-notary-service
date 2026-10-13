@@ -8,5 +8,8 @@ type report struct {
 	Total      string `json:"total,omitempty"`
 	AsOf       string `json:"asOf,omitempty"`
 	AnchoredAt string `json:"anchoredAt,omitempty"`
+	Holder     string `json:"holder,omitempty"`
+	Kind       string `json:"kind,omitempty"`
+	Amount     string `json:"amount,omitempty"`
 	Reason     string `json:"reason,omitempty"`
 }

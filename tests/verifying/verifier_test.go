@@ -118,3 +118,66 @@ func TestAnEpochTheLedgerNeverAnchoredIsReportedAsSuch(t *testing.T) {
 
 	require.Equal(t, notary.KindEpochNotAnchored, notary.KindOf(err))
 }
+
+func TestAProofWhoseAccountDoesNotOpenItsCommitmentIsRejectedWithoutAskingTheChain(t *testing.T) {
+	epoch, claim := notarytest.AnchoredClaim(t, 4, 6, 1)
+	ledger := &notarytest.Ledger{
+		IdentityValue: notarytest.LedgerIdentity,
+		Epochs:        map[uint64]notary.AnchoredEpoch{4: epoch},
+		Confirmed:     true,
+	}
+	claim.Opening = &notary.Opening{
+		Holder: notarytest.Holder(t, "someone-else"),
+		Kind:   notary.AccountCustomerBalance,
+		Salt:   notary.Salt{0x01},
+	}
+
+	verification, err := verifying.NewVerifier(ledger, keccak.NewScheme()).Verify(context.Background(), claim)
+
+	require.NoError(t, err)
+	require.Equal(t, notary.VerdictRejected, verification.Verdict)
+	require.Contains(t, verification.Reason, "does not open its commitment")
+	require.Equal(t, claim.Opening, verification.Opening)
+	require.NotContains(t, ledger.Asked, "confirm")
+}
+
+func TestAProofWhoseAccountOpensItsCommitmentIsIncludedAndNamesTheAccount(t *testing.T) {
+	scheme := keccak.NewScheme()
+	holder := notarytest.Holder(t, "principal-0042")
+	opening := &notary.Opening{Holder: holder, Kind: notary.AccountMerchantAvailable, Salt: notary.Salt{0x09, 0x08}}
+	entries := notarytest.Entries(77, 4)
+	entries[2].Commitment = scheme.Commitment(opening.Holder, opening.Kind, opening.Salt)
+
+	tree, err := notary.BuildTree(scheme, 4, entries)
+	require.NoError(t, err)
+
+	proof, err := tree.Prove(2)
+	require.NoError(t, err)
+
+	root := tree.Root()
+	ledger := &notarytest.Ledger{
+		IdentityValue: notarytest.LedgerIdentity,
+		Epochs: map[uint64]notary.AnchoredEpoch{4: {
+			Number:     4,
+			Root:       root.Hash,
+			Total:      root.Sum,
+			LeafCount:  4,
+			AsOf:       notarytest.Unix(t, 1760000000),
+			AnchoredAt: notarytest.Unix(t, 1760000060),
+		}},
+		Confirmed: true,
+	}
+	claim := notary.Claim{
+		Ledger:  notarytest.LedgerIdentity,
+		Epoch:   4,
+		Entry:   entries[2],
+		Proof:   proof,
+		Opening: opening,
+	}
+
+	verification, err := verifying.NewVerifier(ledger, scheme).Verify(context.Background(), claim)
+
+	require.NoError(t, err)
+	require.Equal(t, notary.VerdictIncluded, verification.Verdict)
+	require.Equal(t, opening, verification.Opening)
+}

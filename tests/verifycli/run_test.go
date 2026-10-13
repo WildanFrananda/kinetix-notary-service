@@ -127,3 +127,64 @@ func TestAMalformedProofFileIsNotAVerdict(t *testing.T) {
 	require.Equal(t, verifycli.ExitMalformedProof, code)
 	require.Equal(t, "malformed_proof", report["verdict"])
 }
+
+type scriptedVerifier struct {
+	answers []notary.Verification
+	asked   int
+}
+
+func (s *scriptedVerifier) Verify(context.Context, notary.Claim) (notary.Verification, error) {
+	answer := s.answers[s.asked]
+	s.asked++
+
+	return answer, nil
+}
+
+func TestABundleFromTheAPIIsVerifiedProofByProof(t *testing.T) {
+	epoch, claim := notarytest.AnchoredClaim(t, 3, 5, 1)
+	opening := &notary.Opening{
+		Holder: notarytest.Holder(t, "principal-0042"),
+		Kind:   notary.AccountMerchantPendingEscrow,
+		Salt:   notary.Salt{0x01},
+	}
+	claim.Opening = opening
+
+	first, err := prooffile.Marshal(claim, 1)
+	require.NoError(t, err)
+
+	second, err := prooffile.Marshal(claim, 1)
+	require.NoError(t, err)
+
+	path := filepath.Join(t.TempDir(), "proofs.json")
+	body := `{"epoch":"3","proofs":[` + string(first) + `,` + string(second) + `]}`
+	require.NoError(t, os.WriteFile(path, []byte(body), 0o600))
+
+	verifier := &scriptedVerifier{answers: []notary.Verification{
+		{Verdict: notary.VerdictIncluded, Ledger: notarytest.LedgerIdentity, Epoch: epoch, Opening: opening},
+		{
+			Verdict: notary.VerdictRejected,
+			Ledger:  notarytest.LedgerIdentity,
+			Epoch:   epoch,
+			Opening: opening,
+			Reason:  "no",
+		},
+	}}
+
+	var out bytes.Buffer
+
+	code := verifycli.Run(context.Background(), path, 1, verifier, &out)
+
+	require.Equal(t, verifycli.ExitRejected, code)
+	require.Equal(t, 2, verifier.asked)
+
+	lines := bytes.Split(bytes.TrimSpace(out.Bytes()), []byte("\n"))
+	require.Len(t, lines, 2)
+
+	var report map[string]string
+	require.NoError(t, json.Unmarshal(lines[0], &report))
+	require.Equal(t, "included", report["verdict"])
+	require.Equal(t, "principal-0042", report["holder"])
+	require.Equal(t, "merchant_pending_escrow", report["kind"])
+	require.Equal(t, "3", report["epoch"])
+	require.NotEmpty(t, report["amount"])
+}

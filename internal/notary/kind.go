@@ -22,6 +22,8 @@ const (
 	KindAlreadyAnchored
 	KindLedgerDiverged
 	KindNotAnchorer
+	KindEpochAbandoned
+	KindUnauthenticated
 )
 
 func (k Kind) String() string {
@@ -62,6 +64,10 @@ func (k Kind) String() string {
 		return "ledger_diverged"
 	case KindNotAnchorer:
 		return "not_anchorer"
+	case KindEpochAbandoned:
+		return "epoch_abandoned"
+	case KindUnauthenticated:
+		return "unauthenticated"
 	default:
 		return "unknown"
 	}

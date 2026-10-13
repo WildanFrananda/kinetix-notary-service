@@ -51,3 +51,18 @@ jobs:
           docker buildx imagetools create \
             --tag "$IMAGE:${{ github.ref_name }}" \
             "$IMAGE@${{ steps.image.outputs.digest }}"
+
+      - name: Ask kinetix-infrastructure to deploy it
+        env:
+          GH_TOKEN: ${{ secrets.KINETIX_DISPATCH_TOKEN }}
+        run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo "KINETIX_DISPATCH_TOKEN resolved to an empty value: docs/DISPATCH-TOKEN.md section 3."
+            exit 1
+          fi
+          jq -n \
+            --arg service "${{ github.event.repository.name }}" \
+            --arg tag "${{ github.ref_name }}" \
+            --arg digest "${{ steps.image.outputs.digest }}" \
+            '{event_type: "deploy", client_payload: {service: $service, tag: $tag, digest: $digest}}' \
+          | gh api "repos/${{ github.repository_owner }}/kinetix-infrastructure/dispatches" --input -

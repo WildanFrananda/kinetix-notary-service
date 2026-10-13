@@ -22,7 +22,10 @@ type Store struct {
 	scheme  uint16
 }
 
-var _ notary.EpochStore = (*Store)(nil)
+var (
+	_ notary.EpochStore  = (*Store)(nil)
+	_ notary.ProofSource = (*Store)(nil)
+)
 
 func NewStore(pool *pgxpool.Pool, scheme notary.Scheme) *Store {
 	return &Store{pool: pool, queries: storegen.New(pool), scheme: scheme.Version()}
@@ -68,6 +71,45 @@ func (s *Store) LastFinalized(ctx context.Context) (notary.EpochRecord, bool, er
 	row, err := s.queries.LastFinalizedEpoch(ctx)
 
 	return s.record(op, row, err)
+}
+
+func (s *Store) Epoch(ctx context.Context, number uint64) (notary.EpochRecord, bool, error) {
+	const op = "postgres.Store.Epoch"
+
+	key, err := signed(op, number)
+	if err != nil {
+		return notary.EpochRecord{}, false, err
+	}
+
+	row, err := s.queries.EpochByNumber(ctx, key)
+
+	return s.record(op, row, err)
+}
+
+func (s *Store) Accounts(ctx context.Context, epoch uint64) ([]notary.Account, error) {
+	const op = "postgres.Store.Accounts"
+
+	key, err := signed(op, epoch)
+	if err != nil {
+		return nil, err
+	}
+
+	rows, err := s.queries.EpochAccounts(ctx, key)
+	if err != nil {
+		return nil, unavailable(op, err)
+	}
+
+	accounts := make([]notary.Account, 0, len(rows))
+	for _, row := range rows {
+		account, err := accountOf(op, row)
+		if err != nil {
+			return nil, err
+		}
+
+		accounts = append(accounts, account)
+	}
+
+	return accounts, nil
 }
 
 func (s *Store) record(op string, row storegen.Epoch, err error) (notary.EpochRecord, bool, error) {

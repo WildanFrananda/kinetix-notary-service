@@ -5,4 +5,5 @@ type Verification struct {
 	Ledger  LedgerIdentity
 	Epoch   AnchoredEpoch
 	Reason  string
+	Opening *Opening
 }
