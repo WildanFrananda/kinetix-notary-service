@@ -29,5 +29,11 @@ type daemonLedgerSettingsParams struct {
 
 func provideDaemonLedgerSettings(p daemonLedgerSettingsParams) ethereum.Settings {
 	chain := p.Config.Chain
-	return ethereum.Settings{RPCURL: chain.RPCURL, Ledger: chain.Ledger, Timeout: chain.RPCTimeout}
+
+	return ethereum.Settings{
+		RPCURL:  chain.RPCURL,
+		Ledger:  chain.Ledger,
+		Court:   chain.Court,
+		Timeout: chain.RPCTimeout,
+	}
 }

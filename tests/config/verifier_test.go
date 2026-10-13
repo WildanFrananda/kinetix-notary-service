@@ -24,6 +24,7 @@ func complete() map[string]string {
 		config.RPCURLKey:        "https://rpc.example.org/v2/secret-api-key",
 		config.ChainIDKey:       "84532",
 		config.LedgerAddressKey: mixedCaseLedger,
+		config.CourtAddressKey:  "0x00000000000000000000000000000000C0C0c0c0",
 		config.RPCTimeoutKey:    "10s",
 	}
 }
@@ -39,6 +40,7 @@ func TestACompleteEnvironmentLoads(t *testing.T) {
 		config.Verifier{
 			RPCURL:     "https://rpc.example.org/v2/secret-api-key",
 			Ledger:     notary.LedgerIdentity{ChainID: 84532, Address: address},
+			Court:      notary.Address{16: 0xc0, 17: 0xc0, 18: 0xc0, 19: 0xc0},
 			RPCTimeout: 10 * time.Second,
 		},
 		cfg,
@@ -50,7 +52,14 @@ func TestEveryMissingKeyIsNamedAtOnce(t *testing.T) {
 
 	require.Error(t, err)
 
-	for _, key := range []string{config.RPCURLKey, config.ChainIDKey, config.LedgerAddressKey, config.RPCTimeoutKey} {
+	keys := []string{
+		config.RPCURLKey,
+		config.ChainIDKey,
+		config.LedgerAddressKey,
+		config.CourtAddressKey,
+		config.RPCTimeoutKey,
+	}
+	for _, key := range keys {
 		require.Contains(t, err.Error(), key+" is not set")
 	}
 }
@@ -69,6 +78,7 @@ func TestInvalidValuesAreRefused(t *testing.T) {
 		config.RPCURLKey:        "ftp://rpc.example.org",
 		config.ChainIDKey:       "0",
 		config.LedgerAddressKey: "0x0000000000000000000000000000000000000000",
+		config.CourtAddressKey:  "0xc0",
 		config.RPCTimeoutKey:    "10m",
 	}
 	for key, value := range cases {

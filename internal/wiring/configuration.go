@@ -22,5 +22,10 @@ type ledgerSettingsParams struct {
 }
 
 func provideLedgerSettings(p ledgerSettingsParams) ethereum.Settings {
-	return ethereum.Settings{RPCURL: p.Config.RPCURL, Ledger: p.Config.Ledger, Timeout: p.Config.RPCTimeout}
+	return ethereum.Settings{
+		RPCURL:  p.Config.RPCURL,
+		Ledger:  p.Config.Ledger,
+		Court:   p.Config.Court,
+		Timeout: p.Config.RPCTimeout,
+	}
 }

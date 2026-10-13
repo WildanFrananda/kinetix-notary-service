@@ -19,6 +19,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -34,6 +35,7 @@ import (
 	"github.com/WildanFrananda/kinetix-notary-service/internal/postgres"
 	commonv1 "github.com/WildanFrananda/kinetix-notary-service/internal/protogen/common/v1"
 	paymentv1 "github.com/WildanFrananda/kinetix-notary-service/internal/protogen/payment/v1"
+	"github.com/WildanFrananda/kinetix-notary-service/internal/proving"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/verifycli"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/verifying"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/wiring"
@@ -45,6 +47,7 @@ const databaseURLKey = "KINETIX_NOTARY_TEST_DATABASE_URL"
 type estate struct {
 	chain    *chain
 	ledger   notary.LedgerIdentity
+	court    notary.Address
 	dbURL    string
 	pool     *pgxpool.Pool
 	payment  *notarytest.LiabilityServer
@@ -59,6 +62,7 @@ type running struct {
 	Anchorer *anchoring.Anchorer
 	Handler  http.Handler
 	Verifier *verifying.Verifier
+	Prover   *proving.Prover
 }
 
 func newEstate(t *testing.T) *estate {
@@ -74,6 +78,8 @@ func newEstate(t *testing.T) *estate {
 	latest, err := c.client.HeaderByNumber(ctx, nil)
 	require.NoError(t, err)
 	e := &estate{chain: c, ledger: c.identity(c.deploy(t)), now: time.Unix(int64(latest.Time), 0).UTC()}
+	statementKey, statementSigner := notarytest.StatementKey(t, "estate-signer")
+	e.court = notary.Address(c.deployCourt(t, common.Address(e.ledger.Address), statementSigner))
 	e.dbURL = schema(t, base)
 	pool, err := pgxpool.New(ctx, e.dbURL)
 	require.NoError(t, err)
@@ -92,6 +98,8 @@ func newEstate(t *testing.T) *estate {
 		config.RPCURLKey:         c.url,
 		config.ChainIDKey:        strconv.FormatUint(e.ledger.ChainID, 10),
 		config.LedgerAddressKey:  e.ledger.Address.Hex(),
+		config.CourtAddressKey:   e.court.Hex(),
+		config.StatementKeysKey:  "0x" + hex.EncodeToString(crypto.FromECDSA(statementKey)),
 		config.RPCTimeoutKey:     "10s",
 		config.DatabaseURLKey:    e.dbURL,
 		config.AnchorerKeyKey:    "0x" + hex.EncodeToString(crypto.FromECDSA(c.key)),
@@ -374,6 +382,7 @@ func TestAnAccountHolderFetchesTheirProofAndTheChainConfirmsIt(t *testing.T) {
 	e := newEstate(t)
 	r := e.start(t)
 
+	require.NoError(t, r.Prover.CheckCourt(context.Background()))
 	require.Equal(t, http.StatusNotFound, e.proofs(t, r, "latest", "principal-3").Code)
 
 	e.tickUntil(t, r, 0, "mined")
@@ -399,6 +408,9 @@ func TestAnAccountHolderFetchesTheirProofAndTheChainConfirmsIt(t *testing.T) {
 	require.Equal(t, "principal-3", report["holder"])
 	require.Equal(t, "driver_available", report["kind"])
 	require.Equal(t, "4000000", report["amount"])
+	require.Equal(t, "attributable", report["statement"])
+	require.Equal(t, "0", report["faults"])
+	require.Equal(t, e.court.Hex(), report["court"])
 
 	stranger := e.proofs(t, r, "0", "nobody-at-all")
 	require.Equal(t, http.StatusOK, stranger.Code)

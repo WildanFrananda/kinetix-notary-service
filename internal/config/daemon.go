@@ -12,6 +12,7 @@ import (
 const (
 	DatabaseURLKey     = "KINETIX_NOTARY_DATABASE_URL"
 	AnchorerKeyKey     = "KINETIX_NOTARY_ANCHORER_PRIVATE_KEY"
+	StatementKeysKey   = "KINETIX_NOTARY_STATEMENT_PRIVATE_KEYS"
 	PaymentAddressKey  = "KINETIX_NOTARY_PAYMENT_GRPC_ADDR"
 	PKIDirKey          = "KINETIX_PKI_DIR"
 	TrustDomainKey     = "KINETIX_TRUST_DOMAIN"
@@ -35,6 +36,7 @@ type Daemon struct {
 	Chain           Verifier
 	DatabaseURL     Secret
 	AnchorerKey     Secret
+	StatementKeys   Secret
 	PaymentAddress  string
 	PKIDir          string
 	TrustDomains    []string
@@ -97,6 +99,10 @@ func LoadDaemon(lookup Lookup) (Daemon, error) {
 
 	if raw := required(AnchorerKeyKey); raw != "" {
 		cfg.AnchorerKey = Secret{value: raw}
+	}
+
+	if raw := required(StatementKeysKey); raw != "" {
+		cfg.StatementKeys = Secret{value: raw}
 	}
 
 	if raw := required(PaymentAddressKey); raw != "" {

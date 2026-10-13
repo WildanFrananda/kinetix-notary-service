@@ -42,6 +42,10 @@ timestamped record that no single party controls.
 | 9 | Timing | Start now; the user releases the pending identity/order work independently. |
 | — | Toolchain | **Docker only.** Nothing is installed on the laptop; `bin/dev <command>` runs inside a pinned toolchain image with a local chain beside it. |
 | 10 | Where the code lives (2026-10-12) | **On chain first.** The user wants most of this repository to be Solidity. The rule that serves it without padding: whatever a stranger must be able to check or enforce without trusting Kinetix lives in a contract; whatever is expensive per account or private (building trees, salts, pulling snapshots) stays in Go. Steps 6–10 move accountability, quorum, discovery and gas sponsorship on chain. |
+| 11 | Licence (2026-10-13) | **MIT** for every new file. The v1 ledger's files keep `UNLICENSED`: they are the verified source of a deployed contract and stay byte-identical; new contracts import their types as they are. |
+| 12 | Statement key (2026-10-13) | A **fourth key**, separate from the anchorer: it signs statements off chain, never holds ETH, lives in the SOPS store like the anchorer. A leak of one never hands over the other. |
+| 13 | Signer changes (2026-10-13) | Through the admin, **after a 7-day delay**, and a signer is registered for a **range of epochs**, never a span of time — so no rotation can disown a statement already signed. |
+| 14 | Delivering statements (2026-10-13) | Pushing a statement to its holder is **notification's job** (the estate rule: no service takes another's). Step 6 splits: **6a** in this repository, **6b** in notification. |
 
 ## 3. What the proof does and does not prove
 
@@ -161,8 +165,10 @@ by redeploying, and continuity is a property of the data, not of an address.
   successor.
 - **Pinned toolchain.** Solidity 0.8.37 exactly, EVM version `cancun` (accepted by every L2 that
   matters, now and after future forks), no metadata hash in the bytecode, and deployment through the
-  canonical CREATE2 factory with a configured salt (`always_use_create_2_factory`), so a successor's
-  address is known before it exists. The first ledger is the exception — see step 2.
+  canonical CREATE2 factory with a configured salt, so a successor's address is known before it
+  exists. The deploy scripts call the factory themselves (`script/Create2Factory.sol`) and
+  `bin/rehearse-deploy` proves it on each network's chain id. The first ledger and the first court are
+  the exceptions — see step 2 and step 6.
 
 ## 7. Network and gas
 
@@ -348,7 +354,10 @@ Three things went differently from the plan, and all three are now handled:
   correct either way; only the predictability claim did not hold for it. The setting is now on, and a
   rehearsal on anvil showed the transaction going to the factory and the address equal to the one
   computed from the salt. The deploy test passed throughout — inside `forge test` a salted `new` is
-  always CREATE2, which is exactly why it could not see this.
+  always CREATE2, which is exactly why it could not see this. **That fix did not hold** (2026-10-13):
+  the court went out as plain CREATE with the setting on, because forge 1.8.3 uses the factory on
+  chain 31337 only, and the rehearsal ran on 31337. The scripts now call the factory directly, and
+  `bin/rehearse-deploy` replays them with chain id 84532 (step 6).
 - **Blockscout cannot verify it yet**: its newest Solidity compiler is 0.8.36 and the ledger is built
   with 0.8.37. forge printed "All (1) contracts were verified!" over Blockscout's own
   `Fail - Unable to verify`. Verification moved to Sourcify, which needs no key; `bin/inspect-ledger`
@@ -592,7 +601,7 @@ v1 — unit, fuzz and handler-based invariant suites, Go↔Solidity differential
 and EIP-712 digest the two languages share, a fork test against the live Base Sepolia ledger,
 Slither and Aderyn clean, immutable deployment through the CREATE2 factory, Sourcify verification.
 
-#### Step 6 — signed statements and fraud proofs (`StatementCourt`, part 1)
+#### Step 6 — signed statements and fraud proofs (`StatementCourt`, part 1). **6a built 2026-10-13.**
 
 Every proof the notary issues becomes a binding, publicly punishable claim.
 
@@ -608,6 +617,101 @@ Every proof the notary issues becomes a binding, publicly punishable claim.
   verifier and the browser page show them beside every verdict. There is no way to clear one.
 - Signer rotation goes through the admin with a delay; a statement signed by a key at a time it was
   not registered proves nothing, so rotation cannot be used to disown old statements.
+
+**Design settled 2026-10-13 (step 6a).**
+
+*The statement.* EIP-712, domain `{name: "Kinetix Statement Court", version: "1", chainId,
+verifyingContract: the court}`, type
+`EpochStatement(address ledger,uint64 epoch,bytes32 commitment,uint64 amount,uint64 index,bytes32 siblingsHash)`,
+where `siblingsHash = keccak256(hash₀ ‖ sum₀ ‖ hash₁ ‖ sum₁ ‖ …)`, each hash 32 bytes and each sum 8 bytes
+big-endian, exactly as the siblings appear in the proof. Every field is already in the proof document,
+so the document gains only `statement: {court, signature}`; the verifier rebuilds the statement from
+the proof it is reading and cannot be shown a signature over something else. Signatures are 65 bytes,
+`r ‖ s ‖ v` with `v` 27 or 28, low `s` (OpenZeppelin's `ECDSA` refuses the other half).
+
+*Signers.* An append-only list of terms `{signer, fromEpoch}`; the signer of epoch `e` is the last
+term with `fromEpoch ≤ e`. The first term is set at construction from the ledger's genesis epoch. The
+admin schedules `{signer, fromEpoch}` with `fromEpoch ≥ ledger.nextEpoch()` and above the last term;
+after the 7-day delay anyone may activate it, and activation refuses (`SignerChangeStale`) if the
+ledger has meanwhile reached `fromEpoch`. So when a term becomes active no epoch it covers exists yet,
+and nothing the previous signer could have signed changes hands. The admin may cancel a pending term.
+The notary signs each epoch with the key the court names for it, and refuses to serve a proof it
+cannot sign: a statement withheld selectively is exactly what a cheating notary would do.
+
+*Faults*, for anchored epochs only (`genesisEpoch ≤ e < ledger.nextEpoch()`), permissionless, no bond:
+
+- `proveBadProof(statement, signature, siblings)` — signed by the epoch's signer, the siblings hash to
+  `siblingsHash`, and `ledger.verifyInclusion` answers `false`. Evidence: the statement's digest.
+- `proveEquivocation(a, sigA, b, sigB)` — both signed by the epoch's signer, same ledger and epoch,
+  not identical, and they share a commitment or an index: one leaf cannot have two amounts, two
+  indexes or two paths, and one index cannot hold two leaves. Evidence: `keccak256(lo ‖ hi)` of the two
+  digests, sorted, so the pair counts once whichever way round it is submitted.
+
+Each piece of evidence is recorded once (`isProven`); `faultsOf(epoch)`, `faultCount(epoch)` and
+`totalFaults()` read them back, `FaultProven` announces them. Nothing removes a fault.
+
+*Reading side.* The court exposes `statementDigest`, `siblingsHash` and `recoverSigner` as views, so
+`notary-verify` checks a signature with the same code the court would use to convict, and compares
+the digest with its own — a disagreement is refused, as with inclusion. The verifier is configured
+with the court's address (never the one a document names) and reports, beside every verdict, whether
+the statement is attributable to the epoch's signer and how many faults the epoch carries. `notaryd`
+exports `totalFaults()` as a gauge, so a proven fault reaches Grafana.
+
+*Work order*, each part green before the next:
+
+- **6a-1** the contracts: `StatementCourt`, its interface and types (one per file), `StatementHashing`;
+  unit, fuzz and handler-based invariant suites; the deploy script through the CREATE2 factory.
+- **6a-2** Go↔Solidity: the statement digest and siblings hash in `internal/keccak`, a fixture
+  generated by Go with a fixed test key and re-verified by Foundry against a court deployed at the
+  fixture's address.
+- **6a-3** a fork test against the live Base Sepolia ledger: a court deployed beside it convicts a
+  forged statement about epoch 0.
+- **6a-4** `notaryd`: the statement key, the court adapter, a statement on every proof, the gauge.
+- **6a-5** `notary-verify`: statement and faults in every report.
+- **6a-6** the estate: `bin/deploy-court`, `bin/inspect-court`, `bin/new-statement-key`, the lab court,
+  compose, the Grafana rule. Then the court on Base Sepolia, by the user's keystore.
+
+**Status, 2026-10-13: 6a-1 to 6a-6 built and green; the production court is deployed.**
+`bin/ci-contracts`: 104 tests on the CI profile (court: 30 unit, 5 fuzz at 20 000 runs, 5 invariants over
+16 384 calls, 2 differential, 7 deploy), 4 fork tests at Base Sepolia block 48046426, Slither 0, Aderyn
+nothing new. `bin/ci-go`: coverage 86.4%, the anvil suite included. What each part proved:
+
+| Part | Proof |
+|---|---|
+| 6a-1 | two planted mutations — a true statement convicted, a stale signer activated — each turned unit, fuzz and invariant suites red |
+| 6a-2 | 13 statements Go signed reproduce in Solidity: siblings hash, EIP-712 digest and recovered signer; renaming one EIP-712 field in Go turned Foundry red |
+| 6a-3 | a court deployed beside the live ledger convicts a forged statement about epoch 0 against the real anchored root |
+| 6a-4 | every proof carries a statement signed with the key the court names for its epoch; no key, no proof (503), never an unsigned one; notaryd checks court identity, digest agreement and the newest signer before it serves |
+| 6a-5 | on anvil: a statement signed by the signer is attributable, any other is not; a signed false proof is reported `provable`, convicted by a real `proveBadProof`, and the next verification reports the fault |
+| 6a-6 | lab court at `0x9501aaB59C31Edc7aB0dE9d9453B62c09893EB9a`, rehearsed twice on a throwaway chain; `bin/deploy-court`, `bin/inspect-court`, `bin/new-statement-key`; the `kinetix-notary-proven-fault` alert |
+
+The production court, deployed by the user on 2026-10-13 and checked line by line by
+`bin/inspect-court base-sepolia`:
+
+| | |
+|---|---|
+| court | `0xE1Ffcb004Dd734F83ED0B194fdaFF5B0c7c5927B`, Base Sepolia (84532), 13,392 bytes of code |
+| deployed | block 48052866, tx `0xa86e057eeb6fa0936302e413a50f68aee60bf41734fcf0bed86fd85faff2367b` |
+| cost | 3,072,611 gas × 0.006 gwei = 0.000018435666 ETH |
+| judges | the ledger `0x4E869A55031DE3B0d030AEBECc66E523686761a2` |
+| admin | `0x2BfBa1D3d8595ad7d1E10a71BB4ec4Ac3671748E`, transfer delay 259200 s |
+| signer | `0xBB58A2D2eE5B09d57a1d406A01451dd66854F2CA` from epoch 0, change delay 604800 s; its key is `KINETIX_NOTARY_STATEMENT_PRIVATE_KEYS` in the prod store |
+| source | verified on **Sourcify**: `match` |
+| faults | 0 |
+
+Like the first ledger, **the court was deployed by plain CREATE** (deployer nonce 2), not through the
+factory: forge 1.8.3 routes a salted `new` through the factory only on chain 31337, so the lab and every
+rehearsal used it and Base Sepolia did not, even with `always_use_create_2_factory` on. The script's
+`== Return ==` printed `0x88A89C885D790DD872A741C485d867bAd7bbD15b`, the CREATE2 address, where nothing
+exists; the broadcast record and the chain say `0xE1Ff…927B`. The court is correct either way. Since
+then both deploy scripts call the factory themselves through `script/Create2Factory.sol`, and
+`bin/rehearse-deploy` (in `bin/ci-contracts`) replays them on anvil with each network's chain id and
+fails unless the broadcast is one CREATE2 through the factory. The old ledger script swapped in turned
+it red; a mutated address formula turned the deploy suites red. The lab addresses did not move: the same
+init code and salt through the same factory land where they always did.
+
+**Left for 6a:** a release with the production compose lines (`kinetix-infrastructure`, done
+2026-10-13). **6b** — pushing statements to holders — is notification's work.
 
 #### Step 7 — withholding (`StatementCourt`, part 2)
 

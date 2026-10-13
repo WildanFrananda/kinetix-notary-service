@@ -3,6 +3,7 @@ pragma solidity 0.8.37;
 
 import {Test} from "forge-std/src/Test.sol";
 
+import {Create2Factory} from "../script/Create2Factory.sol";
 import {DeployLiabilityLedger} from "../script/DeployLiabilityLedger.s.sol";
 import {LedgerDeployment} from "../script/LedgerDeployment.sol";
 import {LiabilityLedger} from "../src/LiabilityLedger.sol";
@@ -46,11 +47,36 @@ contract DeployLiabilityLedgerTest is Test {
         assertEq(ledger.lastAsOf(), 1_760_000_000);
     }
 
+    function test_DeploysThroughTheFactoryWhereTheSaltSays() public {
+        LedgerDeployment memory deployment = _fresh(keccak256("salt"));
+        address expected = vm.computeCreate2Address(keccak256("salt"), keccak256(script.initCode(deployment)));
+
+        assertEq(script.addressOf(deployment), expected);
+        assertEq(address(script.deploy(deployment)), expected);
+    }
+
     function test_TheSaltDecidesTheAddress() public {
         address first = address(script.deploy(_fresh(keccak256("first"))));
         address second = address(script.deploy(_fresh(keccak256("second"))));
 
         assertNotEq(first, second);
+    }
+
+    function test_RefusesASecondLedgerAtTheSameAddress() public {
+        LedgerDeployment memory deployment = _fresh(keccak256("salt"));
+        script.deploy(deployment);
+        address taken = script.addressOf(deployment);
+
+        vm.expectRevert(abi.encodeWithSelector(Create2Factory.DeploymentFailed.selector, taken));
+        script.deploy(deployment);
+    }
+
+    function test_RefusesWithoutTheFactory() public {
+        LedgerDeployment memory deployment = _fresh(keccak256("salt"));
+        vm.etch(Create2Factory.FACTORY, "");
+
+        vm.expectRevert(abi.encodeWithSelector(Create2Factory.FactoryMissing.selector, Create2Factory.FACTORY));
+        script.deploy(deployment);
     }
 
     function test_ReadsEveryValueFromTheEnvironmentAndRefusesWhatDoesNotFit() public {

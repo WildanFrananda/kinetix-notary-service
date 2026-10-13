@@ -44,7 +44,15 @@ bin/new-keystore notary-deployer|notary-admin   # encrypted keystore outside eve
 bin/new-anchorer-key prod                       # hot key straight into the SOPS store
 bin/deploy-ledger base-sepolia [--broadcast]    # dry run by default; reads deploy/<network>.env
 bin/inspect-ledger base-sepolia                 # every on-chain fact checked against the config
+bin/new-statement-key prod                      # the statement signer, straight into the SOPS store
+bin/deploy-court base-sepolia [--broadcast]     # the statement court beside the ledger; dry run by default
+bin/inspect-court base-sepolia                  # the court's facts, its signer terms and its faults
 ```
+
+`notary-verify` reads `KINETIX_NOTARY_RPC_URL`, `KINETIX_NOTARY_CHAIN_ID`, `KINETIX_NOTARY_LEDGER_ADDRESS`,
+`KINETIX_NOTARY_COURT_ADDRESS` and `KINETIX_NOTARY_RPC_TIMEOUT`, every one required. It trusts the court
+it is configured with, never the one a document names, and reports beside every verdict whether the
+proof's statement is attributable to the epoch's signer and how many faults the epoch carries.
 
 `deploy/<network>.env` holds only public values and is committed. Keys never are: the deployer and
 admin keystores live in `KINETIX_NOTARY_KEYSTORE_DIR` (refused when inside a git work tree), the
@@ -92,17 +100,23 @@ Package names say what a package provides (`keccak.NewScheme`, `ethereum.NewLedg
   reports, exit 1; removed, clean.
 - **`bin/ci`** is the single gate, `bin/ci-contracts` and then `bin/ci-go`: `forge fmt --check`,
   `forge build` (forge-lint with `deny = "warnings"`), `forge test` on the CI profile,
-  `forge snapshot --check`, Slither and Aderyn; then binding generation, `gofmt`, `go mod verify`,
-  `go vet`, the boundary check, golangci-lint, and `bin/test`. `bin/ci` and `bin/ci-go` refuse to run
-  without a node, because a skipped integration test proves nothing. `bin/ci-go` installs the
-  Soldeer dependencies itself, so it passes from a clean checkout without the other half.
+  `forge snapshot --check`, the fork suite, `bin/rehearse-deploy` (both deploy scripts on a throwaway
+  anvil with each network's chain id; nothing reaches a network), Slither and Aderyn; then binding
+  generation, `gofmt`, `go mod verify`, `go vet`, the boundary check, golangci-lint, and `bin/test`.
+  `bin/ci` and `bin/ci-go` refuse to run without a node, because a skipped integration test proves
+  nothing. `bin/ci-go` installs the Soldeer dependencies itself, so it passes from a clean checkout
+  without the other half.
 - **`bin/analyze`** runs Slither and Aderyn over `contracts/src` and fails on anything not already
   accepted. Accepted, and why: Slither `timestamp` (refusing a future snapshot needs
   `block.timestamp`; a validator moves it by seconds), Aderyn `centralization-risk` (the admin and
   anchorer roles are the design; the admin key never goes online), Aderyn `unchecked-return` on the
   constructor's `_grantRole` (it cannot fail there, and the deployed ledger's source is frozen: an edit
-  would make the repository disagree with the verified bytecode). An accepted entry that stops being
-  reported also fails, so the list cannot rot.
+  would make the repository disagree with the verified bytecode); for `StatementCourt`, Aderyn
+  `centralization-risk` (the admin schedules signers, by design) and `reentrancy-state-change` (its only
+  external calls are `view` reads of the immutable ledger, compiled to STATICCALL, which cannot re-enter;
+  Slither, which tells a STATICCALL apart, reports nothing there). An accepted entry that stops being
+  reported also fails, so the list cannot rot. forge-lint's `reentrancy-events` is off in `foundry.toml`
+  for the same reason and with the same backstop: it flags any event after any external call.
 - **One lint setting is a decision, not a silencing.** `wrapcheck` ignores `.RecvMsg(`: the gRPC
   client interceptor that counts calls must hand the stream's own error back unchanged, because callers
   compare `io.EOF` by identity and a wrapped end of stream reads as a failure.
@@ -202,10 +216,16 @@ A failure must never be reported as a definite answer. In this service that mean
   rotated; fixed in infra with an explicit `--config` and a bats test, and `bin/new-anchorer-key` now
   calls the tool from its own repository. Anything that writes a real store is rehearsed against the
   real tool with a throwaway store and age key before it touches one.
-- **Without `always_use_create_2_factory`, a salted `new` in a broadcast is plain CREATE.** The first
-  ledger went out that way; `forge test` could not notice, because a salted `new` inside a test is
-  always CREATE2. The setting is on in `foundry.toml` now. Prove a deploy's address from the
-  broadcast record (`to` must be the factory), not from the script's return value.
+- **forge 1.8.3 broadcasts a salted `new` as plain CREATE on chain 84532, whatever the config says.**
+  The first ledger went out that way on 2026-10-12, and `always_use_create_2_factory` was turned on as
+  the fix; the first court went out the same way on 2026-10-13 with the setting on. forge routes a
+  salted `new` through the factory on 31337 only: the same script, keystore or unlocked, sends CREATE2
+  on `anvil` and CREATE on `anvil --chain-id 84532`, so every rehearsal on the lab chain looked right.
+  The script's `== Return ==` still shows the CREATE2 address, where nothing ever lands. Both deploy
+  scripts now call the factory themselves (`script/Create2Factory.sol`), and `bin/rehearse-deploy`
+  replays them on anvil with each network's own chain id and fails unless the broadcast is one CREATE2
+  through the factory. Old scripts swapped in turn it red. Both deployed contracts keep their CREATE
+  addresses; only their successors are predictable.
 - **forge reports verification optimistically.** It printed "All (1) contracts were verified!" over
   Blockscout's `Fail - Unable to verify` (Blockscout had no solc 0.8.37). Verification goes to
   Sourcify, and `bin/inspect-ledger` asks Sourcify itself.
@@ -238,11 +258,29 @@ A failure must never be reported as a definite answer. In this service that mean
   it at the latest block's time, never at `time.Now()`.
 - **A dependency days old is not yet a dependency.** client_golang v1.25.0 was four days old on
   2026-10-12; v1.24.1 is pinned until it ages.
+- **`vm.expectRevert` is consumed by the next external call, argument evaluation included**, exactly
+  like `vm.prank`: `vm.expectRevert(...); court.proveBadProof(s, _sign(key, s), siblings)` expects the
+  revert from `court.statementDigest` inside `_sign`. Seven court tests failed that way on 2026-10-13
+  until every signature was computed into a local first.
+- **A deploy through the CREATE2 factory reverts without data.** A constructor's custom error never
+  leaves the factory, and neither does an address already taken: `Create2Factory.deploy` turns both into
+  `DeploymentFailed(expected)`, and the unit suites check which constructor error it was. A taken
+  address also burns all the gas the call was given, which is why a second deploy test costs a billion.
+- **forge fmt's `ignore` is a list of the v1 files, not `src/**`.** The glob would have exempted the
+  court too; the frozen files are named one by one.
+- **The fork test has its own profile** (`[profile.fork]`, `test = "fork"`), so a plain `forge test`
+  stays offline; `bin/ci-contracts` runs it with the public RPC and the pinned block from
+  `deploy/base-sepolia.env`.
+- **`bin/analyze` never accepts a high finding**, only low ones. Aderyn's `reentrancy-state-change` on
+  the court was answered by moving the ledger reads into private views, not by an entry.
 - **gosec G115** flags every narrowing integer conversion; `UnixTime` is a sealed type whose
   constructors check the range, so the conversions happen after a visible bound.
 
 ## Not built yet
 
 Steps 1–5 are done: contracts v1.0.23, payment v0.1.11, notaryd v0.2.0 anchoring on Base Sepolia, and
-the proof API (v0.3.0, gateway v1.0.0) live and proven end to end in the lab on 2026-10-13. Steps
-6–14 do not exist yet. Contract deploys stay manual, never in CI.
+the proof API (v0.3.0, gateway v1.0.0) live and proven end to end in the lab on 2026-10-13. Step 6a —
+the statement court and a signed statement on every proof — is built and green, and the production
+court is deployed (`0xE1Ffcb004Dd734F83ED0B194fdaFF5B0c7c5927B`, 2026-10-13); the release that makes
+notaryd sign is next. 6b (delivery through notification) and steps 7–14 do not exist yet. Contract
+deploys stay manual, never in CI.

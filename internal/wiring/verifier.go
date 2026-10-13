@@ -18,6 +18,7 @@ func Verifier(lookup config.Lookup) (*dig.Container, error) {
 		provideChainClient,
 		provideScheme,
 		provideLedger,
+		provideCourt,
 		provideVerifier,
 	}
 	for _, provider := range providers {

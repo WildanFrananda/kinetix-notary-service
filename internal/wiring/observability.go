@@ -7,6 +7,7 @@ import (
 	"github.com/WildanFrananda/kinetix-notary-service/internal/httpapi"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/metrics"
 	paymentv1 "github.com/WildanFrananda/kinetix-notary-service/internal/protogen/payment/v1"
+	"github.com/WildanFrananda/kinetix-notary-service/internal/watching"
 )
 
 type metricsParams struct {
@@ -18,6 +19,7 @@ type metricsResult struct {
 	dig.Out
 	Metrics  *metrics.Metrics
 	Observer anchoring.Observer
+	Watching watching.Observer
 }
 
 func provideMetrics(p metricsParams) metricsResult {
@@ -28,5 +30,5 @@ func provideMetrics(p metricsParams) metricsResult {
 
 	m.SeedCall("payment", paymentv1.LiabilityService_StreamLiabilitySnapshot_FullMethodName)
 
-	return metricsResult{Metrics: m, Observer: m}
+	return metricsResult{Metrics: m, Observer: m, Watching: m}
 }

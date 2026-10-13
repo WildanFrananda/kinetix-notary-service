@@ -24,6 +24,8 @@ const (
 	KindNotAnchorer
 	KindEpochAbandoned
 	KindUnauthenticated
+	KindSignerUnavailable
+	KindWrongCourt
 )
 
 func (k Kind) String() string {
@@ -68,6 +70,10 @@ func (k Kind) String() string {
 		return "epoch_abandoned"
 	case KindUnauthenticated:
 		return "unauthenticated"
+	case KindSignerUnavailable:
+		return "signer_unavailable"
+	case KindWrongCourt:
+		return "wrong_court"
 	default:
 		return "unknown"
 	}

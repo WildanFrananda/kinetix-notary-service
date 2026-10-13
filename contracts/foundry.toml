@@ -32,14 +32,25 @@ runs = 20000
 runs = 1024
 depth = 128
 
+[profile.fork]
+test = "fork"
+
 [lint]
-exclude_lints = ["block-timestamp"]
+exclude_lints = ["block-timestamp", "reentrancy-events"]
 
 [fmt]
 line_length = 120
 multiline_func_header = "params_first_multi"
 prefer_compact = "none"
-ignore = ["src/**/*.sol"]
+ignore = [
+    "src/Epoch.sol",
+    "src/EpochChain.sol",
+    "src/EpochHeader.sol",
+    "src/ILiabilityLedger.sol",
+    "src/LiabilityLedger.sol",
+    "src/SumNode.sol",
+    "src/SumTree.sol",
+]
 tab_width = 4
 bracket_spacing = false
 int_types = "long"

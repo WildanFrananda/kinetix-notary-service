@@ -113,6 +113,10 @@ func bundle(t *testing.T) proving.Bundle {
 				Kind:   account.Liability.Kind,
 				Salt:   account.Salt,
 			},
+			Statement: &notary.StatementSignature{
+				Court:     notarytest.CourtIdentity.Address,
+				Signature: notary.Signature{0: byte(i + 1), 64: 28},
+			},
 		})
 	}
 
@@ -208,6 +212,23 @@ func TestEveryFailureHasItsOwnStatus(t *testing.T) {
 			err:    notary.Errf(notary.KindStoreUnavailable, "t", errors.New("dial tcp 10.0.0.9"), ""),
 			status: 503,
 			code:   "unavailable",
+		},
+		"no key for the epoch's signer": {
+			path:   "7",
+			err:    notary.Errf(notary.KindSignerUnavailable, "proving.Prover.Proofs", nil, "no key for 0xab"),
+			status: 503,
+			code:   "signer_unavailable",
+		},
+		"chain down": {
+			path: "7",
+			err: notary.Errf(
+				notary.KindLedgerUnavailable,
+				"ethereum.Court.SignerOf",
+				errors.New("dial tcp 10.0.0.9"),
+				"",
+			),
+			status: 503,
+			code:   "chain_unavailable",
 		},
 		"disagreement": {
 			path:   "7",

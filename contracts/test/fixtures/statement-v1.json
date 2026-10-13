@@ -1,0 +1,260 @@
+{
+  "name": "Kinetix Statement Court",
+  "version": "1",
+  "chainId": "84532",
+  "court": "0x0007609dc4a72ffdd90a42604c0bc8cae4e8bb72",
+  "signer": "0x1143c6f1205a4c4f846689ef3513b6dcaada3616",
+  "statementCount": 13,
+  "statements": [
+    {
+      "ledger": "0x9b65a6184bb1e2a1f9b55b22a24577bb5c498e94",
+      "epoch": "0",
+      "commitment": "0x8c7ab436c143835059c17a7c8523fe0b9f856b62e4ee682cde29f4c1530df07b",
+      "amount": "14342007802845044166",
+      "index": "0",
+      "siblingHashes": [],
+      "siblingSums": [],
+      "siblingsHash": "0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470",
+      "digest": "0x7b3340e9b04f9b22ceab9b79ed4014fd4285e13658cc5b8b3df1b742db069c10",
+      "signature": "0xf581754f89fb12d6f7a1bede6557a4db86aa8ba95fb0d156f0cb2b579a270fd00d86f1d645e33e476719a3a52fc0e0ca05ac66247a668914b50429462ad14d271b"
+    },
+    {
+      "ledger": "0x9b65a6184bb1e2a1f9b55b22a24577bb5c498e94",
+      "epoch": "0",
+      "commitment": "0x8c7ab436c143835059c17a7c8523fe0b9f856b62e4ee682cde29f4c1530df07b",
+      "amount": "14342007802845044166",
+      "index": "0",
+      "siblingHashes": [],
+      "siblingSums": [],
+      "siblingsHash": "0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470",
+      "digest": "0x7b3340e9b04f9b22ceab9b79ed4014fd4285e13658cc5b8b3df1b742db069c10",
+      "signature": "0xf581754f89fb12d6f7a1bede6557a4db86aa8ba95fb0d156f0cb2b579a270fd00d86f1d645e33e476719a3a52fc0e0ca05ac66247a668914b50429462ad14d271b"
+    },
+    {
+      "ledger": "0x9b65a6184bb1e2a1f9b55b22a24577bb5c498e94",
+      "epoch": "0",
+      "commitment": "0x8c7ab436c143835059c17a7c8523fe0b9f856b62e4ee682cde29f4c1530df07b",
+      "amount": "14342007802845044166",
+      "index": "0",
+      "siblingHashes": [],
+      "siblingSums": [],
+      "siblingsHash": "0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470",
+      "digest": "0x7b3340e9b04f9b22ceab9b79ed4014fd4285e13658cc5b8b3df1b742db069c10",
+      "signature": "0xf581754f89fb12d6f7a1bede6557a4db86aa8ba95fb0d156f0cb2b579a270fd00d86f1d645e33e476719a3a52fc0e0ca05ac66247a668914b50429462ad14d271b"
+    },
+    {
+      "ledger": "0x9b65a6184bb1e2a1f9b55b22a24577bb5c498e94",
+      "epoch": "3",
+      "commitment": "0xbbce228f171e3227c26945fcc53eaf29ddfeeb2c9d630a794c8edbedb026c73b",
+      "amount": "1548397051325230745",
+      "index": "0",
+      "siblingHashes": [
+        "0x20e31a0f245a38583fafa37b9b86708d811783880f2ef3422bda0952f2319da5",
+        "0x6f380419f0769b0d5575017504cb9904c755121f50b26eadb60085ed777122eb",
+        "0x3c56ae4622e4098f4235c30fe7432e76c54534062bd7af766c63d92db4154b6e"
+      ],
+      "siblingSums": [
+        "2192695260058121591",
+        "3075477676308069545",
+        "536422552740444525"
+      ],
+      "siblingsHash": "0x698c73c31fee30a556bc8fa216b44e3473fd909ebc9a95786cab17b3644ec33f",
+      "digest": "0x42c221db2ad5cc348d9aaeaf87eeb06051f17439d3af0df11cef8750b914853b",
+      "signature": "0x0286ab9437add69bb9140d7caa1efda52e7c08d528ecc41b6604aad6c748935b2c310ad8cf9d15ba6fb3ab85b92179717a32416de765d007a6dbb4136f15a27d1c"
+    },
+    {
+      "ledger": "0x9b65a6184bb1e2a1f9b55b22a24577bb5c498e94",
+      "epoch": "3",
+      "commitment": "0xbbb71ea9ad87ced14a9f2079c4358f28373ee1fa23382993447bf82e66c7e7b3",
+      "amount": "215828632722529481",
+      "index": "2",
+      "siblingHashes": [
+        "0x74238592ce2cc522bc98f7fd1d43e2c1d73cdc034097f8c9c31ecc8a6c2a442e",
+        "0xa9b088185f35db4569c14d37ad189d32f064eb1705b64a5df160f65d35c07fc0",
+        "0x3c56ae4622e4098f4235c30fe7432e76c54534062bd7af766c63d92db4154b6e"
+      ],
+      "siblingSums": [
+        "2859649043585540064",
+        "3741092311383352336",
+        "536422552740444525"
+      ],
+      "siblingsHash": "0xbcb849c15f6972ff3aa48f4d304599fe57dab0b1b5f6236064f9558685b85924",
+      "digest": "0x2e637355cc3f62efe6fea529188c4bfa4a4889172dee5300aaaa7a9117e84409",
+      "signature": "0x1153509099541b1b192131434d603449c4b7d08d1960ec4d93381d13db7eea8a779be1af0246e11aa28acf1c6a82f6f6dcbe5b0bc544d23f83b583dd617cbd4e1c"
+    },
+    {
+      "ledger": "0x9b65a6184bb1e2a1f9b55b22a24577bb5c498e94",
+      "epoch": "3",
+      "commitment": "0xc0d895f07d9e66c02be331424658cd9bc00849eb347a178636239a8c35a22afe",
+      "amount": "536422552740444525",
+      "index": "4",
+      "siblingHashes": [
+        "0xf2ee15ea639b73fa3db9b34a245bdfa015c260c598b211bf05a1ecc4b3e3b4f2",
+        "0x38b69c386e8e6c81a149659a8be3c1162fdce200dee91de6fd7993a97a46149f",
+        "0x038a6e40f7c18cb488b07a224ca4ae009a19e7d2c0e1389b6c557a91bc3b3953"
+      ],
+      "siblingSums": [
+        "0",
+        "0",
+        "6816569987691421881"
+      ],
+      "siblingsHash": "0x630c61b5013904e310154d3789ce911e24be47392060dc1a722d99d8d229dab8",
+      "digest": "0xab371132cdb4b1c9db9afa577dbc8941c07f5c4fc39a6e9d194677626768ecd0",
+      "signature": "0x13ea84b2a197bcc201dfb06737bf95a9c8a081e698cbfc61937c05591dad04de1285dc3eedc9bccf5d791678af7b50ba0a1b3e04447fccfe95ff5f0d9fa1fbd61c"
+    },
+    {
+      "ledger": "0x9b65a6184bb1e2a1f9b55b22a24577bb5c498e94",
+      "epoch": "1099511627776",
+      "commitment": "0xf0c8468be56ddf34ae969a3e228ef0bd1f36e27d133a844265aea03efc75da8e",
+      "amount": "1031353502484906090",
+      "index": "0",
+      "siblingHashes": [
+        "0x3191c077246d9469194a434a0bea01a6fdeaf04dc44e39047714a9b93a494fe2",
+        "0x12fe7207710b0012c3b7872f2ded1191bb4134dd984b79114bf74775f2b55e28",
+        "0x6d4af69cda5b60e65c9ce39f0aaebc18ddf263e6baf270e9316a2a1fa276db5b",
+        "0x08e81322b9899b6f3d65bdc533fdda5441376fa94ffdf5394f0155109c6b23e8"
+      ],
+      "siblingSums": [
+        "261992135151656059",
+        "837549497625464078",
+        "2354222986664521797",
+        "4153377527322635437"
+      ],
+      "siblingsHash": "0x13c9581525817266e3c27e38162bc83f557dd6ee805bf21b12dbd140e979d5ca",
+      "digest": "0x136c152b8ccc9fe5ba90a94968b3dfd3a5fa320944692ac48eff16d4435574ca",
+      "signature": "0x4596975e6218d648e86fe7344b9cfd921f110e47347e5d5c65bfdead4d66edd878ff46b7e260ef1816c3974edea2a6696b3a8faff94f9e7703fd45ede00496041c"
+    },
+    {
+      "ledger": "0x9b65a6184bb1e2a1f9b55b22a24577bb5c498e94",
+      "epoch": "1099511627776",
+      "commitment": "0x74fbd94c58a672f122a4bcf3bae8b3085690b9af78eaf718246f7e577ecc0c5b",
+      "amount": "250256147525827313",
+      "index": "8",
+      "siblingHashes": [
+        "0xc47a27f479c02bbeaa3100b33343aa43e08a4f010342bd20cb19d00fb617ec5e",
+        "0x341369b6b09b1b115b37c03e97a710b2c06e49e4b68173b5e968c7324c6e97d3",
+        "0x5260ce238058b3a19058d3f237ae6f71eee1d100ce077956af7170b529d9ac0d",
+        "0x925bd4d32500221a8d7722600083b730501de652b2a855f136b0ba8f6e027258"
+      ],
+      "siblingSums": [
+        "126736181793905802",
+        "1094028495271710421",
+        "2682356702731191901",
+        "4485118121926548024"
+      ],
+      "siblingsHash": "0x17f409dff40937af32020ba243ce84275ef12788e7b8c1491e6d4042911bff7c",
+      "digest": "0xb1bed603976387f210c81048335782bee9c2b069043ae6bc2e1f9154bab3ab23",
+      "signature": "0xb7bfeaafab7861d5def131fcdb3238087e0969baf415f55378f2652c7887e8ff15433ef6710cbefb3953fb53fc385e92c179ec45972054147d1134d7146c91a41b"
+    },
+    {
+      "ledger": "0x9b65a6184bb1e2a1f9b55b22a24577bb5c498e94",
+      "epoch": "1099511627776",
+      "commitment": "0xbd8d9b2f62de17148ab29bc1d2e62810e1c6c63087fbda5cd18926f5d6da69a5",
+      "amount": "331938967756153220",
+      "index": "15",
+      "siblingHashes": [
+        "0xf6c7587b9876bc84a5a6617f03d7a7f2f47938827c1a9b5318fc6f24d4197119",
+        "0x4c55da2df0364ca94fc3dbfc9d46930dde14f5cb6c10d0ad999eaa7a9effb709",
+        "0xc6cbf75d0010140c31c0bc72f2018dfa6d67cc2b3fbe3555eecae8386b18985c",
+        "0x925bd4d32500221a8d7722600083b730501de652b2a855f136b0ba8f6e027258"
+      ],
+      "siblingSums": [
+        "493977475310603606",
+        "1856440259664435075",
+        "1471020824591443536",
+        "4485118121926548024"
+      ],
+      "siblingsHash": "0x420f27aefed57dd0a00f441362e84621c3b91339ecd8808f9630c0f80863a131",
+      "digest": "0x18423016d512964c9ef63c61cb7ffb0edc9e9c3b5cad197a2ca6c7620fc608d7",
+      "signature": "0x03a65b32660c8ee42f689af40edf2be81b60adc9b2ba3886254d030fc1056427622c546ac27c2cd4990e679c350222f3cc1818829ff8dd363c826533830f4adb1c"
+    },
+    {
+      "ledger": "0x9b65a6184bb1e2a1f9b55b22a24577bb5c498e94",
+      "epoch": "18446744073709551614",
+      "commitment": "0x52bd494550d86ea01295ae6ac409b689c75db47c3ffdb160840d4ea3644db83a",
+      "amount": "1039086922232172592",
+      "index": "0",
+      "siblingHashes": [
+        "0x82e184d0f43ab246211083cd622c8275d3d521955bf4970d4996750b9b5d09de",
+        "0x00f087f31bb7e8e13b329cadcb1cf750d56178ed35aaaf8a2b39be4ffc42d5ab",
+        "0xbd88ee84bab588ad08858d5a371572f28bc032617fef034ac5ac44045c053a5d",
+        "0x33a3fe55c032655290175d2d837670c053d7290e62711ab824d60a2b5a1fe74f",
+        "0xda029654b1f4b2bbd5fffd97772092a0504d31660ffa0dd30b1ca6e828056f9f"
+      ],
+      "siblingSums": [
+        "78967775970294298",
+        "862813950230842873",
+        "1854900377582599781",
+        "5640017266134829992",
+        "199974881541891575"
+      ],
+      "siblingsHash": "0xe08f9f42e670d13fc0ba109502a9d769c3404a826fcf5bf2d8a821a6a62ec845",
+      "digest": "0x6f11a2d7513eb2c06bf7ab2cbc599f34aa5bf5ae30193fefe7061dc9e13c4dff",
+      "signature": "0x100f6fc3cfdb8e312f3688cabf2f2cd70d9b932e8553a689786c8fe34784f6d5766e3547383bba1848bbb5707a616ca1b3b9392c8fc749b15b609f0a5a6a4e541c"
+    },
+    {
+      "ledger": "0x9b65a6184bb1e2a1f9b55b22a24577bb5c498e94",
+      "epoch": "18446744073709551614",
+      "commitment": "0xbbc39d510a03f47e19f824d25fb6cad384923fb6b35c4dfc9b4ac7c3604bca7e",
+      "amount": "347768985019735393",
+      "index": "8",
+      "siblingHashes": [
+        "0xc3afad11a20e1b59bb715916e380bb3f042f77417a39dcf503efa4ef5f98b0b8",
+        "0xd2575cbccfbbefe5bcba7477456d4ae4e55a48aa50b7e4a29d982e5901edaa95",
+        "0x2ea18e1d5c32442e178a2be2e3b3bc7ac76f4e335f0535530c9fc69a7f4ab73b",
+        "0x46015bc75f0110ac2885895e8e1be2fa0077c26bb41d9313c881ce231727fc49",
+        "0xda029654b1f4b2bbd5fffd97772092a0504d31660ffa0dd30b1ca6e828056f9f"
+      ],
+      "siblingSums": [
+        "944862379985715417",
+        "1574863825537177033",
+        "2772522075592202149",
+        "3835769026015909544",
+        "199974881541891575"
+      ],
+      "siblingsHash": "0x750576668c9b37c9d32194685cce69a8eceecb88b6c67f3137319ac8801271fb",
+      "digest": "0xbef959fd86bfec56706ec5c3d2bd4e0dbb66eae72e964c75ec43dfdd48feffb2",
+      "signature": "0x0f15a4575dbb82bce2fd3fd933982417b22cb94744a99644097a4eb853c35b660724ad552fa3596d8fbadf13f15c148a2efa5c3b4c8ba59c0490519f9fb2efd61b"
+    },
+    {
+      "ledger": "0x9b65a6184bb1e2a1f9b55b22a24577bb5c498e94",
+      "epoch": "18446744073709551614",
+      "commitment": "0xd35f189423efd62ad77afc5539485c6027cad49408eea549193c7260ea727738",
+      "amount": "199974881541891575",
+      "index": "16",
+      "siblingHashes": [
+        "0xf2ee15ea639b73fa3db9b34a245bdfa015c260c598b211bf05a1ecc4b3e3b4f2",
+        "0x38b69c386e8e6c81a149659a8be3c1162fdce200dee91de6fd7993a97a46149f",
+        "0xaa4a0e9234833fed37d542740b9c7f848e9220a9fb775d1c02cac733536b4d50",
+        "0xdacce166ae24a23da46667eaed4298a1766a0e927c7d53d21f56d34f951e4e6c",
+        "0xa3c28c4e22d741dd3560a52ac79318895d14e6b186092a00a7532f9cdcdf43b6"
+      ],
+      "siblingSums": [
+        "0",
+        "0",
+        "0",
+        "0",
+        "9475786292150739536"
+      ],
+      "siblingsHash": "0x151da22a983494a6e34dfc899dfdd6488b84113fa10a3443ab44500efe1b53bd",
+      "digest": "0x63ad2c2157fad5797991bdaf41cb8e14bad8e29a6eee96342cae8e688c018ad7",
+      "signature": "0x661a2b70e23ace1c409bd488d134a2bbafd0776c2649653b248f8e10e449a2e85dee342ba46eb3386c1667b793088f2f7f5606c5dae6374aba4d79f0e7b249581c"
+    },
+    {
+      "ledger": "0x9b65a6184bb1e2a1f9b55b22a24577bb5c498e94",
+      "epoch": "18446744073709551615",
+      "commitment": "0xff00000000000000000000000000000000000000000000000000000000000000",
+      "amount": "18446744073709551615",
+      "index": "18446744073709551615",
+      "siblingHashes": [
+        "0xff00000000000000000000000000000000000000000000000000000000000000"
+      ],
+      "siblingSums": [
+        "18446744073709551615"
+      ],
+      "siblingsHash": "0xe064b68a21ae7767dc4d7fd8b2a0c96f04710b993b46c7691dd7059773a86645",
+      "digest": "0x1d4b3200ea0a2c60c19ace0c32264006b4d31a91a6eac234609cad49a1e0b79a",
+      "signature": "0xdf3ecacdbbf676017b87e711b1520078913f15db496f0b024d92407930048fec54a200b9d02164876f82b5ff0fc955846ac547254ce416048cde014d26d2a16e1c"
+    }
+  ]
+}

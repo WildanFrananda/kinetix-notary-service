@@ -9,5 +9,6 @@ import (
 type Settings struct {
 	RPCURL  string
 	Ledger  notary.LedgerIdentity
+	Court   notary.Address
 	Timeout time.Duration
 }

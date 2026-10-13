@@ -105,8 +105,14 @@ func (h *ProofHandler) fail(w http.ResponseWriter, r *http.Request, err error) {
 		)
 
 		message = "the proofs could not be produced"
-		if status == http.StatusServiceUnavailable {
+
+		switch code {
+		case "unavailable":
 			message = "the notary cannot read its records right now"
+		case "signer_unavailable":
+			message = "the notary cannot sign a statement for this epoch right now"
+		case "chain_unavailable":
+			message = "the notary cannot reach the chain right now"
 		}
 	}
 
@@ -127,6 +133,10 @@ func statusOf(kind notary.Kind) (int, string) {
 		return http.StatusGone, "epoch_abandoned"
 	case notary.KindStoreUnavailable:
 		return http.StatusServiceUnavailable, "unavailable"
+	case notary.KindSignerUnavailable:
+		return http.StatusServiceUnavailable, "signer_unavailable"
+	case notary.KindLedgerUnavailable:
+		return http.StatusServiceUnavailable, "chain_unavailable"
 	case notary.KindDisagreement:
 		return http.StatusInternalServerError, "disagreement"
 	default:

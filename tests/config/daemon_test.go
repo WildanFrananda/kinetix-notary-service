@@ -12,11 +12,16 @@ import (
 
 const anchorerKey = "0x4c0883a69102937d6231471b5dbb6204fe5129617082792ae468d01a3f362318"
 
+const statementKeys = "0x5a00000000000000000000000000000000000000000000000000000000000001," +
+	"0x0000000000000000000000000000000000000000000000000000000000000002"
+
 func daemonValues() map[string]string {
 	return map[string]string{
 		config.RPCURLKey:         "https://sepolia.base.org",
 		config.ChainIDKey:        "84532",
 		config.LedgerAddressKey:  "0x4e869a55031de3b0d030aebecc66e523686761a2",
+		config.CourtAddressKey:   "0x00000000000000000000000000000000c0c0c0c0",
+		config.StatementKeysKey:  statementKeys,
 		config.RPCTimeoutKey:     "10s",
 		config.DatabaseURLKey:    "postgres://notary@kinetix-notary-db:5432/notary",
 		config.AnchorerKeyKey:    anchorerKey,
@@ -56,10 +61,20 @@ func TestSecretsNeverPrint(t *testing.T) {
 	cfg, err := config.LoadDaemon(from(daemonValues()))
 	require.NoError(t, err)
 
-	for _, rendered := range []string{fmt.Sprint(cfg), fmt.Sprintf("%+v", cfg), fmt.Sprintf("%#v", cfg), cfg.AnchorerKey.String()} {
+	renderings := []string{
+		fmt.Sprint(cfg),
+		fmt.Sprintf("%+v", cfg),
+		fmt.Sprintf("%#v", cfg),
+		cfg.AnchorerKey.String(),
+		cfg.StatementKeys.String(),
+	}
+	for _, rendered := range renderings {
 		require.NotContains(t, rendered, anchorerKey[2:])
+		require.NotContains(t, rendered, statementKeys[2:20])
 		require.NotContains(t, rendered, "kinetix-notary-db")
 	}
+
+	require.Equal(t, statementKeys, cfg.StatementKeys.Reveal())
 }
 
 func TestEveryMissingOrBrokenSettingIsNamedAtOnce(t *testing.T) {

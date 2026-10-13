@@ -11,6 +11,7 @@ type document struct {
 	Index      string    `json:"index"`
 	Siblings   []sibling `json:"siblings"`
 	Account    *account  `json:"account,omitempty"`
+	Statement  *seal     `json:"statement,omitempty"`
 }
 
 type sibling struct {
@@ -22,4 +23,9 @@ type account struct {
 	Holder string `json:"holder"`
 	Kind   string `json:"kind"`
 	Salt   string `json:"salt"`
+}
+
+type seal struct {
+	Court     string `json:"court"`
+	Signature string `json:"signature"`
 }

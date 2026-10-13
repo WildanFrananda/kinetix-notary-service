@@ -9,10 +9,12 @@ import (
 
 type verifierParams struct {
 	dig.In
-	Ledger notary.Ledger
-	Scheme notary.Scheme
+	Ledger     notary.Ledger
+	Scheme     notary.Scheme
+	Statements notary.StatementScheme
+	Court      notary.Court
 }
 
 func provideVerifier(p verifierParams) *verifying.Verifier {
-	return verifying.NewVerifier(p.Ledger, p.Scheme)
+	return verifying.NewVerifier(p.Ledger, p.Scheme, p.Statements, p.Court)
 }
