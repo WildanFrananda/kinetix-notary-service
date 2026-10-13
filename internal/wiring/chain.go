@@ -30,11 +30,14 @@ func provideChainClient(p chainClientParams) (chainClientResult, error) {
 
 type schemeResult struct {
 	dig.Out
-	Scheme notary.Scheme
+	Scheme     notary.Scheme
+	Statements notary.StatementScheme
 }
 
 func provideScheme() schemeResult {
-	return schemeResult{Scheme: keccak.NewScheme()}
+	scheme := keccak.NewScheme()
+
+	return schemeResult{Scheme: scheme, Statements: scheme}
 }
 
 type ledgerParams struct {

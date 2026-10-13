@@ -1,5 +1,5 @@
 {
-  "filter_paths": "dependencies|test|script",
+  "filter_paths": "dependencies|test|script|fork",
   "exclude_dependencies": true,
   "detectors_to_exclude": "timestamp",
   "fail_on": "pedantic"

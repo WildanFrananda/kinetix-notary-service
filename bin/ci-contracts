@@ -9,10 +9,25 @@ echo "== contracts"
   cd contracts
   forge soldeer install
   forge fmt --check
+  forge fmt --check fork
   forge build --sizes
   FOUNDRY_PROFILE=ci forge test
   forge snapshot --check --match-contract LiabilityLedgerTest
 )
+
+echo "== fork of Base Sepolia"
+(
+  . ./deploy/base-sepolia.env
+  KINETIX_NOTARY_FORK_RPC_URL="$KINETIX_NOTARY_PUBLIC_RPC_URL"
+  KINETIX_NOTARY_FORK_BLOCK="$KINETIX_NOTARY_FORK_BLOCK"
+  KINETIX_NOTARY_FORK_LEDGER="$KINETIX_NOTARY_LEDGER_ADDRESS"
+  export KINETIX_NOTARY_FORK_RPC_URL KINETIX_NOTARY_FORK_BLOCK KINETIX_NOTARY_FORK_LEDGER
+  cd contracts
+  FOUNDRY_PROFILE=fork forge test
+)
+
+echo "== deploy rehearsal on each network's chain id"
+sh bin/rehearse-deploy
 
 echo "== static analysis"
 sh bin/analyze

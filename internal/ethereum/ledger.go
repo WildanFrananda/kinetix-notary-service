@@ -83,7 +83,13 @@ func (l *Ledger) Identity(ctx context.Context) (notary.LedgerIdentity, error) {
 		)
 	}
 
-	supported, err := probe(l, ctx, l.binding.PackSupportsInterface(l.interfaceID), l.binding.UnpackSupportsInterface)
+	supported, err := probe(
+		ctx,
+		l.client,
+		l.expected.Address,
+		l.binding.PackSupportsInterface(l.interfaceID),
+		l.binding.UnpackSupportsInterface,
+	)
 	if err != nil {
 		return notary.LedgerIdentity{}, l.wrap(op, err)
 	}
@@ -98,7 +104,7 @@ func (l *Ledger) Identity(ctx context.Context) (notary.LedgerIdentity, error) {
 		)
 	}
 
-	scheme, err := probe(l, ctx, l.binding.PackScheme(), l.binding.UnpackScheme)
+	scheme, err := probe(ctx, l.client, l.expected.Address, l.binding.PackScheme(), l.binding.UnpackScheme)
 	if err != nil {
 		return notary.LedgerIdentity{}, l.wrap(op, err)
 	}
@@ -248,12 +254,18 @@ func (l *Ledger) classify(op string, err error) error {
 	return unavailable(op, err)
 }
 
-func probe[T any](l *Ledger, ctx context.Context, calldata []byte, unpack func([]byte) (T, error)) (T, error) {
+func probe[T any](
+	ctx context.Context,
+	client *ethclient.Client,
+	contract notary.Address,
+	calldata []byte,
+	unpack func([]byte) (T, error),
+) (T, error) {
 	var zero T
 
-	address := common.Address(l.expected.Address)
+	address := common.Address(contract)
 
-	output, err := l.client.CallContract(ctx, goethereum.CallMsg{To: &address, Data: calldata}, nil)
+	output, err := client.CallContract(ctx, goethereum.CallMsg{To: &address, Data: calldata}, nil)
 	if err != nil {
 		if _, reverted := revertData(err); reverted || isBareRevert(err) {
 			return zero, errNotALedger

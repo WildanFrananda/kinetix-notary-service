@@ -5,6 +5,7 @@ import {SafeCast} from "@openzeppelin-contracts/utils/math/SafeCast.sol";
 import {Script} from "forge-std/src/Script.sol";
 
 import {LiabilityLedger} from "../src/LiabilityLedger.sol";
+import {Create2Factory} from "./Create2Factory.sol";
 import {LedgerDeployment} from "./LedgerDeployment.sol";
 
 contract DeployLiabilityLedger is Script {
@@ -25,16 +26,29 @@ contract DeployLiabilityLedger is Script {
     }
 
     function deploy(LedgerDeployment memory deployment) public returns (LiabilityLedger) {
+        bytes memory code = initCode(deployment);
+
         vm.startBroadcast();
-        LiabilityLedger ledger = new LiabilityLedger{salt: deployment.salt}(
-            deployment.admin,
-            deployment.adminTransferDelay,
-            deployment.anchorer,
-            deployment.genesisEpoch,
-            deployment.genesisDigest,
-            deployment.genesisAsOf
-        );
+        address ledger = Create2Factory.deploy(deployment.salt, code);
         vm.stopBroadcast();
-        return ledger;
+        return LiabilityLedger(ledger);
+    }
+
+    function addressOf(LedgerDeployment memory deployment) public pure returns (address) {
+        return Create2Factory.addressOf(deployment.salt, initCode(deployment));
+    }
+
+    function initCode(LedgerDeployment memory deployment) public pure returns (bytes memory) {
+        return abi.encodePacked(
+            type(LiabilityLedger).creationCode,
+            abi.encode(
+                deployment.admin,
+                deployment.adminTransferDelay,
+                deployment.anchorer,
+                deployment.genesisEpoch,
+                deployment.genesisDigest,
+                deployment.genesisAsOf
+            )
+        );
     }
 }

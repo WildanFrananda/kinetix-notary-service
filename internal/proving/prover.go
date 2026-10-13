@@ -2,6 +2,7 @@ package proving
 
 import (
 	"context"
+	"math"
 	"sync"
 
 	"github.com/WildanFrananda/kinetix-notary-service/internal/notary"
@@ -10,20 +11,103 @@ import (
 const cachedEpochs = 4
 
 type Prover struct {
-	source notary.ProofSource
-	scheme notary.Scheme
-	mu     sync.Mutex
-	cache  map[uint64]proven
-	order  []uint64
+	source     notary.ProofSource
+	scheme     notary.Scheme
+	statements notary.StatementScheme
+	court      notary.Court
+	signer     notary.StatementSigner
+	identity   notary.CourtIdentity
+	mu         sync.Mutex
+	cache      map[uint64]proven
+	order      []uint64
 }
 
 type proven struct {
 	accounts []notary.Account
 	tree     *notary.Tree
+	signer   notary.Address
 }
 
-func NewProver(source notary.ProofSource, scheme notary.Scheme) *Prover {
-	return &Prover{source: source, scheme: scheme, cache: map[uint64]proven{}}
+func NewProver(
+	source notary.ProofSource,
+	scheme notary.Scheme,
+	statements notary.StatementScheme,
+	court notary.Court,
+	signer notary.StatementSigner,
+	identity notary.CourtIdentity,
+) *Prover {
+	return &Prover{
+		source:     source,
+		scheme:     scheme,
+		statements: statements,
+		court:      court,
+		signer:     signer,
+		identity:   identity,
+		cache:      map[uint64]proven{},
+	}
+}
+
+func (p *Prover) CheckCourt(ctx context.Context) error {
+	const op = "proving.Prover.CheckCourt"
+
+	identity, err := p.court.Identity(ctx)
+	if err != nil {
+		return err
+	}
+
+	if identity != p.identity {
+		return notary.Errf(
+			notary.KindWrongCourt,
+			op,
+			nil,
+			"the court answers as %s on chain %d, this notary signs for %s on chain %d",
+			identity.Address.Hex(),
+			identity.ChainID,
+			p.identity.Address.Hex(),
+			p.identity.ChainID,
+		)
+	}
+
+	sample := notary.Statement{
+		Epoch:        1,
+		Commitment:   notary.Digest{1},
+		Amount:       2,
+		Index:        3,
+		SiblingsHash: notary.Digest{4},
+	}
+
+	onChain, err := p.court.StatementDigest(ctx, sample)
+	if err != nil {
+		return err
+	}
+
+	if local := p.statements.StatementDigest(p.identity, sample); local != onChain {
+		return notary.Errf(
+			notary.KindDisagreement,
+			op,
+			nil,
+			"the court hashes a statement to %s, this notary to %s",
+			onChain.Hex(),
+			local.Hex(),
+		)
+	}
+
+	newest, err := p.court.SignerOf(ctx, math.MaxUint64)
+	if err != nil {
+		return err
+	}
+
+	if !p.signer.Holds(newest) {
+		return notary.Errf(
+			notary.KindSignerUnavailable,
+			op,
+			nil,
+			"the court's newest signer is %s and this notary holds no key for it",
+			newest.Hex(),
+		)
+	}
+
+	return nil
 }
 
 func (p *Prover) Proofs(ctx context.Context, holder notary.Holder, ref EpochRef) (Bundle, error) {
@@ -72,7 +156,7 @@ func (p *Prover) Proofs(ctx context.Context, holder notary.Holder, ref EpochRef)
 			return Bundle{}, err
 		}
 
-		claims = append(claims, notary.Claim{
+		claim := notary.Claim{
 			Ledger: record.Ledger,
 			Epoch:  record.Header.Number,
 			Entry:  notary.Entry{Commitment: account.Commitment, Amount: account.Liability.Amount},
@@ -82,7 +166,17 @@ func (p *Prover) Proofs(ctx context.Context, holder notary.Holder, ref EpochRef)
 				Kind:   account.Liability.Kind,
 				Salt:   account.Salt,
 			},
-		})
+		}
+
+		statement := notary.StatementOf(p.statements, claim)
+
+		signature, err := p.signer.Sign(built.signer, p.statements.StatementDigest(p.identity, statement))
+		if err != nil {
+			return Bundle{}, err
+		}
+
+		claim.Statement = &notary.StatementSignature{Court: p.identity.Address, Signature: signature}
+		claims = append(claims, claim)
 	}
 
 	return Bundle{Epoch: record, Claims: claims}, nil
@@ -183,7 +277,22 @@ func (p *Prover) load(ctx context.Context, record notary.EpochRecord) (proven, e
 		)
 	}
 
-	built := proven{accounts: accounts, tree: tree}
+	signer, err := p.court.SignerOf(ctx, number)
+	if err != nil {
+		return proven{}, err
+	}
+
+	if signer.IsZero() {
+		return proven{}, notary.Errf(
+			notary.KindSignerUnavailable,
+			op,
+			nil,
+			"the court names no signer for epoch %d",
+			number,
+		)
+	}
+
+	built := proven{accounts: accounts, tree: tree, signer: signer}
 
 	p.mu.Lock()
 	defer p.mu.Unlock()

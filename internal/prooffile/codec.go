@@ -181,6 +181,10 @@ func documentOf(claim notary.Claim, scheme uint16) document {
 		}
 	}
 
+	if statement := claim.Statement; statement != nil {
+		doc.Statement = &seal{Court: statement.Court.Hex(), Signature: statement.Signature.Hex()}
+	}
+
 	return doc
 }
 
@@ -220,6 +224,15 @@ func (d document) claim() (notary.Claim, error) {
 		}
 
 		claim.Opening = &opening
+	}
+
+	if d.Statement != nil {
+		statement, err := d.Statement.statement()
+		if err != nil {
+			return notary.Claim{}, err
+		}
+
+		claim.Statement = &statement
 	}
 
 	claim.Proof.Siblings = make([]notary.Node, len(d.Siblings))
@@ -262,4 +275,18 @@ func (a account) opening() (notary.Opening, error) {
 	}
 
 	return notary.Opening{Holder: holder, Kind: kind, Salt: salt}, nil
+}
+
+func (s seal) statement() (notary.StatementSignature, error) {
+	court, err := notary.ParseAddress(s.Court)
+	if err != nil {
+		return notary.StatementSignature{}, fmt.Errorf("statement court: %w", err)
+	}
+
+	signature, err := notary.ParseSignature(s.Signature)
+	if err != nil {
+		return notary.StatementSignature{}, fmt.Errorf("statement signature: %w", err)
+	}
+
+	return notary.StatementSignature{Court: court, Signature: signature}, nil
 }

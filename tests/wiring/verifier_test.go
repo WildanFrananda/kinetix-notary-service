@@ -17,7 +17,10 @@ import (
 	"github.com/WildanFrananda/kinetix-notary-service/internal/wiring"
 )
 
-const anvilLedger = "0x5fbdb2315678afecb367f032d93f642f64180aa3"
+const (
+	anvilLedger = "0x5fbdb2315678afecb367f032d93f642f64180aa3"
+	anvilCourt  = "0xe7f1725e7734ce288f8367e1bb143e90bb3f0512"
+)
 
 func lookup(values map[string]string) config.Lookup {
 	return func(key string) (string, bool) {
@@ -32,17 +35,28 @@ func TestTheGraphResolvesEveryDependencyOfTheVerifier(t *testing.T) {
 			config.RPCURLKey:        "http://127.0.0.1:1",
 			config.ChainIDKey:       "31337",
 			config.LedgerAddressKey: anvilLedger,
+			config.CourtAddressKey:  anvilCourt,
 			config.RPCTimeoutKey:    "2s",
 		}),
 	)
 	require.NoError(t, err)
 
 	err = container.Invoke(
-		func(client *ethclient.Client, scheme notary.Scheme, ledger notary.Ledger, v *verifying.Verifier) {
+		func(
+			client *ethclient.Client,
+			scheme notary.Scheme,
+			ledger notary.Ledger,
+			court notary.Court,
+			identity notary.CourtIdentity,
+			v *verifying.Verifier,
+		) {
 			defer client.Close()
 
 			require.NotNil(t, v)
 			require.NotNil(t, ledger)
+			require.NotNil(t, court)
+			require.Equal(t, uint64(31337), identity.ChainID)
+			require.Equal(t, anvilCourt, identity.Address.Hex())
 			require.Equal(t, uint16(1), scheme.Version())
 		},
 	)

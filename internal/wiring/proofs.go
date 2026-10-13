@@ -7,20 +7,57 @@ import (
 	"go.uber.org/dig"
 
 	"github.com/WildanFrananda/kinetix-notary-service/internal/config"
+	"github.com/WildanFrananda/kinetix-notary-service/internal/ethereum"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/httpapi"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/notary"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/proving"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/tokens"
+	"github.com/WildanFrananda/kinetix-notary-service/internal/watching"
 )
+
+type statementSignerParams struct {
+	dig.In
+	Config config.Daemon
+}
+
+type statementSignerResult struct {
+	dig.Out
+	Signer notary.StatementSigner
+}
+
+func provideStatementSigner(p statementSignerParams) (statementSignerResult, error) {
+	keys, err := ethereum.ParseStatementKeys(p.Config.StatementKeys.Reveal())
+	if err != nil {
+		return statementSignerResult{}, err
+	}
+
+	return statementSignerResult{Signer: ethereum.NewStatementSigner(keys)}, nil
+}
 
 type proverParams struct {
 	dig.In
-	Source notary.ProofSource
-	Scheme notary.Scheme
+	Source     notary.ProofSource
+	Scheme     notary.Scheme
+	Statements notary.StatementScheme
+	Court      notary.Court
+	Signer     notary.StatementSigner
+	Identity   notary.CourtIdentity
 }
 
 func provideProver(p proverParams) *proving.Prover {
-	return proving.NewProver(p.Source, p.Scheme)
+	return proving.NewProver(p.Source, p.Scheme, p.Statements, p.Court, p.Signer, p.Identity)
+}
+
+type watcherParams struct {
+	dig.In
+	Court    notary.Court
+	Observer watching.Observer
+	Config   config.Daemon
+	Log      *slog.Logger
+}
+
+func provideWatcher(p watcherParams) *watching.Watcher {
+	return watching.NewWatcher(p.Court, p.Observer, p.Log, p.Config.Tick)
 }
 
 type authenticatorParams struct {

@@ -13,6 +13,7 @@ import (
 
 	"github.com/WildanFrananda/kinetix-notary-service/internal/anchoring"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/notary"
+	"github.com/WildanFrananda/kinetix-notary-service/internal/watching"
 )
 
 type Build struct {
@@ -33,9 +34,13 @@ type Metrics struct {
 	runway       prometheus.Gauge
 	ceilingHits  prometheus.Counter
 	leaseHeld    prometheus.Gauge
+	faults       prometheus.Gauge
 }
 
-var _ anchoring.Observer = (*Metrics)(nil)
+var (
+	_ anchoring.Observer = (*Metrics)(nil)
+	_ watching.Observer  = (*Metrics)(nil)
+)
 
 func New(build Build) *Metrics {
 	registry := prometheus.NewRegistry()
@@ -109,6 +114,10 @@ func New(build Build) *Metrics {
 			Name: "kinetix_notary_lease_held",
 			Help: "1 while this process is the one writer, 0 while it waits.",
 		}),
+		faults: prometheus.NewGauge(prometheus.GaugeOpts{
+			Name: "kinetix_notary_proven_faults",
+			Help: "Faults the court holds against this notary's statements; NaN until the court is read.",
+		}),
 	}
 	for _, c := range []prometheus.Collector{
 		m.httpRequests,
@@ -122,11 +131,13 @@ func New(build Build) *Metrics {
 		m.runway,
 		m.ceilingHits,
 		m.leaseHeld,
+		m.faults,
 	} {
 		factory(c)
 	}
 
 	m.runway.Set(math.NaN())
+	m.faults.Set(math.NaN())
 
 	return m
 }
@@ -180,4 +191,8 @@ func (m *Metrics) Funds(balance *big.Int, meanCost uint64, runway time.Duration,
 
 func (m *Metrics) FeeCeilingHit() {
 	m.ceilingHits.Inc()
+}
+
+func (m *Metrics) ProvenFaults(total uint64) {
+	m.faults.Set(float64(total))
 }

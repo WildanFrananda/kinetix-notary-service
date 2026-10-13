@@ -11,9 +11,12 @@ forge build --silent
 forge inspect LiabilityLedger abi --json > "$WORK/LiabilityLedger.abi"
 forge inspect LiabilityLedger bytecode > "$WORK/LiabilityLedger.bin"
 forge inspect ILiabilityLedger abi --json > "$WORK/ILiabilityLedger.abi"
+forge inspect StatementCourt abi --json > "$WORK/StatementCourt.abi"
+forge inspect StatementCourt bytecode > "$WORK/StatementCourt.bin"
+forge inspect IStatementCourt abi --json > "$WORK/IStatementCourt.abi"
 
 rm -rf "$GEN"
-mkdir -p "$GEN/ledger" "$GEN/ledgerinterface"
+mkdir -p "$GEN/ledger" "$GEN/ledgerinterface" "$GEN/court" "$GEN/courtinterface"
 abigen --v2 \
   --abi "$WORK/LiabilityLedger.abi" \
   --bin "$WORK/LiabilityLedger.bin" \
@@ -25,5 +28,16 @@ abigen --v2 \
   --pkg ledgerinterface \
   --type ILiabilityLedger \
   --out "$GEN/ledgerinterface/iliability_ledger.go"
+abigen --v2 \
+  --abi "$WORK/StatementCourt.abi" \
+  --bin "$WORK/StatementCourt.bin" \
+  --pkg court \
+  --type StatementCourt \
+  --out "$GEN/court/statement_court.go"
+abigen --v2 \
+  --abi "$WORK/IStatementCourt.abi" \
+  --pkg courtinterface \
+  --type IStatementCourt \
+  --out "$GEN/courtinterface/istatement_court.go"
 
 echo "generated $GEN"

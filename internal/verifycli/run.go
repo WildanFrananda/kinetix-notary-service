@@ -53,6 +53,12 @@ func verify(ctx context.Context, claim notary.Claim, verifier ClaimVerifier, std
 		AnchoredAt: verification.Epoch.AnchoredAt.Time().Format(time.RFC3339),
 		Reason:     verification.Reason,
 	}
+	if verification.Check != 0 {
+		out.Court = verification.Court.Address.Hex()
+		out.Statement = verification.Check.String()
+		out.Faults = strconv.FormatUint(verification.Faults, 10)
+	}
+
 	if opening := verification.Opening; opening != nil {
 		out.Holder = opening.Holder.String()
 		out.Kind = opening.Kind.String()
@@ -61,6 +67,10 @@ func verify(ctx context.Context, claim notary.Claim, verifier ClaimVerifier, std
 
 	if verification.Verdict == notary.VerdictIncluded {
 		return emit(stdout, out, ExitIncluded)
+	}
+
+	if verification.Provable {
+		out.Provable = "bad_proof"
 	}
 
 	return emit(stdout, out, ExitRejected)
@@ -79,6 +89,8 @@ func failure(kind notary.Kind) (string, int) {
 		return "not_final", ExitNotFinal
 	case notary.KindWrongLedger:
 		return "wrong_ledger", ExitWrongLedger
+	case notary.KindWrongCourt:
+		return "wrong_court", ExitWrongCourt
 	case notary.KindDisagreement:
 		return "disagreement", ExitDisagreement
 	default:

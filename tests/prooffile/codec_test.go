@@ -159,3 +159,51 @@ func sampleClaim(t *testing.T) notary.Claim {
 
 	return claim
 }
+
+func TestAStatementSurvivesTheDocument(t *testing.T) {
+	_, claim := notarytest.AnchoredClaim(t, 7, 9, 4)
+	claim.Statement = &notary.StatementSignature{
+		Court:     notary.Address{0xc0, 0x07},
+		Signature: notary.Signature{0: 0xaa, 64: 27},
+	}
+
+	var buf bytes.Buffer
+	require.NoError(t, prooffile.Encode(&buf, claim, 1))
+
+	decoded, err := prooffile.Decode(strings.NewReader(buf.String()), 1)
+
+	require.NoError(t, err)
+	require.Equal(t, claim, decoded)
+	require.Contains(t, buf.String(), `"court": "0xc007000000000000000000000000000000000000"`)
+	require.Regexp(t, `"signature": "0xaa0{126}1b"`, buf.String())
+}
+
+func TestAProofWithoutAStatementStillDecodes(t *testing.T) {
+	claim, doc := encoded(t)
+
+	decoded, err := prooffile.Decode(strings.NewReader(doc), 1)
+
+	require.NoError(t, err)
+	require.Nil(t, decoded.Statement)
+	require.Equal(t, claim, decoded)
+	require.NotContains(t, doc, `"statement"`)
+}
+
+func TestABrokenStatementIsRefused(t *testing.T) {
+	_, doc := encoded(t)
+
+	cases := map[string]string{
+		"a short signature": `"statement": {"court": "0xc007000000000000000000000000000000000000", "signature": "0xaa"}`,
+		"a court that is not an address": `"statement": {"court": "0xc0", "signature": "0x` +
+			strings.Repeat("aa", 65) + `"}`,
+	}
+	for name, block := range cases {
+		t.Run(name, func(t *testing.T) {
+			broken := strings.Replace(doc, `"format":`, block+`, "format":`, 1)
+
+			_, err := prooffile.Decode(strings.NewReader(broken), 1)
+
+			require.Equal(t, notary.KindInvalidArgument, notary.KindOf(err))
+		})
+	}
+}

@@ -20,6 +20,8 @@ import (
 	"github.com/WildanFrananda/kinetix-notary-service/internal/metrics"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/notary"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/payment"
+	"github.com/WildanFrananda/kinetix-notary-service/internal/proving"
+	"github.com/WildanFrananda/kinetix-notary-service/internal/watching"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/wiring"
 )
 
@@ -34,6 +36,8 @@ type daemon struct {
 	Ledger  notary.Ledger
 	Chain   notary.AnchorChain
 	Runner  *anchoring.Runner
+	Prover  *proving.Prover
+	Watcher *watching.Watcher
 	Handler http.Handler
 }
 
@@ -90,6 +94,10 @@ func serve(ctx context.Context, log *slog.Logger, d daemon) error {
 		return err
 	}
 
+	if err := d.Prover.CheckCourt(ctx); err != nil {
+		return err
+	}
+
 	log.InfoContext(
 		ctx,
 		"notaryd starting",
@@ -101,6 +109,8 @@ func serve(ctx context.Context, log *slog.Logger, d daemon) error {
 		identity.Address.Hex(),
 		"anchorer",
 		d.Chain.Anchorer().Hex(),
+		"court",
+		d.Config.Chain.Court.Hex(),
 		"currency",
 		d.Config.Currency,
 		"epoch_interval",
@@ -126,6 +136,13 @@ func serve(ctx context.Context, log *slog.Logger, d daemon) error {
 		close(ran)
 	}()
 
+	watched := make(chan struct{})
+
+	go func() {
+		d.Watcher.Run(ctx)
+		close(watched)
+	}()
+
 	var failure error
 
 	select {
@@ -144,6 +161,7 @@ func serve(ctx context.Context, log *slog.Logger, d daemon) error {
 	_ = server.Shutdown(shutdown)
 
 	<-ran
+	<-watched
 	log.Info("notaryd stopped cleanly")
 
 	return failure

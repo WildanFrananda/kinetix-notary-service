@@ -7,12 +7,19 @@ import (
 )
 
 type Verifier struct {
-	ledger notary.Ledger
-	scheme notary.Scheme
+	ledger     notary.Ledger
+	scheme     notary.Scheme
+	statements notary.StatementScheme
+	court      notary.Court
 }
 
-func NewVerifier(ledger notary.Ledger, scheme notary.Scheme) *Verifier {
-	return &Verifier{ledger: ledger, scheme: scheme}
+func NewVerifier(
+	ledger notary.Ledger,
+	scheme notary.Scheme,
+	statements notary.StatementScheme,
+	court notary.Court,
+) *Verifier {
+	return &Verifier{ledger: ledger, scheme: scheme, statements: statements, court: court}
 }
 
 func (v *Verifier) Verify(ctx context.Context, claim notary.Claim) (notary.Verification, error) {
@@ -43,13 +50,18 @@ func (v *Verifier) Verify(ctx context.Context, claim notary.Claim) (notary.Verif
 
 	if opening := claim.Opening; opening != nil {
 		if v.scheme.Commitment(opening.Holder, opening.Kind, opening.Salt) != claim.Entry.Commitment {
-			return notary.Verification{
-				Verdict: notary.VerdictRejected,
-				Ledger:  identity,
-				Epoch:   epoch,
-				Reason:  "the account named in the proof does not open its commitment",
-				Opening: opening,
-			}, nil
+			return v.attest(
+				ctx,
+				claim,
+				notary.Verification{
+					Verdict: notary.VerdictRejected,
+					Ledger:  identity,
+					Epoch:   epoch,
+					Reason:  "the account named in the proof does not open its commitment",
+					Opening: opening,
+				},
+				false,
+			)
 		}
 	}
 
@@ -84,6 +96,83 @@ func (v *Verifier) Verify(ctx context.Context, claim notary.Claim) (notary.Verif
 	if local != nil {
 		verification.Verdict = notary.VerdictRejected
 		verification.Reason = local.Error()
+	}
+
+	return v.attest(ctx, claim, verification, local != nil)
+}
+
+func (v *Verifier) attest(
+	ctx context.Context,
+	claim notary.Claim,
+	verification notary.Verification,
+	inclusionRefused bool,
+) (notary.Verification, error) {
+	const op = "verifying.Verifier.attest"
+
+	court, err := v.court.Identity(ctx)
+	if err != nil {
+		return notary.Verification{}, err
+	}
+
+	faults, err := v.court.FaultCount(ctx, claim.Epoch)
+	if err != nil {
+		return notary.Verification{}, err
+	}
+
+	verification.Court = court
+	verification.Faults = faults
+	verification.Check = notary.StatementAbsent
+
+	sealed := claim.Statement
+	if sealed == nil {
+		return verification, nil
+	}
+
+	if sealed.Court != court.Address {
+		return notary.Verification{}, notary.Errf(
+			notary.KindWrongCourt,
+			op,
+			nil,
+			"the proof's statement was signed for the court %s, this verifier reads %s",
+			sealed.Court.Hex(),
+			court.Address.Hex(),
+		)
+	}
+
+	statement := notary.StatementOf(v.statements, claim)
+
+	onChain, err := v.court.StatementDigest(ctx, statement)
+	if err != nil {
+		return notary.Verification{}, err
+	}
+
+	if local := v.statements.StatementDigest(court, statement); local != onChain {
+		return notary.Verification{}, notary.Errf(
+			notary.KindDisagreement,
+			op,
+			nil,
+			"the court hashes the statement to %s, this verifier to %s",
+			onChain.Hex(),
+			local.Hex(),
+		)
+	}
+
+	signer, err := v.court.SignerOf(ctx, claim.Epoch)
+	if err != nil {
+		return notary.Verification{}, err
+	}
+
+	recovered, err := v.court.RecoverSigner(ctx, statement, sealed.Signature)
+	if err != nil {
+		return notary.Verification{}, err
+	}
+
+	verification.Signer = signer
+	verification.Check = notary.StatementUnattributable
+
+	if !signer.IsZero() && recovered == signer {
+		verification.Check = notary.StatementAttributable
+		verification.Provable = inclusionRefused
 	}
 
 	return verification, nil

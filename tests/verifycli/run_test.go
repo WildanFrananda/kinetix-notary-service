@@ -66,6 +66,46 @@ func TestAnIncludedClaimReportsTheEpochItWasCheckedAgainst(t *testing.T) {
 	require.Equal(t, "3", report["epoch"])
 	require.Equal(t, "2025-10-09T08:53:20Z", report["asOf"])
 	require.Equal(t, "2025-10-09T08:54:20Z", report["anchoredAt"])
+	require.Empty(t, report["statement"])
+	require.Empty(t, report["faults"])
+	require.Empty(t, report["provable"])
+}
+
+func TestTheReportCarriesTheStatementAndTheEpochsFaults(t *testing.T) {
+	path, epoch := proofFile(t)
+	verifier := stubVerifier{verification: notary.Verification{
+		Verdict: notary.VerdictIncluded,
+		Ledger:  notarytest.LedgerIdentity,
+		Epoch:   epoch,
+		Court:   notarytest.CourtIdentity,
+		Check:   notary.StatementAttributable,
+		Faults:  2,
+	}}
+
+	code, report := runWith(t, path, verifier)
+
+	require.Equal(t, verifycli.ExitIncluded, code)
+	require.Equal(t, "attributable", report["statement"])
+	require.Equal(t, "2", report["faults"])
+	require.Equal(t, notarytest.CourtIdentity.Address.Hex(), report["court"])
+}
+
+func TestASignedFalseProofTellsTheHolderItCanBeTakenToTheCourt(t *testing.T) {
+	path, epoch := proofFile(t)
+	verifier := stubVerifier{verification: notary.Verification{
+		Verdict:  notary.VerdictRejected,
+		Ledger:   notarytest.LedgerIdentity,
+		Epoch:    epoch,
+		Court:    notarytest.CourtIdentity,
+		Check:    notary.StatementAttributable,
+		Provable: true,
+		Reason:   "the proof sums to 9, epoch 3 holds 10",
+	}}
+
+	code, report := runWith(t, path, verifier)
+
+	require.Equal(t, verifycli.ExitRejected, code)
+	require.Equal(t, "bad_proof", report["provable"])
 }
 
 func TestARejectedClaimCarriesItsReason(t *testing.T) {
@@ -96,6 +136,7 @@ func TestEveryFailureHasItsOwnVerdictAndExitCode(t *testing.T) {
 		{notary.KindEpochNotFinal, "not_final", verifycli.ExitNotFinal},
 		{notary.KindLedgerUnavailable, "unknown", verifycli.ExitUnknown},
 		{notary.KindWrongLedger, "wrong_ledger", verifycli.ExitWrongLedger},
+		{notary.KindWrongCourt, "wrong_court", verifycli.ExitWrongCourt},
 		{notary.KindDisagreement, "disagreement", verifycli.ExitDisagreement},
 		{notary.KindUnknown, "unknown", verifycli.ExitUnknown},
 	}

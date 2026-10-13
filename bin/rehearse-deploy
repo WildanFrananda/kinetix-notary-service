@@ -1,0 +1,80 @@
+#!/usr/bin/env sh
+set -eu
+
+HERE="$(cd "$(dirname "$0")/.." && pwd)"
+PORT=8597
+RPC="http://127.0.0.1:$PORT"
+SENDER=0x70997970C51812dc3A010C7d01b50e0d17dc79C8
+
+WORK="$(mktemp -d)"
+cp -R "$HERE/contracts/." "$WORK"
+rm -rf "$WORK/broadcast" "$WORK/cache" "$WORK/out"
+
+trap 'if [ -f "$WORK/anvil.pid" ]; then kill "$(cat "$WORK/anvil.pid")" 2>/dev/null || true; fi; rm -rf "$WORK"' EXIT
+
+expect_create2() {
+  python3 - "$WORK/broadcast/$1/$2/run-latest.json" <<'PY'
+import json
+import sys
+
+factory = "0x4e59b44847b379578588920ca78fbf26c0b4956c"
+record = json.load(open(sys.argv[1]))
+sent = record["transactions"]
+kinds = [(tx["transactionType"], (tx["transaction"].get("to") or "").lower()) for tx in sent]
+
+if kinds != [("CREATE2", factory)]:
+    print(f"expected one CREATE2 through {factory}, the broadcast was {kinds}", file=sys.stderr)
+    sys.exit(1)
+
+print(record["returns"]["0"]["value"])
+PY
+}
+
+deployed_at() {
+  if [ "$(cast code "$1" --rpc-url "$RPC")" = "0x" ]; then
+    echo "the script returned $1 and nothing is there" >&2
+    exit 1
+  fi
+}
+
+for file in "$HERE"/deploy/*.env; do
+  network="$(basename "$file" .env)"
+  (
+    set -a
+    . "$file"
+    set +a
+
+    anvil --port "$PORT" --silent --chain-id "$KINETIX_NOTARY_CHAIN_ID" --auto-impersonate &
+    echo "$!" > "$WORK/anvil.pid"
+    until cast chain-id --rpc-url "$RPC" > /dev/null 2>&1; do
+      sleep 1
+    done
+
+    cd "$WORK"
+    forge script script/DeployLiabilityLedger.s.sol:DeployLiabilityLedger \
+      --rpc-url "$RPC" \
+      --unlocked \
+      --sender "$SENDER" \
+      --broadcast \
+      --slow > /dev/null
+    ledger="$(expect_create2 DeployLiabilityLedger.s.sol "$KINETIX_NOTARY_CHAIN_ID")"
+    deployed_at "$ledger"
+
+    KINETIX_NOTARY_LEDGER_ADDRESS="$ledger" forge script script/DeployStatementCourt.s.sol:DeployStatementCourt \
+      --rpc-url "$RPC" \
+      --unlocked \
+      --sender "$SENDER" \
+      --broadcast \
+      --slow > /dev/null
+    court="$(expect_create2 DeployStatementCourt.s.sol "$KINETIX_NOTARY_CHAIN_ID")"
+    deployed_at "$court"
+
+    if [ "$(cast call "$court" 'ledger()(address)' --rpc-url "$RPC")" != "$ledger" ]; then
+      echo "the rehearsed court at $court does not judge the rehearsed ledger $ledger" >&2
+      exit 1
+    fi
+
+    kill "$(cat "$WORK/anvil.pid")"
+    echo "$network (chain $KINETIX_NOTARY_CHAIN_ID): ledger $ledger and court $court, both through the CREATE2 factory"
+  )
+done

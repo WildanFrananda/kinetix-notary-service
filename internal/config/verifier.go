@@ -14,6 +14,7 @@ const (
 	RPCURLKey        = "KINETIX_NOTARY_RPC_URL"
 	ChainIDKey       = "KINETIX_NOTARY_CHAIN_ID"
 	LedgerAddressKey = "KINETIX_NOTARY_LEDGER_ADDRESS"
+	CourtAddressKey  = "KINETIX_NOTARY_COURT_ADDRESS"
 	RPCTimeoutKey    = "KINETIX_NOTARY_RPC_TIMEOUT"
 
 	maxRPCTimeout = 5 * time.Minute
@@ -22,6 +23,7 @@ const (
 type Verifier struct {
 	RPCURL     string
 	Ledger     notary.LedgerIdentity
+	Court      notary.Address
 	RPCTimeout time.Duration
 }
 
@@ -69,6 +71,15 @@ func LoadVerifier(lookup Lookup) (Verifier, error) {
 		}
 
 		cfg.Ledger.Address = address
+	}
+
+	if raw := read(CourtAddressKey); raw != "" {
+		address, err := notary.ParseAddress(raw)
+		if err != nil || address.IsZero() {
+			problems = append(problems, CourtAddressKey+" must be a non-zero 0x-prefixed 20-byte address")
+		}
+
+		cfg.Court = address
 	}
 
 	if raw := read(RPCTimeoutKey); raw != "" {

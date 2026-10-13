@@ -17,6 +17,7 @@ import (
 	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/stretchr/testify/require"
 
+	"github.com/WildanFrananda/kinetix-notary-service/internal/contractgen/court"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/contractgen/ledger"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/ethereum"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/keccak"
@@ -89,6 +90,40 @@ func (c *chain) deploy(t *testing.T) common.Address {
 	require.NoError(t, err)
 
 	return address
+}
+
+func (c *chain) deployCourt(t *testing.T, ledgerAddress common.Address, signer notary.Address) common.Address {
+	t.Helper()
+
+	input := court.NewStatementCourt().PackConstructor(
+		c.from,
+		big.NewInt(3600),
+		ledgerAddress,
+		common.Address(signer),
+		7*24*3600,
+	)
+	address, tx, err := bind.DeployContract(
+		c.transactor(),
+		common.FromHex(court.StatementCourtMetaData.Bin),
+		c.client,
+		input,
+	)
+	require.NoError(t, err)
+	_, err = bind.WaitDeployed(context.Background(), c.client, tx.Hash())
+	require.NoError(t, err)
+
+	return address
+}
+
+func (c *chain) courtAt(identity notary.LedgerIdentity, address common.Address) *ethereum.Court {
+	settings := ethereum.Settings{
+		RPCURL:  c.url,
+		Ledger:  identity,
+		Court:   notary.Address(address),
+		Timeout: 10 * time.Second,
+	}
+
+	return ethereum.NewCourt(c.client, settings)
 }
 
 func (c *chain) deployRaw(t *testing.T, initCode string) common.Address {
