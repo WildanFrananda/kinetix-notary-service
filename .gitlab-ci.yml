@@ -19,7 +19,18 @@ secret-scan:
 build-image:
   extends: .build-image
 
-verify:
+verify-contracts:
+  image: golang:1.26-bookworm@sha256:d9c68c2c51161e12fd77e4c6320687c9cd86e1af1e3ad6e6cd63ff970641453c
+  stage: test
+  script:
+    - apt-get update -qq && apt-get install -y -qq --no-install-recommends python3-venv xz-utils
+    - sh bin/install-toolchain /usr/local/bin foundry analysis
+    - sh bin/ci-contracts
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+verify-go:
   image: golang:1.26-bookworm@sha256:d9c68c2c51161e12fd77e4c6320687c9cd86e1af1e3ad6e6cd63ff970641453c
   stage: test
   services:
@@ -30,8 +41,8 @@ verify:
         POSTGRES_DB: notary_test
         POSTGRES_HOST_AUTH_METHOD: trust
   script:
-    - apt-get update -qq && apt-get install -y -qq --no-install-recommends python3-venv unzip xz-utils
-    - sh bin/install-toolchain /usr/local/bin foundry abigen protobuf sqlc lint analysis
+    - apt-get update -qq && apt-get install -y -qq --no-install-recommends unzip
+    - sh bin/install-toolchain /usr/local/bin foundry abigen protobuf sqlc lint
     - anvil --host 127.0.0.1 --port 8545 --chain-id 31337 > anvil.log 2>&1 &
     - |
       for i in $(seq 1 30); do
@@ -41,7 +52,7 @@ verify:
         sleep 1
         if [ "$i" = "30" ]; then cat anvil.log; exit 1; fi
       done
-    - sh bin/ci
+    - sh bin/ci-go
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH

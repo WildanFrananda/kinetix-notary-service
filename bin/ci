@@ -7,33 +7,5 @@ cd "$HERE"
 : "${KINETIX_NOTARY_TEST_RPC_URL:?bin/ci needs a node: run it as bin/dev bin/ci, or start anvil and set KINETIX_NOTARY_TEST_RPC_URL}"
 : "${KINETIX_NOTARY_TEST_DATABASE_URL:?bin/ci needs Postgres: run it as bin/dev bin/ci, or set KINETIX_NOTARY_TEST_DATABASE_URL}"
 
-echo "== contracts"
-(
-  cd contracts
-  forge soldeer install
-  forge fmt --check
-  forge build --sizes
-  FOUNDRY_PROFILE=ci forge test
-  forge snapshot --check --match-contract LiabilityLedgerTest
-)
-
-echo "== static analysis"
-sh bin/analyze
-
-echo "== generated code"
-sh bin/generate
-
-echo "== go"
-unformatted="$(gofmt -l cmd internal tests)"
-if [ -n "$unformatted" ]; then
-  echo "gofmt would rewrite:"
-  echo "$unformatted"
-  exit 1
-fi
-go mod verify
-go vet ./...
-sh bin/check-boundaries
-go run ./tools/arglayout ./cmd ./internal ./tests ./tools
-golangci-lint fmt --diff ./...
-golangci-lint run ./...
-sh bin/test
+sh bin/ci-contracts
+sh bin/ci-go

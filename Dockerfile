@@ -8,7 +8,8 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 COPY bin/install-toolchain /tmp/install-toolchain
-RUN sh /tmp/install-toolchain /usr/local/bin foundry abigen protobuf sqlc
+RUN sh /tmp/install-toolchain /usr/local/bin foundry abigen protobuf sqlc \
+    && go clean -cache -modcache
 
 WORKDIR /src
 
@@ -21,7 +22,8 @@ RUN cd contracts && forge soldeer install
 COPY . .
 
 ARG VERSION=unknown
-RUN sh bin/generate \
+RUN --mount=type=cache,target=/root/.cache/go-build \
+    sh bin/generate \
     && sh bin/check-boundaries \
     && go build -trimpath -ldflags="-s -w -X main.version=${VERSION}" -o /out/notaryd ./cmd/notaryd \
     && go build -trimpath -ldflags="-s -w" -o /out/notary-migrate ./cmd/notary-migrate \

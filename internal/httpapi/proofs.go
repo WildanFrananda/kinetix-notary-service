@@ -88,10 +88,21 @@ func (h *ProofHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 func (h *ProofHandler) fail(w http.ResponseWriter, r *http.Request, err error) {
 	status, code := statusOf(notary.KindOf(err))
-	message := err.Error()
+	message := notary.MessageOf(err)
+
+	if message == "" {
+		message = http.StatusText(status)
+	}
 
 	if status >= http.StatusInternalServerError {
-		h.log.ErrorContext(r.Context(), "a proof request failed", "kind", notary.KindOf(err).String(), "err", message)
+		h.log.ErrorContext(
+			r.Context(),
+			"a proof request failed",
+			"kind",
+			notary.KindOf(err).String(),
+			"err",
+			err.Error(),
+		)
 
 		message = "the proofs could not be produced"
 		if status == http.StatusServiceUnavailable {

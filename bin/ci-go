@@ -1,0 +1,31 @@
+#!/usr/bin/env sh
+set -eu
+
+HERE="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$HERE"
+
+: "${KINETIX_NOTARY_TEST_RPC_URL:?bin/ci-go needs a node: run it through bin/dev, or start anvil and set KINETIX_NOTARY_TEST_RPC_URL}"
+: "${KINETIX_NOTARY_TEST_DATABASE_URL:?bin/ci-go needs Postgres: run it through bin/dev, or set KINETIX_NOTARY_TEST_DATABASE_URL}"
+
+echo "== generated code"
+(
+  cd contracts
+  forge soldeer install
+)
+sh bin/generate
+
+echo "== go"
+unformatted="$(gofmt -l cmd internal tests)"
+if [ -n "$unformatted" ]; then
+  echo "gofmt would rewrite:"
+  echo "$unformatted"
+  exit 1
+fi
+
+go mod verify
+go vet ./...
+sh bin/check-boundaries
+go run ./tools/arglayout ./cmd ./internal ./tests ./tools
+golangci-lint fmt --diff ./...
+golangci-lint run ./...
+sh bin/test

@@ -545,9 +545,9 @@ lab question was answered the same day: anvil with a ledger of its own (step 5, 
   rules for the three alerts, CD dispatch. Then the first epoch on Base Sepolia, once the anchorer is
   funded.
 
-### Step 5 — the proof API
+### Step 5 — the proof API. **Live 2026-10-13** (notary v0.3.0, gateway v1.0.0).
 
-**Code built 2026-10-12, `bin/ci` green (coverage 86.5%); not deployed.** `GET
+**Built 2026-10-12, deployed 2026-10-13 (v0.3.0).** `GET
 /api/v1/proofs/liabilities/{epoch|latest}` on notaryd's HTTP port: identity's RS256 access token
 (JWKS, issuer, audience, `token_use=access`), `sub` is the holder, and only that holder's accounts are
 proven. The rebuilt tree must reproduce the anchored root or nothing is served. 404 unknown, 409 not
@@ -555,22 +555,28 @@ final, 410 abandoned, 503 store unreachable. Each document carries `account` (ho
 `notary-verify` checks the account opens the commitment and verifies a whole API response. JWKS
 refresh is limited to once per 10 s and never waits more than 100 ms (a forged `kid` held a request
 10 s under keyfunc's default — measured). No gRPC `ProofService` until a service needs one.
-**Estate pieces written 2026-10-12, not yet committed:** the Kong route `notary-proofs-route`
-(`GET /api/v1/proofs`, the jwt plugin, `kinetix-api-gateway/config/gateway.pkl`); the notary's
-environment moved to one `x-notary-env` block in `compose.yaml`, so prod's override carries the JWT
-issuer like every other service; and the lab.
+**Live 2026-10-13:** notary v0.3.0 and the gateway's `notary-proofs-route` (v1.0.0) deployed after
+infrastructure moved the notary's environment into one `x-notary-env` block, so production carries
+the JWT issuer like every other service. From outside: no token and a malformed token are refused by
+Kong with 401, `POST` finds no route.
 
 **Lab** (the user's choice of 2026-10-12, `kinetix-infrastructure/docs/NOTARY-LAB.md`): anvil on chain
 31337 with a block every 5 s, and a ledger deployed by a one-shot container through the canonical
 CREATE2 factory at a fixed address, `0xF049C3811184CE357Ef1ba3FF4EcfA623f1f1d78`, anchorer anvil's
-first default account. Rehearsed twice on a throwaway network: the first run deploys and checks the
-address and the role, the second finds it and does nothing. The deployer runs as root, because Docker
-creates the solc volume owned by root and the image's own user cannot write it.
+first default account. **Proven end to end on 2026-10-13**: a customer registered through Kong, their
+wallet opened by payment's real balance read, epoch 0 built with that one account, anchored, final,
+fetched through Kong with the customer's token and verified `included` by `notary-verify` against the
+lab chain. Negative controls: the holder changed → `rejected`; chain 84532 configured → `wrong_ledger`;
+a second customer → an empty `proofs` list. Every status seen through Kong: 404 no final epoch,
+409 epoch 0 submitted, 404 epoch never built, 400 `abc`, 401 no token or an expired one.
 
-**Left:** three dev secrets (the lab doc lists them), then the release order — infrastructure, then a
-notary release (step 5 refuses to start without the JWT settings infrastructure now supplies), then
-the gateway — and `route_conformance` against the lab.
+**Found by that run, fixed, not yet released:** a 4xx body carried the whole error chain —
+`proving.Prover.resolve: epoch_not_anchored: …`, and for a refused token the JWT library's own reason.
+`notary.Error` now keeps its sentence apart from its cause, and the API sends only the sentence
+(`notary.MessageOf`); `Error()` reads exactly as before, so logs are unchanged. The HTTP test pins
+every public message and went red against the old code.
 
+**Left:** a notary release carrying that fix and the split CI gate.
 
 `notary.v1.ProofService` over gRPC and `GET /api/v1/proofs/liabilities/{epoch}` through Kong. The
 caller's principal comes from identity's token; a principal receives the proofs for its own accounts

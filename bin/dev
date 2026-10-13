@@ -14,8 +14,12 @@ case "${1:-}" in
     ;;
 esac
 
-$COMPOSE build --quiet toolchain >&2
+if [ "${KINETIX_NOTARY_TOOLCHAIN_PREBUILT:-}" != "1" ]; then
+  $COMPOSE build --quiet toolchain >&2
+fi
+
 if [ -t 0 ] && [ -t 1 ]; then
   exec $COMPOSE run --rm toolchain "$@"
 fi
+
 exec $COMPOSE run --rm -T toolchain "$@"

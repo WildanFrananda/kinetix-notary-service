@@ -6,31 +6,34 @@ import (
 )
 
 type Error struct {
-	Kind Kind
-	Op   string
-	Err  error
+	Kind    Kind
+	Op      string
+	Message string
+	Err     error
 }
 
 func (e *Error) Error() string {
-	if e.Err == nil {
-		return fmt.Sprintf("%s: %s", e.Op, e.Kind)
+	text := fmt.Sprintf("%s: %s", e.Op, e.Kind)
+	if e.Message != "" {
+		text += ": " + e.Message
 	}
 
-	return fmt.Sprintf("%s: %s: %v", e.Op, e.Kind, e.Err)
+	if e.Err != nil {
+		text += fmt.Sprintf(": %v", e.Err)
+	}
+
+	return text
 }
 
 func (e *Error) Unwrap() error { return e.Err }
 
 func Errf(kind Kind, op string, cause error, format string, args ...any) *Error {
-	if format == "" {
-		return &Error{Kind: kind, Op: op, Err: cause}
+	message := ""
+	if format != "" {
+		message = fmt.Sprintf(format, args...)
 	}
 
-	if cause == nil {
-		return &Error{Kind: kind, Op: op, Err: fmt.Errorf(format, args...)}
-	}
-
-	return &Error{Kind: kind, Op: op, Err: fmt.Errorf(format+": %w", append(args, cause)...)}
+	return &Error{Kind: kind, Op: op, Message: message, Err: cause}
 }
 
 func KindOf(err error) Kind {
@@ -40,4 +43,21 @@ func KindOf(err error) Kind {
 	}
 
 	return KindUnknown
+}
+
+func MessageOf(err error) string {
+	for err != nil {
+		var e *Error
+		if !errors.As(err, &e) {
+			return ""
+		}
+
+		if e.Message != "" {
+			return e.Message
+		}
+
+		err = e.Err
+	}
+
+	return ""
 }

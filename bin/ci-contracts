@@ -1,0 +1,18 @@
+#!/usr/bin/env sh
+set -eu
+
+HERE="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$HERE"
+
+echo "== contracts"
+(
+  cd contracts
+  forge soldeer install
+  forge fmt --check
+  forge build --sizes
+  FOUNDRY_PROFILE=ci forge test
+  forge snapshot --check --match-contract LiabilityLedgerTest
+)
+
+echo "== static analysis"
+sh bin/analyze
