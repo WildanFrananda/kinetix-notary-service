@@ -671,7 +671,7 @@ exports `totalFaults()` as a gauge, so a proven fault reaches Grafana.
 - **6a-6** the estate: `bin/deploy-court`, `bin/inspect-court`, `bin/new-statement-key`, the lab court,
   compose, the Grafana rule. Then the court on Base Sepolia, by the user's keystore.
 
-**Status, 2026-10-13: 6a-1 to 6a-6 built and green; the production court is deployed.**
+**Status, 2026-10-13: 6a is live. v0.4.0 signs every proof in production, proven end to end.**
 `bin/ci-contracts`: 104 tests on the CI profile (court: 30 unit, 5 fuzz at 20 000 runs, 5 invariants over
 16 384 calls, 2 differential, 7 deploy), 4 fork tests at Base Sepolia block 48046426, Slither 0, Aderyn
 nothing new. `bin/ci-go`: coverage 86.4%, the anvil suite included. What each part proved:
@@ -710,8 +710,13 @@ fails unless the broadcast is one CREATE2 through the factory. The old ledger sc
 it red; a mutated address formula turned the deploy suites red. The lab addresses did not move: the same
 init code and salt through the same factory land where they always did.
 
-**Left for 6a:** a release with the production compose lines (`kinetix-infrastructure`, done
-2026-10-13). **6b** — pushing statements to holders — is notification's work.
+**Released 2026-10-13 as v0.4.0.** notaryd started against the court. A fresh customer's proof from
+epoch 20, fetched through Kong, carried a statement that `notary-verify` reported `attributable` with
+0 faults, and one changed signature byte made it `not_attributable`
+(`kinetix-infrastructure/docs/NOTARY-COURT-DEPLOY.md`). The same check found that production's
+Prometheus had never scraped the notary, so the stall, abandon, runway and proven-fault rules had been
+silent since step 4. That is fixed in infrastructure, and `bin/prod-deploy` now refuses a service that
+Prometheus does not scrape. **6b**, pushing statements to holders, is notification's work.
 
 #### Step 7 — withholding (`StatementCourt`, part 2)
 

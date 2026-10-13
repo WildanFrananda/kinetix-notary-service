@@ -280,7 +280,6 @@ A failure must never be reported as a definite answer. In this service that mean
 
 Steps 1–5 are done: contracts v1.0.23, payment v0.1.11, notaryd v0.2.0 anchoring on Base Sepolia, and
 the proof API (v0.3.0, gateway v1.0.0) live and proven end to end in the lab on 2026-10-13. Step 6a —
-the statement court and a signed statement on every proof — is built and green, and the production
-court is deployed (`0xE1Ffcb004Dd734F83ED0B194fdaFF5B0c7c5927B`, 2026-10-13); the release that makes
-notaryd sign is next. 6b (delivery through notification) and steps 7–14 do not exist yet. Contract
+the statement court and a signed statement on every proof — is live: the production court
+`0xE1Ffcb004Dd734F83ED0B194fdaFF5B0c7c5927B` and notaryd v0.4.0, proven in production on 2026-10-13. 6b (delivery through notification) and steps 7–14 do not exist yet. Contract
 deploys stay manual, never in CI.
