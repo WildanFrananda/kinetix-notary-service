@@ -1,15 +1,18 @@
 package integration_test
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -31,6 +34,7 @@ import (
 	"github.com/WildanFrananda/kinetix-notary-service/internal/postgres"
 	commonv1 "github.com/WildanFrananda/kinetix-notary-service/internal/protogen/common/v1"
 	paymentv1 "github.com/WildanFrananda/kinetix-notary-service/internal/protogen/payment/v1"
+	"github.com/WildanFrananda/kinetix-notary-service/internal/verifycli"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/verifying"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/wiring"
 	"github.com/WildanFrananda/kinetix-notary-service/tests/notarytest"
@@ -39,14 +43,15 @@ import (
 const databaseURLKey = "KINETIX_NOTARY_TEST_DATABASE_URL"
 
 type estate struct {
-	chain   *chain
-	ledger  notary.LedgerIdentity
-	dbURL   string
-	pool    *pgxpool.Pool
-	payment *notarytest.LiabilityServer
-	values  map[string]string
-	mu      sync.Mutex
-	now     time.Time
+	chain    *chain
+	ledger   notary.LedgerIdentity
+	dbURL    string
+	pool     *pgxpool.Pool
+	payment  *notarytest.LiabilityServer
+	identity *notarytest.Identity
+	values   map[string]string
+	mu       sync.Mutex
+	now      time.Time
 }
 
 type running struct {
@@ -78,6 +83,8 @@ func newEstate(t *testing.T) *estate {
 
 	e.pool = pool
 
+	e.identity = notarytest.NewIdentity(t)
+
 	pki := notarytest.NewPKI(t)
 	e.payment = &notarytest.LiabilityServer{Script: e.snapshot}
 	address := notarytest.ServeLiabilities(t, pki.Issue(t, "kinetix.local", "payment"), e.payment)
@@ -93,6 +100,9 @@ func newEstate(t *testing.T) *estate {
 		config.CurrencyKey:       "IDR",
 		config.MaxFeeKey:         "1000000000000",
 		config.HTTPPortKey:       "18010",
+		config.JWKSURLKey:        e.identity.URL,
+		config.JWTIssuerKey:      notarytest.IdentityIssuer,
+		config.JWTAudienceKey:    notarytest.IdentityAudience,
 	}
 
 	return e
@@ -346,4 +356,60 @@ func TestADaemonThatDiesMidEpochIsFinishedByTheNextWithoutASecondTransaction(t *
 	var holder string
 	require.NoError(t, e.pool.QueryRow(ctx, "SELECT holder FROM writer_lease").Scan(&holder))
 	require.NotEmpty(t, holder)
+}
+
+func (e *estate) proofs(t *testing.T, r running, epoch, subject string) *httptest.ResponseRecorder {
+	t.Helper()
+
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/proofs/liabilities/"+epoch, nil)
+	request.Header.Set("Authorization", "Bearer "+e.identity.Token(t, subject))
+
+	response := httptest.NewRecorder()
+	r.Handler.ServeHTTP(response, request)
+
+	return response
+}
+
+func TestAnAccountHolderFetchesTheirProofAndTheChainConfirmsIt(t *testing.T) {
+	e := newEstate(t)
+	r := e.start(t)
+
+	require.Equal(t, http.StatusNotFound, e.proofs(t, r, "latest", "principal-3").Code)
+
+	e.tickUntil(t, r, 0, "mined")
+	require.Equal(t, http.StatusConflict, e.proofs(t, r, "0", "principal-3").Code)
+
+	e.chain.finalize(t)
+	e.tickUntil(t, r, 0, "finalized")
+
+	response := e.proofs(t, r, "latest", "principal-3")
+	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+
+	path := filepath.Join(t.TempDir(), "proofs.json")
+	require.NoError(t, os.WriteFile(path, response.Body.Bytes(), 0o600))
+
+	var out bytes.Buffer
+
+	code := verifycli.Run(context.Background(), path, keccak.NewScheme().Version(), r.Verifier, &out)
+	require.Equal(t, verifycli.ExitIncluded, code, out.String())
+
+	var report map[string]string
+	require.NoError(t, json.Unmarshal(bytes.TrimSpace(out.Bytes()), &report))
+	require.Equal(t, "included", report["verdict"])
+	require.Equal(t, "principal-3", report["holder"])
+	require.Equal(t, "driver_available", report["kind"])
+	require.Equal(t, "4000000", report["amount"])
+
+	stranger := e.proofs(t, r, "0", "nobody-at-all")
+	require.Equal(t, http.StatusOK, stranger.Code)
+	require.Contains(t, stranger.Body.String(), `"proofs":[]`)
+
+	require.Equal(t, http.StatusNotFound, e.proofs(t, r, "1", "principal-3").Code)
+
+	forged := httptest.NewRequest(http.MethodGet, "/api/v1/proofs/liabilities/latest", nil)
+	forged.Header.Set("Authorization", "Bearer "+e.identity.Stranger(t, "principal-3"))
+
+	refused := httptest.NewRecorder()
+	r.Handler.ServeHTTP(refused, forged)
+	require.Equal(t, http.StatusUnauthorized, refused.Code)
 }

@@ -21,6 +21,9 @@ const (
 	EpochIntervalKey   = "KINETIX_NOTARY_EPOCH_INTERVAL"
 	TickKey            = "KINETIX_NOTARY_TICK"
 	SnapshotTimeoutKey = "KINETIX_NOTARY_SNAPSHOT_TIMEOUT"
+	JWKSURLKey         = "IDENTITY_JWKS_URL"
+	JWTIssuerKey       = "JWT_ISSUER"
+	JWTAudienceKey     = "JWT_AUDIENCE"
 
 	defaultTrustDomain     = "kinetix.local"
 	defaultEpochInterval   = time.Hour
@@ -41,6 +44,9 @@ type Daemon struct {
 	EpochInterval   time.Duration
 	Tick            time.Duration
 	SnapshotTimeout time.Duration
+	JWKSURL         string
+	JWTIssuer       string
+	JWTAudience     string
 }
 
 func LoadDaemon(lookup Lookup) (Daemon, error) {
@@ -145,6 +151,18 @@ func LoadDaemon(lookup Lookup) (Daemon, error) {
 	cfg.EpochInterval = duration(EpochIntervalKey, defaultEpochInterval, time.Minute, 24*time.Hour)
 	cfg.Tick = duration(TickKey, defaultTick, time.Second, 5*time.Minute)
 	cfg.SnapshotTimeout = duration(SnapshotTimeoutKey, defaultSnapshotTimeout, 10*time.Second, 30*time.Minute)
+
+	if raw := required(JWKSURLKey); raw != "" {
+		parsed, err := url.Parse(raw)
+		if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" {
+			problems = append(problems, JWKSURLKey+" must be an http or https URL with a host")
+		}
+
+		cfg.JWKSURL = raw
+	}
+
+	cfg.JWTIssuer = required(JWTIssuerKey)
+	cfg.JWTAudience = required(JWTAudienceKey)
 
 	if len(problems) > 0 {
 		return Daemon{}, errors.New("configuration refused: " + strings.Join(problems, "; "))

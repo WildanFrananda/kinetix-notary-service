@@ -134,3 +134,52 @@ func receiptOf(op string, hash notary.Digest, block, gasUsed, price, l1Fee *int6
 		L1FeeWei:          values[3],
 	}, nil
 }
+
+func accountOf(op string, row storegen.EpochAccountsRow) (notary.Account, error) {
+	position, err := unsigned(op, row.Position)
+	if err != nil {
+		return notary.Account{}, err
+	}
+
+	amount, err := unsigned(op, row.Amount)
+	if err != nil {
+		return notary.Account{}, err
+	}
+
+	holder, err := notary.NewHolder(row.Holder)
+	if err != nil {
+		return notary.Account{}, notary.Errf(notary.KindStoreUnavailable, op, err, "")
+	}
+
+	if row.Kind < 0 || row.Kind > 255 {
+		return notary.Account{}, notary.Errf(
+			notary.KindStoreUnavailable,
+			op,
+			nil,
+			"the database holds kind %d",
+			row.Kind,
+		)
+	}
+
+	kind, err := notary.AccountKindOf(uint8(row.Kind))
+	if err != nil {
+		return notary.Account{}, notary.Errf(notary.KindStoreUnavailable, op, err, "")
+	}
+
+	salt, err := digestOf(op, row.Salt)
+	if err != nil {
+		return notary.Account{}, err
+	}
+
+	commitment, err := digestOf(op, row.Commitment)
+	if err != nil {
+		return notary.Account{}, err
+	}
+
+	return notary.Account{
+		Position:   position,
+		Liability:  notary.Liability{Holder: holder, Kind: kind, Amount: amount},
+		Salt:       notary.Salt(salt),
+		Commitment: commitment,
+	}, nil
+}

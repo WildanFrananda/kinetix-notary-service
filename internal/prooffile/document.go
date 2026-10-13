@@ -10,9 +10,16 @@ type document struct {
 	Amount     string    `json:"amount"`
 	Index      string    `json:"index"`
 	Siblings   []sibling `json:"siblings"`
+	Account    *account  `json:"account,omitempty"`
 }
 
 type sibling struct {
 	Hash string `json:"hash"`
 	Sum  string `json:"sum"`
+}
+
+type account struct {
+	Holder string `json:"holder"`
+	Kind   string `json:"kind"`
+	Salt   string `json:"salt"`
 }

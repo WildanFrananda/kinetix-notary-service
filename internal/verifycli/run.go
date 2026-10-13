@@ -20,11 +20,24 @@ func Run(ctx context.Context, path string, scheme uint16, verifier ClaimVerifier
 	}
 	defer func() { _ = file.Close() }()
 
-	claim, err := prooffile.Decode(file, scheme)
+	claims, err := prooffile.DecodeAll(file, scheme)
 	if err != nil {
 		return emit(stdout, report{Verdict: "malformed_proof", Reason: err.Error()}, ExitMalformedProof)
 	}
 
+	worst := ExitIncluded
+
+	for _, claim := range claims {
+		code := verify(ctx, claim, verifier, stdout)
+		if worst == ExitIncluded {
+			worst = code
+		}
+	}
+
+	return worst
+}
+
+func verify(ctx context.Context, claim notary.Claim, verifier ClaimVerifier, stdout io.Writer) int {
 	verification, err := verifier.Verify(ctx, claim)
 	if err != nil {
 		return Fail(stdout, err)
@@ -40,6 +53,12 @@ func Run(ctx context.Context, path string, scheme uint16, verifier ClaimVerifier
 		AnchoredAt: verification.Epoch.AnchoredAt.Time().Format(time.RFC3339),
 		Reason:     verification.Reason,
 	}
+	if opening := verification.Opening; opening != nil {
+		out.Holder = opening.Holder.String()
+		out.Kind = opening.Kind.String()
+		out.Amount = strconv.FormatUint(claim.Entry.Amount, 10)
+	}
+
 	if verification.Verdict == notary.VerdictIncluded {
 		return emit(stdout, out, ExitIncluded)
 	}

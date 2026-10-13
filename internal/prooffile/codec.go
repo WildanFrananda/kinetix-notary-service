@@ -1,6 +1,7 @@
 package prooffile
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -13,6 +14,8 @@ import (
 const Format = "kinetix.notary.inclusion.v1"
 
 const maxDocumentBytes = 64 << 10
+
+const maxBundleBytes = 4 << 20
 
 func Decode(r io.Reader, scheme uint16) (notary.Claim, error) {
 	const op = "prooffile.Decode"
@@ -80,6 +83,81 @@ func Decode(r io.Reader, scheme uint16) (notary.Claim, error) {
 }
 
 func Encode(w io.Writer, claim notary.Claim, scheme uint16) error {
+	encoder := json.NewEncoder(w)
+	encoder.SetIndent("", "  ")
+
+	if err := encoder.Encode(documentOf(claim, scheme)); err != nil {
+		return fmt.Errorf("encode proof document: %w", err)
+	}
+
+	return nil
+}
+
+func Marshal(claim notary.Claim, scheme uint16) (json.RawMessage, error) {
+	raw, err := json.Marshal(documentOf(claim, scheme))
+	if err != nil {
+		return nil, fmt.Errorf("encode proof document: %w", err)
+	}
+
+	return raw, nil
+}
+
+func DecodeAll(r io.Reader, scheme uint16) ([]notary.Claim, error) {
+	const op = "prooffile.DecodeAll"
+
+	raw, err := io.ReadAll(io.LimitReader(r, maxBundleBytes+1))
+	if err != nil {
+		return nil, notary.Errf(notary.KindInvalidArgument, op, err, "reading the proof")
+	}
+
+	if len(raw) > maxBundleBytes {
+		return nil, notary.Errf(
+			notary.KindInvalidArgument,
+			op,
+			nil,
+			"the proof is larger than %d bytes",
+			maxBundleBytes,
+		)
+	}
+
+	var probe map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &probe); err != nil {
+		return nil, notary.Errf(notary.KindInvalidArgument, op, err, "the proof is not a JSON object")
+	}
+
+	proofs, isBundle := probe["proofs"]
+	if !isBundle {
+		claim, err := Decode(bytes.NewReader(raw), scheme)
+		if err != nil {
+			return nil, err
+		}
+
+		return []notary.Claim{claim}, nil
+	}
+
+	var documents []json.RawMessage
+	if err := json.Unmarshal(proofs, &documents); err != nil {
+		return nil, notary.Errf(notary.KindInvalidArgument, op, err, "proofs is not a list")
+	}
+
+	if len(documents) == 0 {
+		return nil, notary.Errf(notary.KindInvalidArgument, op, nil, "the bundle carries no proof")
+	}
+
+	claims := make([]notary.Claim, 0, len(documents))
+	for i, doc := range documents {
+		claim, err := Decode(bytes.NewReader(doc), scheme)
+		if err != nil {
+			return nil, notary.Errf(notary.KindInvalidArgument, op, err, "proof %d", i)
+		}
+
+		claims = append(claims, claim)
+	}
+
+	return claims, nil
+}
+
+func documentOf(claim notary.Claim, scheme uint16) document {
 	doc := document{
 		Format:     Format,
 		Scheme:     scheme,
@@ -95,14 +173,15 @@ func Encode(w io.Writer, claim notary.Claim, scheme uint16) error {
 		doc.Siblings[i] = sibling{Hash: node.Hash.Hex(), Sum: strconv.FormatUint(node.Sum, 10)}
 	}
 
-	encoder := json.NewEncoder(w)
-	encoder.SetIndent("", "  ")
-
-	if err := encoder.Encode(doc); err != nil {
-		return fmt.Errorf("encode proof document: %w", err)
+	if opening := claim.Opening; opening != nil {
+		doc.Account = &account{
+			Holder: opening.Holder.String(),
+			Kind:   opening.Kind.String(),
+			Salt:   opening.Salt.Hex(),
+		}
 	}
 
-	return nil
+	return doc
 }
 
 func (d document) claim() (notary.Claim, error) {
@@ -134,6 +213,15 @@ func (d document) claim() (notary.Claim, error) {
 		return notary.Claim{}, err
 	}
 
+	if d.Account != nil {
+		opening, err := d.Account.opening()
+		if err != nil {
+			return notary.Claim{}, err
+		}
+
+		claim.Opening = &opening
+	}
+
 	claim.Proof.Siblings = make([]notary.Node, len(d.Siblings))
 	for i, s := range d.Siblings {
 		if claim.Proof.Siblings[i].Hash, err = notary.ParseDigest(s.Hash); err != nil {
@@ -155,4 +243,23 @@ func number(field, text string) (uint64, error) {
 	}
 
 	return value, nil
+}
+
+func (a account) opening() (notary.Opening, error) {
+	holder, err := notary.NewHolder(a.Holder)
+	if err != nil {
+		return notary.Opening{}, fmt.Errorf("account holder: %w", err)
+	}
+
+	kind, err := notary.AccountKindNamed(a.Kind)
+	if err != nil {
+		return notary.Opening{}, fmt.Errorf("account kind: %w", err)
+	}
+
+	salt, err := notary.ParseSalt(a.Salt)
+	if err != nil {
+		return notary.Opening{}, fmt.Errorf("account salt: %w", err)
+	}
+
+	return notary.Opening{Holder: holder, Kind: kind, Salt: salt}, nil
 }

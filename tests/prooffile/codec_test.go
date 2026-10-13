@@ -85,3 +85,77 @@ func TestAnOversizedDocumentIsRefused(t *testing.T) {
 
 	requireMalformed(t, strings.Replace(doc, `"format"`, strings.Repeat(" ", 70<<10)+`"format"`, 1))
 }
+
+func TestAnAccountOpeningSurvivesTheDocument(t *testing.T) {
+	claim := sampleClaim(t)
+	claim.Opening = &notary.Opening{
+		Holder: notarytest.Holder(t, "9f1d4a3e-1c62-4d0a-9a7b-2f5c8e0b41d7"),
+		Kind:   notary.AccountDriverPendingEscrow,
+		Salt:   notary.Salt{0x77, 0x01},
+	}
+
+	raw, err := prooffile.Marshal(claim, 1)
+	require.NoError(t, err)
+	require.Contains(t, string(raw), `"kind":"driver_pending_escrow"`)
+
+	decoded, err := prooffile.DecodeAll(bytes.NewReader(raw), 1)
+	require.NoError(t, err)
+	require.Equal(t, []notary.Claim{claim}, decoded)
+}
+
+func TestABundleFromTheAPIDecodesEveryProof(t *testing.T) {
+	first := sampleClaim(t)
+	second := sampleClaim(t)
+	second.Proof.Index = 0
+
+	a, err := prooffile.Marshal(first, 1)
+	require.NoError(t, err)
+	b, err := prooffile.Marshal(second, 1)
+	require.NoError(t, err)
+
+	body := `{"epoch":"3","proofs":[` + string(a) + `,` + string(b) + `]}`
+
+	claims, err := prooffile.DecodeAll(strings.NewReader(body), 1)
+	require.NoError(t, err)
+	require.Equal(t, []notary.Claim{first, second}, claims)
+}
+
+func TestABrokenAccountOrBundleIsRefused(t *testing.T) {
+	good, err := prooffile.Marshal(sampleClaim(t), 1)
+	require.NoError(t, err)
+
+	withAccount := func(account string) string {
+		return strings.Replace(string(good), `"siblings"`, `"account":`+account+`,"siblings"`, 1)
+	}
+
+	cases := map[string]string{
+		"empty bundle":      `{"proofs":[]}`,
+		"proofs not a list": `{"proofs":{}}`,
+		"not json":          `proofs`,
+		"bad holder": withAccount(
+			`{"holder":"two words","kind":"customer_balance","salt":"0x` + strings.Repeat("11", 32) + `"}`,
+		),
+		"bad kind": withAccount(
+			`{"holder":"p-1","kind":"savings","salt":"0x` + strings.Repeat("11", 32) + `"}`,
+		),
+		"short salt": withAccount(`{"holder":"p-1","kind":"customer_balance","salt":"0x11"}`),
+		"unknown field": withAccount(
+			`{"holder":"p-1","kind":"customer_balance","salt":"0x` + strings.Repeat("11", 32) + `","pin":"1"}`,
+		),
+		"bad proof inside": `{"proofs":[{"format":"other"}]}`,
+	}
+	for name, body := range cases {
+		_, err := prooffile.DecodeAll(strings.NewReader(body), 1)
+
+		require.Error(t, err, name)
+		require.Equal(t, notary.KindInvalidArgument, notary.KindOf(err), name)
+	}
+}
+
+func sampleClaim(t *testing.T) notary.Claim {
+	t.Helper()
+
+	_, claim := notarytest.AnchoredClaim(t, 3, 5, 2)
+
+	return claim
+}

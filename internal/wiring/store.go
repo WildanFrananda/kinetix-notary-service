@@ -32,9 +32,12 @@ type storeParams struct {
 
 type storeResult struct {
 	dig.Out
-	Store notary.EpochStore
+	Store  notary.EpochStore
+	Proofs notary.ProofSource
 }
 
 func provideStore(p storeParams) storeResult {
-	return storeResult{Store: postgres.NewStore(p.Pool, p.Scheme)}
+	store := postgres.NewStore(p.Pool, p.Scheme)
+
+	return storeResult{Store: store, Proofs: store}
 }
