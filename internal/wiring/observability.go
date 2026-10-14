@@ -5,8 +5,10 @@ import (
 
 	"github.com/WildanFrananda/kinetix-notary-service/internal/anchoring"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/answering"
+	"github.com/WildanFrananda/kinetix-notary-service/internal/epochwatch"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/httpapi"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/metrics"
+	notaryv1 "github.com/WildanFrananda/kinetix-notary-service/internal/protogen/notary/v1"
 	paymentv1 "github.com/WildanFrananda/kinetix-notary-service/internal/protogen/payment/v1"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/watching"
 )
@@ -37,6 +39,7 @@ func provideMetrics(p metricsParams) metricsResult {
 	}
 
 	m.SeedCall("payment", paymentv1.LiabilityService_StreamLiabilitySnapshot_FullMethodName)
+	m.SeedCall(epochwatch.Service, notaryv1.EpochWatchService_ApproveEpoch_FullMethodName)
 
 	return metricsResult{Metrics: m, Observer: m, Watching: m, Answering: m}
 }

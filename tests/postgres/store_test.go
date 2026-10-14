@@ -21,7 +21,7 @@ import (
 
 const (
 	databaseURLKey = "KINETIX_NOTARY_TEST_DATABASE_URL"
-	schemaVersion  = int64(3)
+	schemaVersion  = int64(4)
 )
 
 var ledgerID = notary.LedgerIdentity{ChainID: 84532, Address: notary.Address{0x4e, 0x86}}
@@ -187,14 +187,16 @@ func TestABuiltEpochIsStoredWithEveryAccountOrNotAtAll(t *testing.T) {
 	require.Equal(
 		t,
 		notary.EpochRecord{
-			Ledger:   ledgerID,
-			Header:   p.Header,
-			Digest:   p.Digest,
-			Currency: "IDR",
-			State:    notary.StateBuilt,
+			Ledger:     ledgerID,
+			Header:     p.Header,
+			Digest:     p.Digest,
+			Currency:   "IDR",
+			State:      notary.StateBuilt,
+			SnapshotID: p.SnapshotID,
 		},
 		inFlight,
 	)
+	require.False(t, inFlight.SnapshotID.IsZero())
 	require.Equal(t, int64(40), d.count(t, "SELECT count(*) FROM accounts WHERE epoch_number = 0"))
 
 	for _, account := range p.Accounts {
@@ -317,4 +319,36 @@ func TestTransitionsAreCheckedTwice(t *testing.T) {
 	_, found, err := d.store.InFlight(ctx)
 	require.NoError(t, err)
 	require.False(t, found)
+}
+
+func TestAnEpochKeepsTheSnapshotItWasBuiltFromAndAnOlderOneReadsBackWithout(t *testing.T) {
+	d := open(t)
+	ctx := context.Background()
+	lease := d.lease(t, "writer")
+	p := plan(t, 0, notary.Digest{}, 3)
+
+	_, err := d.store.SaveBuilt(ctx, lease, ledgerID, p)
+	require.NoError(t, err)
+	require.Equal(
+		t,
+		int64(1),
+		d.count(t, "SELECT count(*) FROM epochs WHERE number = 0 AND snapshot_id::text = $1", string(p.SnapshotID)),
+	)
+
+	read, found, err := d.store.Epoch(ctx, 0)
+	require.NoError(t, err)
+	require.True(t, found)
+	require.Equal(t, p.SnapshotID, read.SnapshotID)
+
+	e := open(t)
+	older := plan(t, 0, notary.Digest{}, 3)
+	older.SnapshotID = ""
+
+	_, err = e.store.SaveBuilt(ctx, e.lease(t, "writer"), ledgerID, older)
+	require.NoError(t, err)
+	require.Equal(t, int64(1), e.count(t, "SELECT count(*) FROM epochs WHERE number = 0 AND snapshot_id IS NULL"))
+
+	read, _, err = e.store.Epoch(ctx, 0)
+	require.NoError(t, err)
+	require.True(t, read.SnapshotID.IsZero())
 }

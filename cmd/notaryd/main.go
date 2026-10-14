@@ -18,6 +18,7 @@ import (
 	"github.com/WildanFrananda/kinetix-notary-service/internal/anchoring"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/answering"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/config"
+	"github.com/WildanFrananda/kinetix-notary-service/internal/epochwatch"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/metrics"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/notary"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/payment"
@@ -37,6 +38,8 @@ type daemon struct {
 	Payment   *payment.Source
 	Ledger    notary.Ledger
 	Chain     notary.AnchorChain
+	Anchorer  *anchoring.Anchorer
+	Watch     *epochwatch.Client
 	Runner    *anchoring.Runner
 	Prover    *proving.Prover
 	Registrar *registering.Registrar
@@ -78,6 +81,7 @@ func start(ctx context.Context, log *slog.Logger) error {
 		defer d.Client.Close()
 		defer d.Pool.Close()
 		defer func() { _ = d.Payment.Close() }()
+		defer func() { _ = d.Watch.Close() }()
 
 		return serve(ctx, log, d)
 	})
@@ -95,7 +99,7 @@ func serve(ctx context.Context, log *slog.Logger, d daemon) error {
 		return err
 	}
 
-	if err := d.Chain.VerifyAnchorer(ctx); err != nil {
+	if err := d.Anchorer.CheckCouncil(ctx); err != nil {
 		return err
 	}
 
@@ -122,6 +126,10 @@ func serve(ctx context.Context, log *slog.Logger, d daemon) error {
 		identity.Address.Hex(),
 		"anchorer",
 		d.Chain.Anchorer().Hex(),
+		"council",
+		d.Config.Council.Hex(),
+		"watch",
+		d.Config.WatchAddress,
 		"court",
 		d.Config.Chain.Court.Hex(),
 		"withholding_court",

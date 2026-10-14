@@ -41,7 +41,7 @@ func (Scheme) RegistrationDigest(court notary.CourtIdentity, registration notary
 		uintWord(registration.FromEpoch),
 	)
 
-	return typedData(WithholdingCourtName, WithholdingCourtVersion, court, structure)
+	return typedData(withholdingDomain, court.ChainID, court.Address, structure)
 }
 
 func (Scheme) RegistrationRequestDigest(
@@ -55,5 +55,5 @@ func (Scheme) RegistrationRequestDigest(
 		uintWord(request.IssuedAt.Seconds()),
 	)
 
-	return typedData(WithholdingCourtName, WithholdingCourtVersion, court, structure)
+	return typedData(withholdingDomain, court.ChainID, court.Address, structure)
 }

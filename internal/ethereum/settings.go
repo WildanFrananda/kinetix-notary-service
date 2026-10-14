@@ -11,5 +11,6 @@ type Settings struct {
 	Ledger      notary.LedgerIdentity
 	Court       notary.Address
 	Withholding notary.Address
+	Council     notary.Address
 	Timeout     time.Duration
 }

@@ -6,10 +6,11 @@ import (
 )
 
 type EpochPlan struct {
-	Header   EpochHeader
-	Digest   Digest
-	Currency string
-	Accounts []Account
+	Header     EpochHeader
+	Digest     Digest
+	Currency   string
+	SnapshotID SnapshotID
+	Accounts   []Account
 }
 
 func PlanEpoch(
@@ -41,23 +42,50 @@ func PlanEpoch(
 			return EpochPlan{}, err
 		}
 
-		id := scheme.AccountID(liability.Holder, liability.Kind, secret)
-		accounts[i] = Account{
-			Liability:  liability,
-			Salt:       salt,
-			Secret:     secret,
-			ID:         id,
-			Commitment: scheme.AccountCommitment(id, salt),
-		}
+		accounts[i] = OpenAccount(scheme, liability, salt, secret)
 	}
 
-	sort.Slice(accounts, func(a, b int) bool {
-		return bytes.Compare(accounts[a].Commitment[:], accounts[b].Commitment[:]) < 0
+	plan, err := AssembleEpoch(scheme, number, previous, snapshot.AsOf(), snapshot.Currency(), accounts)
+	if err != nil {
+		return EpochPlan{}, err
+	}
+
+	plan.SnapshotID = snapshot.Record().ID
+
+	return plan, nil
+}
+
+func OpenAccount(scheme Scheme, liability Liability, salt Salt, secret AccountSecret) Account {
+	id := scheme.AccountID(liability.Holder, liability.Kind, secret)
+
+	return Account{
+		Liability:  liability,
+		Salt:       salt,
+		Secret:     secret,
+		ID:         id,
+		Commitment: scheme.AccountCommitment(id, salt),
+	}
+}
+
+func AssembleEpoch(
+	scheme Scheme,
+	number uint64,
+	previous Digest,
+	asOf UnixTime,
+	currency string,
+	accounts []Account,
+) (EpochPlan, error) {
+	const op = "notary.AssembleEpoch"
+
+	ordered := make([]Account, len(accounts))
+	copy(ordered, accounts)
+	sort.Slice(ordered, func(a, b int) bool {
+		return bytes.Compare(ordered[a].Commitment[:], ordered[b].Commitment[:]) < 0
 	})
 
-	entries := make([]Entry, len(accounts))
-	for i := range accounts {
-		if i > 0 && accounts[i].Commitment == accounts[i-1].Commitment {
+	entries := make([]Entry, len(ordered))
+	for i := range ordered {
+		if i > 0 && ordered[i].Commitment == ordered[i-1].Commitment {
 			return EpochPlan{}, Errf(
 				KindInvalidArgument,
 				op,
@@ -67,8 +95,8 @@ func PlanEpoch(
 			)
 		}
 
-		accounts[i].Position = uint64(i)
-		entries[i] = Entry{Commitment: accounts[i].Commitment, Amount: accounts[i].Liability.Amount}
+		ordered[i].Position = uint64(i)
+		entries[i] = Entry{Commitment: ordered[i].Commitment, Amount: ordered[i].Liability.Amount}
 	}
 
 	tree, err := BuildTree(scheme, number, entries)
@@ -76,7 +104,7 @@ func PlanEpoch(
 		return EpochPlan{}, err
 	}
 
-	header, err := tree.Header(previous, snapshot.AsOf())
+	header, err := tree.Header(previous, asOf)
 	if err != nil {
 		return EpochPlan{}, err
 	}
@@ -84,8 +112,8 @@ func PlanEpoch(
 	return EpochPlan{
 		Header:   header,
 		Digest:   scheme.EpochDigest(header),
-		Currency: snapshot.Currency(),
-		Accounts: accounts,
+		Currency: currency,
+		Accounts: ordered,
 	}, nil
 }
 

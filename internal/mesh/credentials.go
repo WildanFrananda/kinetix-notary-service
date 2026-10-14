@@ -44,6 +44,45 @@ func ClientCredentials(identity Identity, server string) (credentials.TransportC
 	}), nil
 }
 
+func ServerCredentials(identity Identity, callers []string) (credentials.TransportCredentials, error) {
+	const op = "mesh.ServerCredentials"
+
+	pair, roots, err := load(op, identity.PKIDir)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(callers) == 0 {
+		return nil, notary.Errf(notary.KindInvalidArgument, op, nil, "a server admits at least one caller")
+	}
+
+	domains := append([]string(nil), identity.TrustDomains...)
+	admitted := make(map[string]struct{}, len(callers))
+
+	for _, caller := range callers {
+		admitted[caller] = struct{}{}
+	}
+
+	return credentials.NewTLS(&tls.Config{
+		Certificates: []tls.Certificate{pair},
+		ClientCAs:    roots,
+		ClientAuth:   tls.RequireAndVerifyClientCert,
+		MinVersion:   tls.VersionTLS13,
+		VerifyConnection: func(state tls.ConnectionState) error {
+			if len(state.PeerCertificates) == 0 {
+				return notary.Errf(notary.KindUnauthenticated, op, nil, "the caller presented no certificate")
+			}
+
+			caller := ServiceOf(state.PeerCertificates[0], domains)
+			if _, ok := admitted[caller]; !ok {
+				return notary.Errf(notary.KindUnauthenticated, op, nil, "%q may not call this server", caller)
+			}
+
+			return nil
+		},
+	}), nil
+}
+
 func load(op, dir string) (tls.Certificate, *x509.CertPool, error) {
 	if dir == "" {
 		return tls.Certificate{}, nil, notary.Errf(

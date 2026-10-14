@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/WildanFrananda/kinetix-notary-service/internal/mesh"
@@ -19,6 +20,7 @@ import (
 )
 
 const (
+	snapshot = "5d0c7a52-8e1b-4f6a-9c33-0b7e2d41a9f8"
 	customer = "9f1d4a3e-1c62-4d0a-9a7b-2f5c8e0b41d7"
 	merchant = "3c9a77b1-58de-4a01-8f2e-6d4b19c0a8f3"
 	purpose  = "UNASSIGNED_DRIVER_SHIPPING_FEE"
@@ -52,8 +54,9 @@ func newRig(t *testing.T, serverDomain, serverName string, parts ...*paymentv1.S
 func header(seconds int64, nanos int32, currency string) *paymentv1.StreamLiabilitySnapshotResponse {
 	return &paymentv1.StreamLiabilitySnapshotResponse{Part: &paymentv1.StreamLiabilitySnapshotResponse_Header{
 		Header: &paymentv1.LiabilitySnapshotHeader{
-			AsOf:     &timestamppb.Timestamp{Seconds: seconds, Nanos: nanos},
-			Currency: currency,
+			AsOf:       &timestamppb.Timestamp{Seconds: seconds, Nanos: nanos},
+			Currency:   currency,
+			SnapshotId: snapshot,
 		},
 	}}
 }
@@ -91,21 +94,19 @@ func heldFor(purpose string, kind paymentv1.LiabilityKind, amount int64) *paymen
 }
 
 func TestACompleteStreamBecomesTheSnapshotItDescribes(t *testing.T) {
-	r := newRig(
+	parts, kept := notarytest.SnapshotStream(
 		t,
-		"kinetix.local",
-		"payment",
-		header(1760000000, 987_000_000, "IDR"),
-		batch(
+		notarytest.SnapshotID(t, 7),
+		&timestamppb.Timestamp{Seconds: 1760000000, Nanos: 987_000_000},
+		"IDR",
+		[]*paymentv1.LiabilityAccount{
 			owedTo(customer, paymentv1.LiabilityKind_LIABILITY_KIND_CUSTOMER_BALANCE, 35_000_000),
 			owedTo(merchant, paymentv1.LiabilityKind_LIABILITY_KIND_MERCHANT_AVAILABLE, 0),
-		),
-		batch(
 			owedTo(merchant, paymentv1.LiabilityKind_LIABILITY_KIND_MERCHANT_PENDING_ESCROW, 13_000_000),
 			heldFor(purpose, paymentv1.LiabilityKind_LIABILITY_KIND_SUSPENSE_PENDING_ESCROW, 2_000_000),
-		),
-		trailer(4, 50_000_000, "IDR"),
+		},
 	)
+	r := newRig(t, "kinetix.local", "payment", parts...)
 
 	snapshot, err := r.source.Snapshot(context.Background(), "IDR")
 
@@ -135,10 +136,24 @@ func TestACompleteStreamBecomesTheSnapshotItDescribes(t *testing.T) {
 	)
 	require.Equal(t, []string{"notary"}, r.server.Callers)
 	require.Equal(t, []string{"IDR"}, r.server.Requests)
+
+	record := snapshot.Record()
+	require.Equal(t, notarytest.SnapshotID(t, 7), record.ID)
+	require.Equal(t, uint32(987_000_000), record.Nanos)
+	require.Equal(t, uint64(4), record.Count)
+	require.Equal(t, uint64(50_000_000), record.Total)
+	require.Equal(t, kept.GetDigest(), record.Digest[:])
 }
 
 func TestAnEmptyLedgerIsAHeaderAndATrailer(t *testing.T) {
-	r := newRig(t, "kinetix.local", "payment", header(1760000000, 0, "IDR"), trailer(0, 0, "IDR"))
+	parts, _ := notarytest.SnapshotStream(
+		t,
+		notarytest.SnapshotID(t, 8),
+		&timestamppb.Timestamp{Seconds: 1760000000},
+		"IDR",
+		nil,
+	)
+	r := newRig(t, "kinetix.local", "payment", parts...)
 
 	snapshot, err := r.source.Snapshot(context.Background(), "IDR")
 
@@ -235,4 +250,49 @@ func TestOnlyPaymentMayAnswer(t *testing.T) {
 			require.Empty(t, r.server.Callers)
 		})
 	}
+}
+
+func TestAStreamWithoutItsRecordIsRefused(t *testing.T) {
+	good := owedTo(customer, paymentv1.LiabilityKind_LIABILITY_KIND_CUSTOMER_BALANCE, 10)
+	parts, _ := notarytest.SnapshotStream(
+		t,
+		notarytest.SnapshotID(t, 9),
+		&timestamppb.Timestamp{Seconds: 1760000000, Nanos: 5},
+		"IDR",
+		[]*paymentv1.LiabilityAccount{good},
+	)
+
+	unnamed := clone(t, parts[0])
+	unnamed.GetHeader().SnapshotId = ""
+	r := newRig(t, "kinetix.local", "payment", unnamed, parts[1], parts[2])
+	_, err := r.source.Snapshot(context.Background(), "IDR")
+	require.Equal(t, notary.KindSourceRefused, notary.KindOf(err))
+	require.ErrorContains(t, err, "predates the snapshot record")
+
+	undigested := clone(t, parts[2])
+	undigested.GetTrailer().Digest = nil
+	r = newRig(t, "kinetix.local", "payment", parts[0], parts[1], undigested)
+	_, err = r.source.Snapshot(context.Background(), "IDR")
+	require.Equal(t, notary.KindSourceRefused, notary.KindOf(err))
+
+	misdigested := clone(t, parts[2])
+	misdigested.GetTrailer().Digest[0] ^= 0xff
+	r = newRig(t, "kinetix.local", "payment", parts[0], parts[1], misdigested)
+	_, err = r.source.Snapshot(context.Background(), "IDR")
+	require.Equal(t, notary.KindDisagreement, notary.KindOf(err))
+
+	renanoed := clone(t, parts[0])
+	renanoed.GetHeader().AsOf.Nanos = 6
+	r = newRig(t, "kinetix.local", "payment", renanoed, parts[1], parts[2])
+	_, err = r.source.Snapshot(context.Background(), "IDR")
+	require.Equal(t, notary.KindDisagreement, notary.KindOf(err))
+}
+
+func clone(t *testing.T, part *paymentv1.StreamLiabilitySnapshotResponse) *paymentv1.StreamLiabilitySnapshotResponse {
+	t.Helper()
+
+	copied, ok := proto.Clone(part).(*paymentv1.StreamLiabilitySnapshotResponse)
+	require.True(t, ok)
+
+	return copied
 }

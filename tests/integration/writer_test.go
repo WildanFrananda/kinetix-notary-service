@@ -2,11 +2,12 @@ package integration_test
 
 import (
 	"context"
+	"crypto/ecdsa"
 	"math/big"
 	"testing"
 	"time"
 
-	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/stretchr/testify/require"
 
@@ -19,18 +20,40 @@ import (
 const ceiling = 1_000_000_000_000
 
 type writerRig struct {
-	chain  *chain
-	writer *ethereum.Writer
-	ledger notary.LedgerIdentity
+	chain    *chain
+	writer   *ethereum.Writer
+	ledger   notary.LedgerIdentity
+	council  notary.CouncilIdentity
+	watchKey *ecdsa.PrivateKey
 }
 
 func newWriterRig(t *testing.T) *writerRig {
 	t.Helper()
 	c := connect(t)
 	identity := c.identity(c.deploy(t))
-	settings := ethereum.Settings{RPCURL: c.url, Ledger: identity, Timeout: 10 * time.Second}
+	watchKey, watch := memberKey(t)
+	councilAddress := c.deployCouncil(t, common.Address(identity.Address), notary.Address(c.from), watch)
+	c.handOver(t, common.Address(identity.Address), councilAddress)
+	settings := ethereum.Settings{
+		RPCURL:  c.url,
+		Ledger:  identity,
+		Council: notary.Address(councilAddress),
+		Timeout: 10 * time.Second,
+	}
 
-	return &writerRig{chain: c, writer: ethereum.NewWriter(c.client, settings, c.key), ledger: identity}
+	return &writerRig{
+		chain:    c,
+		writer:   ethereum.NewWriter(c.client, settings, c.key),
+		ledger:   identity,
+		council:  notary.CouncilIdentity{ChainID: identity.ChainID, Address: notary.Address(councilAddress)},
+		watchKey: watchKey,
+	}
+}
+
+func (r *writerRig) approvals(t *testing.T, header notary.EpochHeader) []notary.Signature {
+	t.Helper()
+
+	return approvals(t, r.council, r.ledger.Address, header, r.chain.key, r.watchKey)
 }
 
 func (r *writerRig) plan(t *testing.T, number uint64, previous notary.Digest, asOf uint64) notary.EpochPlan {
@@ -97,13 +120,12 @@ func (r *writerRig) prepare(t *testing.T, header notary.EpochHeader) (notary.Pre
 	quote, err := notary.QuoteFees(base, tip, ceiling)
 	require.NoError(t, err)
 
-	return r.writer.Prepare(ctx, header, nonce, quote)
+	return r.writer.Prepare(ctx, header, r.approvals(t, header), nonce, quote)
 }
 
 func TestTheWriterAnchorsAnEpochAndWatchesItBecomeFinal(t *testing.T) {
 	r := newWriterRig(t)
 	ctx := context.Background()
-	require.NoError(t, r.writer.VerifyAnchorer(ctx))
 	head, err := r.writer.Head(ctx)
 	require.NoError(t, err)
 	require.True(t, head.AtGenesis())
@@ -190,31 +212,51 @@ func TestTheLedgersRefusalsAreReadBeforeAnyGasIsSpent(t *testing.T) {
 	require.Equal(t, notary.KindAnchorDeferred, notary.KindOf(err))
 }
 
-func TestOnlyTheAnchorerMayAnchor(t *testing.T) {
+func TestTheCouncilAnchorsOnlyWithAQuorumOfItsMembers(t *testing.T) {
 	r := newWriterRig(t)
 	ctx := context.Background()
-	stranger, err := crypto.GenerateKey()
-	require.NoError(t, err)
-
-	funds := hexutil.EncodeBig(new(big.Int).Mul(big.NewInt(10), big.NewInt(1e18)))
-	require.NoError(
-		t,
-		r.chain.rpc.CallContext(ctx, nil, "anvil_setBalance", crypto.PubkeyToAddress(stranger.PublicKey), funds),
-	)
-	settings := ethereum.Settings{RPCURL: r.chain.url, Ledger: r.ledger, Timeout: 10 * time.Second}
-	intruder := ethereum.NewWriter(r.chain.client, settings, stranger)
-
-	err = intruder.VerifyAnchorer(ctx)
-	require.Equal(t, notary.KindNotAnchorer, notary.KindOf(err))
-
-	head, err := intruder.Head(ctx)
+	head, err := r.writer.Head(ctx)
 	require.NoError(t, err)
 	plan := r.plan(t, head.NextEpoch, head.Head, r.now(t))
-	base, tip, err := intruder.Fees(ctx)
+	nonce, err := r.writer.Nonce(ctx)
+	require.NoError(t, err)
+	base, tip, err := r.writer.Fees(ctx)
 	require.NoError(t, err)
 	quote, err := notary.QuoteFees(base, tip, ceiling)
 	require.NoError(t, err)
-	_, err = intruder.Prepare(ctx, plan.Header, 0, quote)
+
+	alone := approvals(t, r.council, r.ledger.Address, plan.Header, r.chain.key)
+	_, err = r.writer.Prepare(ctx, plan.Header, alone, nonce, quote)
+	require.Equal(t, notary.KindAnchorRefused, notary.KindOf(err))
+	require.ErrorContains(t, err, "NotEnoughApprovals")
+
+	strangerKey, _ := memberKey(t)
+	outsider := approvals(t, r.council, r.ledger.Address, plan.Header, r.chain.key, strangerKey)
+	_, err = r.writer.Prepare(ctx, plan.Header, outsider, nonce, quote)
+	require.Equal(t, notary.KindAnchorRefused, notary.KindOf(err))
+	require.ErrorContains(t, err, "NotAMember")
+
+	backwards := r.approvals(t, plan.Header)
+	backwards[0], backwards[1] = backwards[1], backwards[0]
+	_, err = r.writer.Prepare(ctx, plan.Header, backwards, nonce, quote)
+	require.Equal(t, notary.KindAnchorRefused, notary.KindOf(err))
+	require.ErrorContains(t, err, "ApprovalsOutOfOrder")
+
+	watch := notary.Address(crypto.PubkeyToAddress(r.watchKey.PublicKey))
+	unauthorised := r.chain.deployCouncil(t, common.Address(r.ledger.Address), notary.Address(r.chain.from), watch)
+	powerless := ethereum.NewWriter(
+		r.chain.client,
+		ethereum.Settings{
+			RPCURL:  r.chain.url,
+			Ledger:  r.ledger,
+			Council: notary.Address(unauthorised),
+			Timeout: 10 * time.Second,
+		},
+		r.chain.key,
+	)
+	identity := notary.CouncilIdentity{ChainID: r.ledger.ChainID, Address: notary.Address(unauthorised)}
+	signed := approvals(t, identity, r.ledger.Address, plan.Header, r.chain.key, r.watchKey)
+	_, err = powerless.Prepare(ctx, plan.Header, signed, nonce, quote)
 	require.Equal(t, notary.KindNotAnchorer, notary.KindOf(err))
 }
 
@@ -233,7 +275,7 @@ func TestAStuckTransactionIsReplacedAtTheSameNonce(t *testing.T) {
 	require.NoError(t, r.chain.rpc.CallContext(ctx, nil, "evm_setAutomine", false))
 	t.Cleanup(func() { _ = r.chain.rpc.CallContext(context.Background(), nil, "evm_setAutomine", true) })
 
-	first, err := r.writer.Prepare(ctx, plan.Header, nonce, quote)
+	first, err := r.writer.Prepare(ctx, plan.Header, r.approvals(t, plan.Header), nonce, quote)
 	require.NoError(t, err)
 	require.NoError(t, r.writer.Broadcast(ctx, first))
 

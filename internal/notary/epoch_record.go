@@ -7,4 +7,5 @@ type EpochRecord struct {
 	Currency        string
 	State           EpochState
 	AbandonedReason string
+	SnapshotID      SnapshotID
 }

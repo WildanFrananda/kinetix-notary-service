@@ -19,7 +19,19 @@ func NewRouter(
 
 	mux.Handle("GET "+ProofsRoute, instrument(ProofsRoute, proofs))
 	mux.Handle("POST "+RegistrationsRoute, instrument(RegistrationsRoute, registrations))
+	operational(mux, instrument, metrics, ready)
 
+	return mux
+}
+
+func NewWatchRouter(instrument Instrument, metrics http.Handler, ready Check) http.Handler {
+	mux := http.NewServeMux()
+	operational(mux, instrument, metrics, ready)
+
+	return mux
+}
+
+func operational(mux *http.ServeMux, instrument Instrument, metrics http.Handler, ready Check) {
 	mux.Handle(
 		"GET /health/live",
 		instrument(
@@ -52,6 +64,4 @@ func NewRouter(
 
 	mux.Handle("GET /metrics", instrument("/metrics", metrics))
 	mux.Handle("GET /", instrument("unmatched", http.NotFoundHandler()))
-
-	return mux
 }

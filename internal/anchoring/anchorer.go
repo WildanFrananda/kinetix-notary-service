@@ -16,6 +16,7 @@ type Anchorer struct {
 	source   notary.SnapshotSource
 	store    notary.EpochStore
 	chain    notary.AnchorChain
+	quorum   Quorum
 	observer Observer
 	clock    func() time.Time
 	log      *slog.Logger
@@ -29,6 +30,7 @@ func NewAnchorer(
 	source notary.SnapshotSource,
 	store notary.EpochStore,
 	chain notary.AnchorChain,
+	quorum Quorum,
 	observer Observer,
 	clock func() time.Time,
 	log *slog.Logger,
@@ -41,6 +43,7 @@ func NewAnchorer(
 		source:   source,
 		store:    store,
 		chain:    chain,
+		quorum:   quorum,
 		observer: observer,
 		clock:    clock,
 		log:      log,
@@ -219,6 +222,34 @@ func (a *Anchorer) advance(ctx context.Context, lease notary.Lease, record notar
 }
 
 func (a *Anchorer) submit(ctx context.Context, lease notary.Lease, record notary.EpochRecord) error {
+	number := record.Header.Number
+
+	latest, found, err := a.chain.EpochAtLatest(ctx, number)
+	if err != nil {
+		return err
+	}
+
+	if found {
+		if latest.Digest != record.Digest {
+			return a.abandon(ctx, lease, record, conflict(number, latest.Digest, record.Digest))
+		}
+
+		if record.State == notary.StateBuilt {
+			return a.store.Transition(ctx, lease, number, notary.StateBuilt, notary.StateSubmitted, "")
+		}
+
+		return nil
+	}
+
+	approvals, err := a.approve(ctx, record)
+	switch notary.KindOf(err) {
+	case notary.KindUnknown:
+	case notary.KindApprovalRefused:
+		return a.abandon(ctx, lease, record, err)
+	default:
+		return err
+	}
+
 	nonce, err := a.chain.Nonce(ctx)
 	if err != nil {
 		return err
@@ -238,7 +269,7 @@ func (a *Anchorer) submit(ctx context.Context, lease notary.Lease, record notary
 		return err
 	}
 
-	anchor, err := a.chain.Prepare(ctx, record.Header, nonce, quote)
+	anchor, err := a.chain.Prepare(ctx, record.Header, approvals, nonce, quote)
 	switch notary.KindOf(err) {
 	case notary.KindUnknown:
 	case notary.KindAlreadyAnchored:

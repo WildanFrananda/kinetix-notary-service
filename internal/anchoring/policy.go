@@ -9,6 +9,7 @@ import (
 type Policy struct {
 	Instance      string
 	Ledger        notary.LedgerIdentity
+	Council       notary.CouncilIdentity
 	Currency      string
 	EpochInterval time.Duration
 	ReplaceAfter  time.Duration

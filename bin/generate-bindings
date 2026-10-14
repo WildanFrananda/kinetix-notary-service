@@ -17,9 +17,20 @@ forge inspect IStatementCourt abi --json > "$WORK/IStatementCourt.abi"
 forge inspect WithholdingCourt abi --json > "$WORK/WithholdingCourt.abi"
 forge inspect WithholdingCourt bytecode > "$WORK/WithholdingCourt.bin"
 forge inspect IWithholdingCourt abi --json > "$WORK/IWithholdingCourt.abi"
+forge inspect AnchorCouncil abi --json > "$WORK/AnchorCouncil.abi"
+forge inspect AnchorCouncil bytecode > "$WORK/AnchorCouncil.bin"
+forge inspect IAnchorCouncil abi --json > "$WORK/IAnchorCouncil.abi"
 
 rm -rf "$GEN"
-mkdir -p "$GEN/ledger" "$GEN/ledgerinterface" "$GEN/court" "$GEN/courtinterface" "$GEN/withholding" "$GEN/withholdinginterface"
+mkdir -p \
+  "$GEN/ledger" \
+  "$GEN/ledgerinterface" \
+  "$GEN/court" \
+  "$GEN/courtinterface" \
+  "$GEN/withholding" \
+  "$GEN/withholdinginterface" \
+  "$GEN/council" \
+  "$GEN/councilinterface"
 abigen --v2 \
   --abi "$WORK/LiabilityLedger.abi" \
   --bin "$WORK/LiabilityLedger.bin" \
@@ -53,5 +64,16 @@ abigen --v2 \
   --pkg withholdinginterface \
   --type IWithholdingCourt \
   --out "$GEN/withholdinginterface/iwithholding_court.go"
+abigen --v2 \
+  --abi "$WORK/AnchorCouncil.abi" \
+  --bin "$WORK/AnchorCouncil.bin" \
+  --pkg council \
+  --type AnchorCouncil \
+  --out "$GEN/council/anchor_council.go"
+abigen --v2 \
+  --abi "$WORK/IAnchorCouncil.abi" \
+  --pkg councilinterface \
+  --type IAnchorCouncil \
+  --out "$GEN/councilinterface/ianchor_council.go"
 
 echo "generated $GEN"

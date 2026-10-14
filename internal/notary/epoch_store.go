@@ -9,6 +9,7 @@ type EpochStore interface {
 	Lease(ctx context.Context, instance string, ttl time.Duration) (Lease, bool, error)
 	InFlight(ctx context.Context) (EpochRecord, bool, error)
 	AccountSecrets(ctx context.Context, keys []AccountKey) (map[AccountKey]AccountSecret, error)
+	Accounts(ctx context.Context, epoch uint64) ([]Account, error)
 	LastFinalized(ctx context.Context) (EpochRecord, bool, error)
 	SaveBuilt(ctx context.Context, lease Lease, ledger LedgerIdentity, plan EpochPlan) (EpochRecord, error)
 	RecordAttempt(ctx context.Context, lease Lease, attempt Attempt) error
