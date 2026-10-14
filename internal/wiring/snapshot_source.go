@@ -41,9 +41,10 @@ func provideSnapshotSource(p snapshotSourceParams) (snapshotSourceResult, error)
 
 type saltsResult struct {
 	dig.Out
-	Salts notary.SaltSource
+	Salts   notary.SaltSource
+	Secrets notary.SecretSource
 }
 
 func provideSalts() saltsResult {
-	return saltsResult{Salts: entropy.NewSalts()}
+	return saltsResult{Salts: entropy.NewSalts(), Secrets: entropy.NewSecrets()}
 }

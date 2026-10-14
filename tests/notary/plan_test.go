@@ -17,7 +17,7 @@ func TestAPlannedEpochCommitsToEveryAccountAndProvesEachOne(t *testing.T) {
 	snapshot := notarytest.Snapshot(t, 1760000000, notarytest.Liabilities(t, 37))
 	previous := notary.Digest{0x42}
 
-	plan, err := notary.PlanEpoch(scheme, &notarytest.Salts{Seed: 1}, 9, previous, snapshot)
+	plan, err := notary.PlanEpoch(scheme, &notarytest.Salts{Seed: 1}, &notarytest.Secrets{}, nil, 9, previous, snapshot)
 	require.NoError(t, err)
 
 	require.Equal(t, uint64(9), plan.Header.Number)
@@ -34,11 +34,9 @@ func TestAPlannedEpochCommitsToEveryAccountAndProvesEachOne(t *testing.T) {
 
 	for i, account := range plan.Accounts {
 		require.Equal(t, uint64(i), account.Position)
-		require.Equal(
-			t,
-			scheme.Commitment(account.Liability.Holder, account.Liability.Kind, account.Salt),
-			account.Commitment,
-		)
+		require.False(t, account.Secret.IsZero())
+		require.Equal(t, scheme.AccountID(account.Liability.Holder, account.Liability.Kind, account.Secret), account.ID)
+		require.Equal(t, scheme.AccountCommitment(account.ID, account.Salt), account.Commitment)
 
 		if i > 0 {
 			require.Equal(t, -1, bytes.Compare(plan.Accounts[i-1].Commitment[:], account.Commitment[:]))
@@ -69,9 +67,25 @@ func TestAPlannedEpochCommitsToEveryAccountAndProvesEachOne(t *testing.T) {
 func TestTheLeafOrderIsNotTheSourcesOrder(t *testing.T) {
 	snapshot := notarytest.Snapshot(t, 1760000000, notarytest.Liabilities(t, 64))
 
-	first, err := notary.PlanEpoch(keccak.NewScheme(), &notarytest.Salts{Seed: 1}, 0, notary.Digest{}, snapshot)
+	first, err := notary.PlanEpoch(
+		keccak.NewScheme(),
+		&notarytest.Salts{Seed: 1},
+		&notarytest.Secrets{},
+		nil,
+		0,
+		notary.Digest{},
+		snapshot,
+	)
 	require.NoError(t, err)
-	second, err := notary.PlanEpoch(keccak.NewScheme(), &notarytest.Salts{Seed: 2}, 0, notary.Digest{}, snapshot)
+	second, err := notary.PlanEpoch(
+		keccak.NewScheme(),
+		&notarytest.Salts{Seed: 2},
+		&notarytest.Secrets{},
+		nil,
+		0,
+		notary.Digest{},
+		snapshot,
+	)
 	require.NoError(t, err)
 
 	inSourceOrder := 0
@@ -99,6 +113,8 @@ func TestAnEmptySnapshotIsTheCanonicalEmptyEpoch(t *testing.T) {
 	plan, err := notary.PlanEpoch(
 		scheme,
 		&notarytest.Salts{},
+		&notarytest.Secrets{},
+		nil,
 		3,
 		notary.Digest{1},
 		notarytest.Snapshot(t, 1760000000, nil),
@@ -115,9 +131,92 @@ func TestASaltSourceThatFailsOrReturnsZerosStopsThePlan(t *testing.T) {
 	snapshot := notarytest.Snapshot(t, 1760000000, notarytest.Liabilities(t, 3))
 	broken := errors.New("entropy unavailable")
 
-	_, err := notary.PlanEpoch(keccak.NewScheme(), &notarytest.Salts{Err: broken}, 0, notary.Digest{}, snapshot)
+	_, err := notary.PlanEpoch(
+		keccak.NewScheme(),
+		&notarytest.Salts{Err: broken},
+		&notarytest.Secrets{},
+		nil,
+		0,
+		notary.Digest{},
+		snapshot,
+	)
 	require.ErrorIs(t, err, broken)
 
-	_, err = notary.PlanEpoch(keccak.NewScheme(), &notarytest.Salts{Zero: true}, 0, notary.Digest{}, snapshot)
+	_, err = notary.PlanEpoch(
+		keccak.NewScheme(),
+		&notarytest.Salts{Zero: true},
+		&notarytest.Secrets{},
+		nil,
+		0,
+		notary.Digest{},
+		snapshot,
+	)
+	require.Equal(t, notary.KindInvalidArgument, notary.KindOf(err))
+}
+
+func TestAKnownAccountKeepsItsSecretAndANewOneDrawsOne(t *testing.T) {
+	scheme := keccak.NewScheme()
+	liabilities := notarytest.Liabilities(t, 4)
+	snapshot := notarytest.Snapshot(t, 1760000000, liabilities)
+	kept := notary.AccountKey{Holder: liabilities[2].Holder, Kind: liabilities[2].Kind}
+	known := map[notary.AccountKey]notary.AccountSecret{kept: {0x42}}
+	secrets := &notarytest.Secrets{Seed: 5}
+
+	plan, err := notary.PlanEpoch(scheme, &notarytest.Salts{Seed: 1}, secrets, known, 0, notary.Digest{}, snapshot)
+	require.NoError(t, err)
+	require.Equal(t, 3, secrets.Drawn)
+
+	seen := map[notary.AccountSecret]bool{}
+
+	for _, account := range plan.Accounts {
+		key := notary.AccountKey{Holder: account.Liability.Holder, Kind: account.Liability.Kind}
+		if key == kept {
+			require.Equal(t, notary.AccountSecret{0x42}, account.Secret)
+		}
+
+		require.False(t, seen[account.Secret])
+		seen[account.Secret] = true
+	}
+}
+
+func TestASecretThatCannotBeDrawnOrIsZeroStopsThePlan(t *testing.T) {
+	liabilities := notarytest.Liabilities(t, 2)
+	snapshot := notarytest.Snapshot(t, 1760000000, liabilities)
+	broken := errors.New("no randomness")
+
+	_, err := notary.PlanEpoch(
+		keccak.NewScheme(),
+		&notarytest.Salts{Seed: 1},
+		&notarytest.Secrets{Err: broken},
+		nil,
+		0,
+		notary.Digest{},
+		snapshot,
+	)
+	require.ErrorIs(t, err, broken)
+
+	_, err = notary.PlanEpoch(
+		keccak.NewScheme(),
+		&notarytest.Salts{Seed: 1},
+		&notarytest.Secrets{Zero: true},
+		nil,
+		0,
+		notary.Digest{},
+		snapshot,
+	)
+	require.Equal(t, notary.KindInvalidArgument, notary.KindOf(err))
+
+	zeroKnown := map[notary.AccountKey]notary.AccountSecret{
+		{Holder: liabilities[0].Holder, Kind: liabilities[0].Kind}: {},
+	}
+	_, err = notary.PlanEpoch(
+		keccak.NewScheme(),
+		&notarytest.Salts{Seed: 1},
+		&notarytest.Secrets{Seed: 1},
+		zeroKnown,
+		0,
+		notary.Digest{},
+		snapshot,
+	)
 	require.Equal(t, notary.KindInvalidArgument, notary.KindOf(err))
 }

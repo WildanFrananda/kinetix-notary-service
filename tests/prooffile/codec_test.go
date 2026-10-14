@@ -207,3 +207,62 @@ func TestABrokenStatementIsRefused(t *testing.T) {
 		})
 	}
 }
+
+func TestASecondDerivationAccountTravelsAsFormatTwo(t *testing.T) {
+	claim := sampleClaim(t)
+	claim.Opening = &notary.Opening{
+		Holder: notarytest.Holder(t, "9f1d4a3e-1c62-4d0a-9a7b-2f5c8e0b41d7"),
+		Kind:   notary.AccountCustomerBalance,
+		Salt:   notary.Salt{0x77, 0x01},
+		Secret: notary.AccountSecret{0x55, 0x02},
+	}
+
+	raw, err := prooffile.Marshal(claim, 1)
+	require.NoError(t, err)
+	require.Contains(t, string(raw), `"format":"kinetix.notary.inclusion.v2"`)
+	require.Contains(t, string(raw), `"secret":"0x5502`)
+
+	decoded, err := prooffile.DecodeAll(bytes.NewReader(raw), 1)
+	require.NoError(t, err)
+	require.Equal(t, []notary.Claim{claim}, decoded)
+}
+
+func TestAFirstDerivationAccountStillTravelsAsFormatOne(t *testing.T) {
+	claim := sampleClaim(t)
+	claim.Opening = &notary.Opening{
+		Holder: notarytest.Holder(t, "p-1"),
+		Kind:   notary.AccountCustomerBalance,
+		Salt:   notary.Salt{0x77},
+	}
+
+	raw, err := prooffile.Marshal(claim, 1)
+	require.NoError(t, err)
+	require.Contains(t, string(raw), `"format":"kinetix.notary.inclusion.v1"`)
+	require.NotContains(t, string(raw), `"secret"`)
+}
+
+func TestAFormatAndItsSecretMustAgree(t *testing.T) {
+	claim := sampleClaim(t)
+	claim.Opening = &notary.Opening{
+		Holder: notarytest.Holder(t, "p-1"),
+		Kind:   notary.AccountCustomerBalance,
+		Salt:   notary.Salt{0x77},
+		Secret: notary.AccountSecret{0x55},
+	}
+	raw, err := prooffile.Marshal(claim, 1)
+	require.NoError(t, err)
+
+	v2 := string(raw)
+	require.Contains(t, v2, `,"secret":"0x55`+strings.Repeat("0", 62)+`"`)
+	zero := `"secret":"0x` + strings.Repeat("0", 64) + `"`
+	withZeroSecret := strings.Replace(v2, `"secret":"0x55`+strings.Repeat("0", 62)+`"`, zero, 1)
+
+	requireMalformed(t, strings.Replace(v2, "inclusion.v2", "inclusion.v1", 1))
+	requireMalformed(t, strings.Replace(v2, `,"secret":"0x55`+strings.Repeat("0", 62)+`"`, "", 1))
+	requireMalformed(t, withZeroSecret)
+	requireMalformed(t, strings.Replace(v2, "inclusion.v2", "inclusion.v3", 1))
+
+	plain, err := prooffile.Marshal(sampleClaim(t), 1)
+	require.NoError(t, err)
+	requireMalformed(t, strings.Replace(string(plain), "inclusion.v1", "inclusion.v2", 1))
+}

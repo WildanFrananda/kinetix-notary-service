@@ -1,3 +1,3 @@
 package httpapi
 
-var Routes = []string{"/health/live", "/health/ready", "/metrics", ProofsRoute}
+var Routes = []string{"/health/live", "/health/ready", "/metrics", ProofsRoute, RegistrationsRoute}

@@ -14,10 +14,11 @@ import (
 
 type httpParams struct {
 	dig.In
-	Metrics *metrics.Metrics
-	Runner  *anchoring.Runner
-	Pool    *pgxpool.Pool
-	Proofs  *httpapi.ProofHandler
+	Metrics       *metrics.Metrics
+	Runner        *anchoring.Runner
+	Pool          *pgxpool.Pool
+	Proofs        *httpapi.ProofHandler
+	Registrations *httpapi.RegistrationHandler
 }
 
 func provideHTTP(p httpParams) http.Handler {
@@ -33,5 +34,5 @@ func provideHTTP(p httpParams) http.Handler {
 		return nil
 	}
 
-	return httpapi.NewRouter(p.Metrics.Instrument, p.Metrics.Handler(), ready, p.Proofs)
+	return httpapi.NewRouter(p.Metrics.Instrument, p.Metrics.Handler(), ready, p.Proofs, p.Registrations)
 }

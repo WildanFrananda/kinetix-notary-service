@@ -12,6 +12,7 @@ type Store struct {
 	Now      func() time.Time
 	Records  map[uint64]notary.EpochRecord
 	Accounts map[uint64][]notary.Account
+	Secrets  map[notary.AccountKey]notary.AccountSecret
 	attempts map[uint64][]notary.Attempt
 	holder   string
 	token    int64
@@ -26,6 +27,7 @@ func NewStore(now func() time.Time) *Store {
 		Now:      now,
 		Records:  map[uint64]notary.EpochRecord{},
 		Accounts: map[uint64][]notary.Account{},
+		Secrets:  map[notary.AccountKey]notary.AccountSecret{},
 		attempts: map[uint64][]notary.Attempt{},
 	}
 }
@@ -96,6 +98,17 @@ func (s *Store) SaveBuilt(
 		return notary.EpochRecord{}, notary.Errf(notary.KindLedgerDiverged, "notarytest.Store", nil, "one in flight")
 	}
 
+	for _, account := range plan.Accounts {
+		key := notary.AccountKey{Holder: account.Liability.Holder, Kind: account.Liability.Kind}
+		if kept, ok := s.Secrets[key]; ok && kept != account.Secret {
+			return notary.EpochRecord{}, notary.Errf(notary.KindDisagreement, "notarytest.Store", nil, "another secret")
+		}
+	}
+
+	for _, account := range plan.Accounts {
+		s.Secrets[notary.AccountKey{Holder: account.Liability.Holder, Kind: account.Liability.Kind}] = account.Secret
+	}
+
 	record := notary.EpochRecord{
 		Ledger:   ledger,
 		Header:   plan.Header,
@@ -107,6 +120,21 @@ func (s *Store) SaveBuilt(
 	s.Accounts[plan.Header.Number] = plan.Accounts
 
 	return record, nil
+}
+
+func (s *Store) AccountSecrets(
+	_ context.Context,
+	keys []notary.AccountKey,
+) (map[notary.AccountKey]notary.AccountSecret, error) {
+	out := map[notary.AccountKey]notary.AccountSecret{}
+
+	for _, key := range keys {
+		if secret, ok := s.Secrets[key]; ok {
+			out[key] = secret
+		}
+	}
+
+	return out, nil
 }
 
 func (s *Store) RecordAttempt(_ context.Context, lease notary.Lease, attempt notary.Attempt) error {

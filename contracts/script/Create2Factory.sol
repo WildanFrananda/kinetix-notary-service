@@ -18,6 +18,8 @@ library Create2Factory {
         if (!succeeded || returned.length != 20 || address(bytes20(returned)) != deployed) {
             revert DeploymentFailed(deployed);
         }
+
+        return deployed;
     }
 
     function addressOf(bytes32 salt, bytes memory initCode) internal pure returns (address) {

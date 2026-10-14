@@ -12,7 +12,15 @@ type EpochPlan struct {
 	Accounts []Account
 }
 
-func PlanEpoch(scheme Scheme, salts SaltSource, number uint64, previous Digest, snapshot Snapshot) (EpochPlan, error) {
+func PlanEpoch(
+	scheme Scheme,
+	salts SaltSource,
+	secrets SecretSource,
+	known map[AccountKey]AccountSecret,
+	number uint64,
+	previous Digest,
+	snapshot Snapshot,
+) (EpochPlan, error) {
 	const op = "notary.PlanEpoch"
 
 	liabilities := snapshot.Liabilities()
@@ -28,10 +36,18 @@ func PlanEpoch(scheme Scheme, salts SaltSource, number uint64, previous Digest, 
 			return EpochPlan{}, Errf(KindInvalidArgument, op, nil, "the salt source returned an all-zero salt")
 		}
 
+		secret, err := secretFor(secrets, known, AccountKey{Holder: liability.Holder, Kind: liability.Kind})
+		if err != nil {
+			return EpochPlan{}, err
+		}
+
+		id := scheme.AccountID(liability.Holder, liability.Kind, secret)
 		accounts[i] = Account{
 			Liability:  liability,
 			Salt:       salt,
-			Commitment: scheme.Commitment(liability.Holder, liability.Kind, salt),
+			Secret:     secret,
+			ID:         id,
+			Commitment: scheme.AccountCommitment(id, salt),
 		}
 	}
 
@@ -71,4 +87,34 @@ func PlanEpoch(scheme Scheme, salts SaltSource, number uint64, previous Digest, 
 		Currency: snapshot.Currency(),
 		Accounts: accounts,
 	}, nil
+}
+
+func secretFor(secrets SecretSource, known map[AccountKey]AccountSecret, key AccountKey) (AccountSecret, error) {
+	const op = "notary.PlanEpoch"
+
+	if secret, ok := known[key]; ok {
+		if secret.IsZero() {
+			return AccountSecret{}, Errf(
+				KindInvalidArgument,
+				op,
+				nil,
+				"%s of %s has an all-zero secret",
+				key.Kind,
+				key.Holder,
+			)
+		}
+
+		return secret, nil
+	}
+
+	secret, err := secrets.AccountSecret()
+	if err != nil {
+		return AccountSecret{}, Errf(KindUnknown, op, err, "drawing an account secret")
+	}
+
+	if secret.IsZero() {
+		return AccountSecret{}, Errf(KindInvalidArgument, op, nil, "the secret source returned an all-zero secret")
+	}
+
+	return secret, nil
 }

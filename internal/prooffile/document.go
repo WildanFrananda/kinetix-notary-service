@@ -23,6 +23,7 @@ type account struct {
 	Holder string `json:"holder"`
 	Kind   string `json:"kind"`
 	Salt   string `json:"salt"`
+	Secret string `json:"secret,omitempty"`
 }
 
 type seal struct {

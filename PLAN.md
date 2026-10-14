@@ -46,6 +46,9 @@ timestamped record that no single party controls.
 | 12 | Statement key (2026-10-13) | A **fourth key**, separate from the anchorer: it signs statements off chain, never holds ETH, lives in the SOPS store like the anchorer. A leak of one never hands over the other. |
 | 13 | Signer changes (2026-10-13) | Through the admin, **after a 7-day delay**, and a signer is registered for a **range of epochs**, never a span of time — so no rotation can disown a statement already signed. |
 | 14 | Delivering statements (2026-10-13) | Pushing a statement to its holder is **notification's job** (the estate rule: no service takes another's). Step 6 splits: **6a** in this repository, **6b** in notification. |
+| 15 | Withholding (2026-10-13) | Step 7 as proposed, R1–R5: the notary signs registrations, a second commitment derivation from a switch epoch, the inclusion proof is the answer and anyone may post it, a 7-day request window and a 24-hour answer deadline, and a separate MIT `WithholdingCourt` beside the deployed court. |
+| 16 | Answering key (2026-10-14) | A **fifth key**, the answerer, in SOPS like the anchorer. It sends `answer` transactions and nothing else. The anchorer judges its own anchor by its nonce, so a second sender on that key would make it misread its own epoch, and a leak of one key never hands over another. |
+| 17 | Proving the statement address (2026-10-14) | The holder signs an EIP-712 `RegistrationRequest{holder, principal, issuedAt}` under the withholding court's domain with the key of the address they register, and posts it with their access token. The notary refuses a signature that does not recover to that address, a principal that is not the token's, or an `issuedAt` older than five minutes. |
 
 ## 3. What the proof does and does not prove
 
@@ -601,7 +604,7 @@ v1 — unit, fuzz and handler-based invariant suites, Go↔Solidity differential
 and EIP-712 digest the two languages share, a fork test against the live Base Sepolia ledger,
 Slither and Aderyn clean, immutable deployment through the CREATE2 factory, Sourcify verification.
 
-#### Step 6 — signed statements and fraud proofs (`StatementCourt`, part 1). **6a built 2026-10-13.**
+#### Step 6 — signed statements and fraud proofs (`StatementCourt`, part 1). **6a live 2026-10-13** (notary v0.4.0).
 
 Every proof the notary issues becomes a binding, publicly punishable claim.
 
@@ -673,7 +676,7 @@ exports `totalFaults()` as a gauge, so a proven fault reaches Grafana.
 
 **Status, 2026-10-13: 6a is live. v0.4.0 signs every proof in production, proven end to end.**
 `bin/ci-contracts`: 104 tests on the CI profile (court: 30 unit, 5 fuzz at 20 000 runs, 5 invariants over
-16 384 calls, 2 differential, 7 deploy), 4 fork tests at Base Sepolia block 48046426, Slither 0, Aderyn
+16 384 calls, 2 differential, 7 deploy), 4 fork tests at Base Sepolia block 48046426 (moved to 48063800 by step 7), Slither 0, Aderyn
 nothing new. `bin/ci-go`: coverage 86.4%, the anvil suite included. What each part proved:
 
 | Part | Proof |
@@ -718,7 +721,7 @@ Prometheus had never scraped the notary, so the stall, abandon, runway and prove
 silent since step 4. That is fixed in infrastructure, and `bin/prod-deploy` now refuses a service that
 Prometheus does not scrape. **6b**, pushing statements to holders, is notification's work.
 
-#### Step 7 — withholding (`StatementCourt`, part 2)
+#### Step 7 — withholding (`WithholdingCourt`). **Ruled 2026-10-13 (decision 15); being built.**
 
 Step 6 punishes a lie the notary signed; this step punishes the silence that would hide an omitted
 account — the limit PLAN §3 admits today. A holder registers a statement address (a key in their own
@@ -730,6 +733,110 @@ boundary: who attests that a holder exists (identity owns who a person is; payme
 hold anything), how a registration is itself made provable, how requests stay private (the holder
 address, never the principal, goes on chain), and the rate limit that keeps a free challenge from
 becoming a way to exhaust the notary's gas.
+
+**The design, ruled by the user on 2026-10-13 as proposed, with a 7-day window and a 24-hour deadline.**
+
+The obstacle is the commitment. Today it is `H(holder ‖ kind ‖ salt)` with a fresh salt per epoch, so
+nothing on chain can tell which leaf belongs to whom, and a court cannot check that an answer names
+the right account without a signature from the notary. The proposal moves that knowledge into the
+commitment and lets the inclusion proof be the answer.
+
+- **R1. The notary attests that a holder exists, by signing a registration.** A holder authenticates
+  through the proof API (identity says who they are). They present a statement address `A` and a
+  signature from `A`, which proves they hold its key, so nobody can register an address that is not
+  theirs. The notary returns an EIP-712 `Registration{ledger, holder: A, account, fromEpoch}`, signed
+  by the court's signer for `fromEpoch`. It only signs for an account in its latest final epoch, which
+  is payment's snapshot. Nothing about identity or payment goes on chain, and neither service gains a
+  key. A refused registration is visible to the holder but cannot be proven on chain; that limit is
+  written into §3.
+- **R2. A new commitment derivation, from a switch epoch onward.** `account = H(0x05 ‖ kind ‖
+  accountSecret ‖ holder)` uses a random secret per account that is kept by the notary and served to the
+  holder with their proofs. The commitment becomes `H(0x06 ‖ account ‖ salt)`. Tag `0x04` is today's
+  commitment, `H(0x04 ‖ kind ‖ salt ‖ holder)`, so both derivations stay apart from each other and from
+  the tree's own tags. The secret must outlive every registration that names its account: a lost
+  secret means unanswerable requests, so it lives in the notary's database and its backups. The tree and the deployed
+  ledger do not change, because the commitment is opaque to them. The proof file gains the account
+  secret and a new `format`, and `notary-verify` reads both formats. A principal never goes on chain,
+  and `account` cannot be linked to one without identity's records and the secret.
+- **R3. The answer is the inclusion itself, so anyone may post it.**
+  `answer(registration, epoch, salt, amount, index, siblings)` recomputes the commitment from
+  `registration.account` and `salt`, then needs `ledger.verifyInclusion` to return `true`. It takes no
+  notary signature, so the holder can answer their own request with a proof the API already gave them.
+  notaryd answers the requests nobody else does. Answering reveals that account's amount for that
+  epoch, linked to `account` and not to a person, and only when its holder asked.
+- **R4. Bounds that keep a free challenge from draining the anchorer.** Only `A` itself may call
+  `requestStatement(registration, signature, epoch)`. It applies only to an epoch from `fromEpoch` on
+  that was anchored at most 7 days earlier. Each registration may hold one open request at a time and
+  one request per epoch. The answer is due 24 hours after the request. After that, anyone may call
+  `recordUnanswered`, which records a permanent `Unanswered(epoch, account)` fault. That fault is a
+  silence, kept apart from step 6's lies in its own kind and its own Grafana rule. Measured on
+  2026-10-13: an answer costs 46.7k gas at the median (57.6k for a deeper tree) and is the notary's to
+  pay; a request costs about 101k and a recorded silence about 170k, paid by whoever sends them.
+- **R5. A separate contract, `WithholdingCourt` (MIT), beside the deployed `StatementCourt`.** It reads
+  the court's signer terms and the ledger, and changes neither. Folding the game into a redeployed
+  court would orphan the live court and its record. notaryd exports its fault count as a second
+  gauge.
+
+What it still does not prove: the notary knows who has registered, so an unregistered account can
+still be left out unnoticed. Protection starts at `fromEpoch`, and registering early is the defence.
+Letting a registration attest backwards, to the account's first epoch inside the request window, is a
+possible extension and is not part of this proposal.
+
+*Work order*, each part green before the next, as in 6a:
+
+- **7-1** (**done 2026-10-13**: 29 unit, 6 fuzz, 4 invariants over 16 384 calls, 7 deploy; mutants for the
+  deadline, the window and the inclusion check each turned a suite red) the contract: `WithholdingCourt`,
+  its interface and types (one per file), `RegistrationHashing`
+  and `AccountCommitments`; unit, fuzz and handler-based invariant suites; a deploy script through the
+  CREATE2 factory, its deploy test, and `bin/rehearse-deploy`.
+- **7-2** (**done 2026-10-13**: `cast` known-answer vectors for both new hashes; `withholding-v1.json` re-verified
+  by Foundry, which also recomputes each account id from its documented preimage; Go's account tag changed
+  to 0x07 turned Foundry red) Go↔Solidity: the account id, the second commitment and the registration
+  digest in `internal/keccak`, a fixture written by Go and re-verified by Foundry.
+- **7-3** (**done 2026-10-13**, fork block 48063800: the deployed court answers ERC165 for `IStatementCourt`,
+  refuses a registration its signer did not sign, and an account the real tree lacks ends in a recorded
+  silence) a fork test: a withholding court deployed beside the live ledger and court.
+- **7-4** `notaryd`, in three parts:
+  - **7-4a** (**done 2026-10-14**) every epoch built from now on uses the second derivation. A secret per
+    account is drawn once, kept in `account_secrets` (migration 00002) in the same transaction as the
+    epoch, and checked against what the database already holds. A row naming an account without its
+    secret is refused by a foreign key. The prover refuses to serve an account whose opening does not
+    reproduce its commitment, which also catches a changed salt that the root check never saw. Proofs
+    travel as `kinetix.notary.inclusion.v2` with the secret, and v1 files still verify.
+  - **7-4b** (**done 2026-10-14**) registration: `POST /api/v1/proofs/registrations` (decision 17) issues one
+    registration per account the principal holds in the latest final epoch, signed by the court's
+    signer for that epoch and kept in `registrations` (migration 00003; a foreign key refuses a
+    registration naming an account the principal does not hold). It answers `registration_not_open`
+    until a final epoch carries secrets. notaryd now needs `KINETIX_NOTARY_WITHHOLDING_COURT_ADDRESS` and
+    refuses to start unless that contract stands beside its court and hashes a registration as it does.
+    Every EIP-712 digest is also checked against go-ethereum's own `apitypes`. On anvil, a registration
+    issued through the API was accepted by the real contract's `requestStatement`. The gateway needs
+    a `POST` route for it (7-6).
+  - **7-4c** (**done 2026-10-14**) answering. The answerer key (decision 16) sends answers with its own
+    nonce, and a stuck one is replaced at the same nonce, an eighth dearer, under the fee ceiling.
+    notaryd reads `StatementRequested` logs (100 000 blocks back from the head at start, never before
+    `KINETIX_NOTARY_WITHHOLDING_FROM_BLOCK`, 2 000 per call; nothing is stored, because a request lives
+    24 hours), asks the court whether each is still open, and answers from its own records after
+    rebuilding the epoch's root. A request it cannot answer, and a refusal or a disagreement for one
+    request, is counted and logged as an error without holding up the others; an outage is retried.
+    Gauges: `kinetix_notary_withholding_silences`, `_open_requests`, `_unanswerable_requests` and
+    `kinetix_notary_answerer_balance_wei`. On anvil the whole game ran: a holder registered through
+    the API and requested epoch 0, and notaryd answered on chain. Epoch 1 then left the holder out, the
+    request stayed open with the unanswerable gauge at 1, and after 24 hours a stranger recorded the
+    silence and the silence gauge read 1. Answering with a wrong salt turned that test red.
+- **7-5** (**folded into 7-4a**) `notary-verify`: both proof formats.
+- **7-6** operations. Done in this repository on 2026-10-14: `bin/deploy-withholding`,
+  `bin/inspect-withholding`, `bin/new-answerer-key`, and `bin/fund-hot-key`, with `fund-anchorer` and
+  `fund-answerer` as its wrappers. Both funding paths were rehearsed on anvil. The deploy was rehearsed
+  on an anvil fork of Base Sepolia at block 48063800, beside the real court: one CREATE2 through the
+  factory, `== Return ==` equal to the deployed address `0xe980Cd4199d491D635a2d8fd563FC7730716a601`, and
+  every inspect line `ok`. Because the address follows from the salt and the court, the real deploy
+  lands there too. **Deployed by the user on 2026-10-14**, exactly there: `0xe980…a601`, block
+  48086256, one CREATE2, 1.92M gas, Sourcify `match`, every inspect line `ok`. The predicted address
+  held on the real chain, which the ledger and the court never did. Infra carries the lab deploy, the
+  prod and shared compose lines and three Grafana rules; the gateway carries the `POST` route. Left,
+  all the user's: fund the answerer, the lab's answerer key, then the release
+  (infra `docs/NOTARY-WITHHOLDING-DEPLOY.md`).
 
 #### Step 8 — threshold anchoring (`AnchorCouncil`)
 
@@ -810,6 +917,4 @@ owner-side work.
 
 ## 11. Open questions
 
-- **Licence.** Every Solidity file says `UNLICENSED`. A public verifier contract is usually MIT so
-  others may read and reuse the verifier; the choice is the user's.
 - **Publishing the verifier image** to GHCR, and under which name.

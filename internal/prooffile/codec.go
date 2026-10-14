@@ -11,7 +11,10 @@ import (
 	"github.com/WildanFrananda/kinetix-notary-service/internal/notary"
 )
 
-const Format = "kinetix.notary.inclusion.v1"
+const (
+	FormatV1 = "kinetix.notary.inclusion.v1"
+	FormatV2 = "kinetix.notary.inclusion.v2"
+)
 
 const maxDocumentBytes = 64 << 10
 
@@ -41,15 +44,8 @@ func Decode(r io.Reader, scheme uint16) (notary.Claim, error) {
 		return notary.Claim{}, notary.Errf(notary.KindInvalidArgument, op, nil, "the proof has trailing content")
 	}
 
-	if doc.Format != Format {
-		return notary.Claim{}, notary.Errf(
-			notary.KindInvalidArgument,
-			op,
-			nil,
-			"format %q is not %q",
-			doc.Format,
-			Format,
-		)
+	if err := doc.checkFormat(); err != nil {
+		return notary.Claim{}, notary.Errf(notary.KindInvalidArgument, op, err, "")
 	}
 
 	if doc.Scheme != scheme {
@@ -159,7 +155,7 @@ func DecodeAll(r io.Reader, scheme uint16) ([]notary.Claim, error) {
 
 func documentOf(claim notary.Claim, scheme uint16) document {
 	doc := document{
-		Format:     Format,
+		Format:     FormatV1,
 		Scheme:     scheme,
 		ChainID:    strconv.FormatUint(claim.Ledger.ChainID, 10),
 		Ledger:     claim.Ledger.Address.Hex(),
@@ -178,6 +174,11 @@ func documentOf(claim notary.Claim, scheme uint16) document {
 			Holder: opening.Holder.String(),
 			Kind:   opening.Kind.String(),
 			Salt:   opening.Salt.Hex(),
+		}
+
+		if !opening.Secret.IsZero() {
+			doc.Format = FormatV2
+			doc.Account.Secret = opening.Secret.Hex()
 		}
 	}
 
@@ -274,7 +275,39 @@ func (a account) opening() (notary.Opening, error) {
 		return notary.Opening{}, fmt.Errorf("account salt: %w", err)
 	}
 
-	return notary.Opening{Holder: holder, Kind: kind, Salt: salt}, nil
+	opening := notary.Opening{Holder: holder, Kind: kind, Salt: salt}
+	if a.Secret == "" {
+		return opening, nil
+	}
+
+	if opening.Secret, err = notary.ParseAccountSecret(a.Secret); err != nil {
+		return notary.Opening{}, fmt.Errorf("account secret: %w", err)
+	}
+
+	if opening.Secret.IsZero() {
+		return notary.Opening{}, errors.New("account secret: an account secret is never all zero")
+	}
+
+	return opening, nil
+}
+
+func (d document) checkFormat() error {
+	switch d.Format {
+	case FormatV1:
+		if d.Account != nil && d.Account.Secret != "" {
+			return fmt.Errorf("format %q carries no account secret", FormatV1)
+		}
+
+		return nil
+	case FormatV2:
+		if d.Account == nil || d.Account.Secret == "" {
+			return fmt.Errorf("format %q needs the account and its secret", FormatV2)
+		}
+
+		return nil
+	default:
+		return fmt.Errorf("format %q is neither %q nor %q", d.Format, FormatV1, FormatV2)
+	}
 }
 
 func (s seal) statement() (notary.StatementSignature, error) {

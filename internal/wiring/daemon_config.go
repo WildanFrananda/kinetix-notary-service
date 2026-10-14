@@ -31,9 +31,10 @@ func provideDaemonLedgerSettings(p daemonLedgerSettingsParams) ethereum.Settings
 	chain := p.Config.Chain
 
 	return ethereum.Settings{
-		RPCURL:  chain.RPCURL,
-		Ledger:  chain.Ledger,
-		Court:   chain.Court,
-		Timeout: chain.RPCTimeout,
+		RPCURL:      chain.RPCURL,
+		Ledger:      chain.Ledger,
+		Court:       chain.Court,
+		Withholding: p.Config.Withholding,
+		Timeout:     chain.RPCTimeout,
 	}
 }

@@ -26,6 +26,11 @@ const (
 	KindUnauthenticated
 	KindSignerUnavailable
 	KindWrongCourt
+	KindRegistrationRefused
+	KindNoAccount
+	KindRegistrationNotOpen
+	KindAnswerRefused
+	KindUnanswerable
 )
 
 func (k Kind) String() string {
@@ -74,6 +79,16 @@ func (k Kind) String() string {
 		return "signer_unavailable"
 	case KindWrongCourt:
 		return "wrong_court"
+	case KindRegistrationRefused:
+		return "registration_refused"
+	case KindNoAccount:
+		return "no_account"
+	case KindRegistrationNotOpen:
+		return "registration_not_open"
+	case KindAnswerRefused:
+		return "answer_refused"
+	case KindUnanswerable:
+		return "unanswerable"
 	default:
 		return "unknown"
 	}

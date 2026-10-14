@@ -9,12 +9,14 @@ import (
 )
 
 const (
-	version    uint16 = 1
-	leafTag    byte   = 0x00
-	nodeTag    byte   = 0x01
-	emptyTag   byte   = 0x02
-	epochTag   byte   = 0x03
-	accountTag byte   = 0x04
+	version              uint16 = 1
+	leafTag              byte   = 0x00
+	nodeTag              byte   = 0x01
+	emptyTag             byte   = 0x02
+	epochTag             byte   = 0x03
+	accountTag           byte   = 0x04
+	accountIDTag         byte   = 0x05
+	accountCommitmentTag byte   = 0x06
 )
 
 type Scheme struct{}

@@ -7,12 +7,17 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/WildanFrananda/kinetix-notary-service/internal/notary"
 )
 
 const (
 	DatabaseURLKey     = "KINETIX_NOTARY_DATABASE_URL"
 	AnchorerKeyKey     = "KINETIX_NOTARY_ANCHORER_PRIVATE_KEY"
 	StatementKeysKey   = "KINETIX_NOTARY_STATEMENT_PRIVATE_KEYS"
+	WithholdingKey     = "KINETIX_NOTARY_WITHHOLDING_COURT_ADDRESS"
+	WithholdingFromKey = "KINETIX_NOTARY_WITHHOLDING_FROM_BLOCK"
+	AnswererKeyKey     = "KINETIX_NOTARY_ANSWERER_PRIVATE_KEY"
 	PaymentAddressKey  = "KINETIX_NOTARY_PAYMENT_GRPC_ADDR"
 	PKIDirKey          = "KINETIX_PKI_DIR"
 	TrustDomainKey     = "KINETIX_TRUST_DOMAIN"
@@ -37,6 +42,9 @@ type Daemon struct {
 	DatabaseURL     Secret
 	AnchorerKey     Secret
 	StatementKeys   Secret
+	Withholding     notary.Address
+	WithholdingFrom uint64
+	AnswererKey     Secret
 	PaymentAddress  string
 	PKIDir          string
 	TrustDomains    []string
@@ -103,6 +111,28 @@ func LoadDaemon(lookup Lookup) (Daemon, error) {
 
 	if raw := required(StatementKeysKey); raw != "" {
 		cfg.StatementKeys = Secret{value: raw}
+	}
+
+	if raw := required(WithholdingKey); raw != "" {
+		address, err := notary.ParseAddress(raw)
+		if err != nil || address.IsZero() {
+			problems = append(problems, WithholdingKey+" must be a non-zero 0x-prefixed 20-byte address")
+		}
+
+		cfg.Withholding = address
+	}
+
+	if raw := required(WithholdingFromKey); raw != "" {
+		block, err := strconv.ParseUint(raw, 10, 64)
+		if err != nil {
+			problems = append(problems, WithholdingFromKey+" must be the block the withholding court was deployed in")
+		}
+
+		cfg.WithholdingFrom = block
+	}
+
+	if raw := required(AnswererKeyKey); raw != "" {
+		cfg.AnswererKey = Secret{value: raw}
 	}
 
 	if raw := required(PaymentAddressKey); raw != "" {

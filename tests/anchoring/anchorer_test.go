@@ -59,6 +59,7 @@ func (r *rig) build() {
 	r.anchorer = anchoring.NewAnchorer(
 		keccak.NewScheme(),
 		&notarytest.Salts{Seed: 7},
+		&notarytest.Secrets{Seed: 7},
 		r.source,
 		r.store,
 		r.chain,

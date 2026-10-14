@@ -28,6 +28,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/WildanFrananda/kinetix-notary-service/internal/anchoring"
+	"github.com/WildanFrananda/kinetix-notary-service/internal/answering"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/config"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/keccak"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/metrics"
@@ -36,6 +37,7 @@ import (
 	commonv1 "github.com/WildanFrananda/kinetix-notary-service/internal/protogen/common/v1"
 	paymentv1 "github.com/WildanFrananda/kinetix-notary-service/internal/protogen/payment/v1"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/proving"
+	"github.com/WildanFrananda/kinetix-notary-service/internal/registering"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/verifycli"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/verifying"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/wiring"
@@ -45,24 +47,28 @@ import (
 const databaseURLKey = "KINETIX_NOTARY_TEST_DATABASE_URL"
 
 type estate struct {
-	chain    *chain
-	ledger   notary.LedgerIdentity
-	court    notary.Address
-	dbURL    string
-	pool     *pgxpool.Pool
-	payment  *notarytest.LiabilityServer
-	identity *notarytest.Identity
-	values   map[string]string
-	mu       sync.Mutex
-	now      time.Time
+	chain       *chain
+	ledger      notary.LedgerIdentity
+	court       notary.Address
+	withholding notary.Address
+	dbURL       string
+	pool        *pgxpool.Pool
+	payment     *notarytest.LiabilityServer
+	identity    *notarytest.Identity
+	values      map[string]string
+	omit        string
+	mu          sync.Mutex
+	now         time.Time
 }
 
 type running struct {
 	dig.In
-	Anchorer *anchoring.Anchorer
-	Handler  http.Handler
-	Verifier *verifying.Verifier
-	Prover   *proving.Prover
+	Anchorer  *anchoring.Anchorer
+	Handler   http.Handler
+	Verifier  *verifying.Verifier
+	Prover    *proving.Prover
+	Registrar *registering.Registrar
+	Answerer  *answering.Answerer
 }
 
 func newEstate(t *testing.T) *estate {
@@ -80,6 +86,8 @@ func newEstate(t *testing.T) *estate {
 	e := &estate{chain: c, ledger: c.identity(c.deploy(t)), now: time.Unix(int64(latest.Time), 0).UTC()}
 	statementKey, statementSigner := notarytest.StatementKey(t, "estate-signer")
 	e.court = notary.Address(c.deployCourt(t, common.Address(e.ledger.Address), statementSigner))
+	e.withholding = notary.Address(c.deployWithholding(t, common.Address(e.court)))
+	answererKey, _ := c.funded(t)
 	e.dbURL = schema(t, base)
 	pool, err := pgxpool.New(ctx, e.dbURL)
 	require.NoError(t, err)
@@ -95,22 +103,25 @@ func newEstate(t *testing.T) *estate {
 	e.payment = &notarytest.LiabilityServer{Script: e.snapshot}
 	address := notarytest.ServeLiabilities(t, pki.Issue(t, "kinetix.local", "payment"), e.payment)
 	e.values = map[string]string{
-		config.RPCURLKey:         c.url,
-		config.ChainIDKey:        strconv.FormatUint(e.ledger.ChainID, 10),
-		config.LedgerAddressKey:  e.ledger.Address.Hex(),
-		config.CourtAddressKey:   e.court.Hex(),
-		config.StatementKeysKey:  "0x" + hex.EncodeToString(crypto.FromECDSA(statementKey)),
-		config.RPCTimeoutKey:     "10s",
-		config.DatabaseURLKey:    e.dbURL,
-		config.AnchorerKeyKey:    "0x" + hex.EncodeToString(crypto.FromECDSA(c.key)),
-		config.PaymentAddressKey: address,
-		config.PKIDirKey:         pki.Issue(t, "kinetix.local", "notary"),
-		config.CurrencyKey:       "IDR",
-		config.MaxFeeKey:         "1000000000000",
-		config.HTTPPortKey:       "18010",
-		config.JWKSURLKey:        e.identity.URL,
-		config.JWTIssuerKey:      notarytest.IdentityIssuer,
-		config.JWTAudienceKey:    notarytest.IdentityAudience,
+		config.RPCURLKey:          c.url,
+		config.ChainIDKey:         strconv.FormatUint(e.ledger.ChainID, 10),
+		config.LedgerAddressKey:   e.ledger.Address.Hex(),
+		config.CourtAddressKey:    e.court.Hex(),
+		config.StatementKeysKey:   "0x" + hex.EncodeToString(crypto.FromECDSA(statementKey)),
+		config.WithholdingKey:     e.withholding.Hex(),
+		config.WithholdingFromKey: "0",
+		config.AnswererKeyKey:     "0x" + hex.EncodeToString(crypto.FromECDSA(answererKey)),
+		config.RPCTimeoutKey:      "10s",
+		config.DatabaseURLKey:     e.dbURL,
+		config.AnchorerKeyKey:     "0x" + hex.EncodeToString(crypto.FromECDSA(c.key)),
+		config.PaymentAddressKey:  address,
+		config.PKIDirKey:          pki.Issue(t, "kinetix.local", "notary"),
+		config.CurrencyKey:        "IDR",
+		config.MaxFeeKey:          "1000000000000",
+		config.HTTPPortKey:        "18010",
+		config.JWKSURLKey:         e.identity.URL,
+		config.JWTIssuerKey:       notarytest.IdentityIssuer,
+		config.JWTAudienceKey:     notarytest.IdentityAudience,
 	}
 
 	return e
@@ -152,7 +163,15 @@ func (e *estate) snapshot() []*paymentv1.StreamLiabilitySnapshotResponse {
 
 	var total int64
 
+	e.mu.Lock()
+	omit := e.omit
+	e.mu.Unlock()
+
 	for i := range 9 {
+		if fmt.Sprintf("principal-%d", i) == omit {
+			continue
+		}
+
 		amount := int64(1_000_000 * (i + 1))
 		total += amount
 		accounts = append(accounts, &paymentv1.LiabilityAccount{

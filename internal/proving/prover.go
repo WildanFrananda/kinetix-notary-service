@@ -165,6 +165,7 @@ func (p *Prover) Proofs(ctx context.Context, holder notary.Holder, ref EpochRef)
 				Holder: account.Liability.Holder,
 				Kind:   account.Liability.Kind,
 				Salt:   account.Salt,
+				Secret: account.Secret,
 			},
 		}
 
@@ -256,6 +257,23 @@ func (p *Prover) load(ctx context.Context, record notary.EpochRecord) (proven, e
 				"epoch %d has no account at position %d",
 				number,
 				i,
+			)
+		}
+
+		opening := notary.Opening{
+			Holder: account.Liability.Holder,
+			Kind:   account.Liability.Kind,
+			Salt:   account.Salt,
+			Secret: account.Secret,
+		}
+		if opening.Commitment(p.scheme) != account.Commitment {
+			return proven{}, notary.Errf(
+				notary.KindDisagreement,
+				op,
+				nil,
+				"the account at position %d of epoch %d does not open its commitment",
+				i,
+				number,
 			)
 		}
 

@@ -176,10 +176,66 @@ func accountOf(op string, row storegen.EpochAccountsRow) (notary.Account, error)
 		return notary.Account{}, err
 	}
 
-	return notary.Account{
+	account := notary.Account{
 		Position:   position,
 		Liability:  notary.Liability{Holder: holder, Kind: kind, Amount: amount},
 		Salt:       notary.Salt(salt),
 		Commitment: commitment,
-	}, nil
+	}
+
+	if (row.Account == nil) != (row.Secret == nil) {
+		return notary.Account{}, notary.Errf(
+			notary.KindDisagreement,
+			op,
+			nil,
+			"position %d names an account without its secret",
+			position,
+		)
+	}
+
+	if row.Account == nil {
+		return account, nil
+	}
+
+	if account.ID, err = digestOf(op, row.Account); err != nil {
+		return notary.Account{}, err
+	}
+
+	secret, err := digestOf(op, row.Secret)
+	if err != nil {
+		return notary.Account{}, err
+	}
+
+	account.Secret = notary.AccountSecret(secret)
+
+	return account, nil
+}
+
+func secretOf(op string, row storegen.AccountSecretsForRow) (notary.AccountKey, notary.AccountSecret, error) {
+	holder, err := notary.NewHolder(row.Holder)
+	if err != nil {
+		return notary.AccountKey{}, notary.AccountSecret{}, notary.Errf(notary.KindStoreUnavailable, op, err, "")
+	}
+
+	if row.Kind < 0 || row.Kind > 255 {
+		return notary.AccountKey{}, notary.AccountSecret{}, notary.Errf(
+			notary.KindStoreUnavailable,
+			op,
+			nil,
+			"the database holds kind %d",
+			row.Kind,
+		)
+	}
+
+	kind, err := notary.AccountKindOf(uint8(row.Kind))
+	if err != nil {
+		return notary.AccountKey{}, notary.AccountSecret{}, notary.Errf(notary.KindStoreUnavailable, op, err, "")
+	}
+
+	secret, err := digestOf(op, row.Secret)
+	if err != nil {
+		return notary.AccountKey{}, notary.AccountSecret{}, err
+	}
+
+	return notary.AccountKey{Holder: holder, Kind: kind}, notary.AccountSecret(secret), nil
 }

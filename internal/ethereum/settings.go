@@ -7,8 +7,9 @@ import (
 )
 
 type Settings struct {
-	RPCURL  string
-	Ledger  notary.LedgerIdentity
-	Court   notary.Address
-	Timeout time.Duration
+	RPCURL      string
+	Ledger      notary.LedgerIdentity
+	Court       notary.Address
+	Withholding notary.Address
+	Timeout     time.Duration
 }

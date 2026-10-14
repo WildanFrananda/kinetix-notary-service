@@ -4,6 +4,7 @@ import (
 	"go.uber.org/dig"
 
 	"github.com/WildanFrananda/kinetix-notary-service/internal/anchoring"
+	"github.com/WildanFrananda/kinetix-notary-service/internal/answering"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/httpapi"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/metrics"
 	paymentv1 "github.com/WildanFrananda/kinetix-notary-service/internal/protogen/payment/v1"
@@ -17,18 +18,25 @@ type metricsParams struct {
 
 type metricsResult struct {
 	dig.Out
-	Metrics  *metrics.Metrics
-	Observer anchoring.Observer
-	Watching watching.Observer
+	Metrics   *metrics.Metrics
+	Observer  anchoring.Observer
+	Watching  watching.Observer
+	Answering answering.Observer
 }
 
 func provideMetrics(p metricsParams) metricsResult {
 	m := metrics.New(p.Build)
+
 	for _, route := range httpapi.Routes {
-		m.SeedRoute("GET", route)
+		method := "GET"
+		if route == httpapi.RegistrationsRoute {
+			method = "POST"
+		}
+
+		m.SeedRoute(method, route)
 	}
 
 	m.SeedCall("payment", paymentv1.LiabilityService_StreamLiabilitySnapshot_FullMethodName)
 
-	return metricsResult{Metrics: m, Observer: m, Watching: m}
+	return metricsResult{Metrics: m, Observer: m, Watching: m, Answering: m}
 }

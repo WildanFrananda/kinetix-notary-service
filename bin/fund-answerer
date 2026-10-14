@@ -1,0 +1,2 @@
+#!/usr/bin/env sh
+exec sh "$(cd "$(dirname "$0")" && pwd)/fund-hot-key" answerer "$@"

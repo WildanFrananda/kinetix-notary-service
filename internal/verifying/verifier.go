@@ -49,7 +49,7 @@ func (v *Verifier) Verify(ctx context.Context, claim notary.Claim) (notary.Verif
 	}
 
 	if opening := claim.Opening; opening != nil {
-		if v.scheme.Commitment(opening.Holder, opening.Kind, opening.Salt) != claim.Entry.Commitment {
+		if opening.Commitment(v.scheme) != claim.Entry.Commitment {
 			return v.attest(
 				ctx,
 				claim,

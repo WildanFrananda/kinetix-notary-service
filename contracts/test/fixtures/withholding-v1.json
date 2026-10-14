@@ -1,0 +1,74 @@
+{
+  "name": "Kinetix Withholding Court",
+  "version": "1",
+  "chainId": "84532",
+  "court": "0x3084bf89ab3e9066f8cc807bb9aca6ccef005c80",
+  "withholdingCourt": "0x8a42a464eedf73335a1f6ae0ff53dad378470099",
+  "signer": "0x0d9ce1682426041df9cfd00bd188529a506cd53d",
+  "registrationCount": 4,
+  "registrations": [
+    {
+      "holder": "0xf85ca1cf981f5e24fbd39fd358bad194e6d3fd7e",
+      "account": "0x32ad7904fa0ef610b9e32ddc7dc5325f0a618a57bcbf64fe0eb47424f7bcaf7d",
+      "fromEpoch": "0",
+      "digest": "0xfee961dc6c639a68cbcf89f4a3c1b4a29ac2c30d1040088a3763ecdc161eeaf6",
+      "signature": "0xe17a4ff1e3759d9f911e10c3f8579106c5b27f6a6974258b539e0ddece1bc8d51377abda915ae32a6570a8ececf6aec61f839eb183f4788e1615a2a48cda8f331b"
+    },
+    {
+      "holder": "0x46f386a55a03ca9bc4f66868f0db85b1169ba191",
+      "account": "0x7eea554db060c7db087d5cd495cf594c22256cbc30823f5b535b028da739caa8",
+      "fromEpoch": "3",
+      "digest": "0xf196fb6e074374d4868738ccc2ca4ec42616daf64731465eeb84dc6305781a63",
+      "signature": "0xeb17426b051411e0e8f689c3c0d9f9996d856b7a2ec11a8ec35bc2fd796a3e855b86e9832f3400717b41ce0ac192eddfdee4342d6c905849aa927b8664be5a451c"
+    },
+    {
+      "holder": "0x9924d75f1a05a76bd138ef68ba2f7f751525e3eb",
+      "account": "0x258bf87dc854676af928d7f2496b6d3f00dbfb602700350a393a1c437ec9b3e5",
+      "fromEpoch": "1099511627776",
+      "digest": "0xb488529457dc8b5f4e54164427ad0d1fcaad495d79d85796e14967049a0cfa6a",
+      "signature": "0x2686dd2dc9d9d93ecec9ed4d240cd4e2c20536a6e89b3eb203fb2043882e904245bf9bc0ea7fe1fb549b69b149aeb8da49325f1029ffef4fdbc0c9d166bc1e421c"
+    },
+    {
+      "holder": "0x619811c741e54c2c2210bf9eccbb038b2f5bd037",
+      "account": "0x2a41dbd8620893d6b789e86f9ea2f00536ed4f8abf3877aecd8355116c913964",
+      "fromEpoch": "18446744073709551615",
+      "digest": "0x498f1e07150be8676082570c8b1972586e4a01c5605f9d98993c3a614d7d675f",
+      "signature": "0x5bc271a0a3339c35c2f91466100b138cb4775f84cf929212a6a54c72d78814f23a504672c5fea99d7ec7f1db6461e7ff6bb3b6124e12eb355d88f887eab8e1c61b"
+    }
+  ],
+  "accountCount": 4,
+  "accounts": [
+    {
+      "holder": "9f1d4a3e-1c62-4d0a-9a7b-2f5c8e0b41d7",
+      "kind": "1",
+      "secret": "0x5c5f9d63d16a3576cd444cd0241a2fc2a2ccb7a86158568c246026f4bc7cc990",
+      "account": "0x32ad7904fa0ef610b9e32ddc7dc5325f0a618a57bcbf64fe0eb47424f7bcaf7d",
+      "salt": "0xf5f64d3b82beb349f5a332267976279946f0e92dd58abf063b5d41e2b54b1952",
+      "commitment": "0xddddb3f0c0871782385c61d417fb10aebc9bf9f19d1657cb16ba567ca14da403"
+    },
+    {
+      "holder": "UNASSIGNED_DRIVER_SHIPPING_FEE",
+      "kind": "7",
+      "secret": "0xb8b37f62ec82443e5b5557c5a187fe3686790620cc04c06187c48f8636caac89",
+      "account": "0x7eea554db060c7db087d5cd495cf594c22256cbc30823f5b535b028da739caa8",
+      "salt": "0xe6ce4fe93488b043608824fc61a7c8615b0c72e06aad895a5468e3bb51ca1a4f",
+      "commitment": "0x6ca75b46afa1150a77d97778866867b37462951d85bb792c800c324ebeae453c"
+    },
+    {
+      "holder": "p",
+      "kind": "2",
+      "secret": "0x294549f8629f0eeb2b8e01aca491f701f5386a9662403b485c4efe7d447dfba3",
+      "account": "0x258bf87dc854676af928d7f2496b6d3f00dbfb602700350a393a1c437ec9b3e5",
+      "salt": "0x155be92b2f4d9840dffa6d5d9ec7c217158eaa53806e42820606ede6f9e17f25",
+      "commitment": "0x5cbe4f20aa6ab55cd3934c56c6979c71997ac2e0fc53fadba948f444bae3766f"
+    },
+    {
+      "holder": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "kind": "5",
+      "secret": "0x11568112646ae61522dca1fc4cc9784c1e324c9ebd785ebd8756820b04b5a095",
+      "account": "0x2a41dbd8620893d6b789e86f9ea2f00536ed4f8abf3877aecd8355116c913964",
+      "salt": "0x1c3c3b4ff5a2c2fc59cbdde25a51f7f2cd8ee4757c24021f6d6c5699e05bcd82",
+      "commitment": "0x7752cfc5fd821b1fae1d627ffd7ad38504b0eb732ad8bb8b91af6cca15c4a838"
+    }
+  ]
+}
