@@ -17,6 +17,7 @@ const (
 	StatementKeysKey   = "KINETIX_NOTARY_STATEMENT_PRIVATE_KEYS"
 	WithholdingKey     = "KINETIX_NOTARY_WITHHOLDING_COURT_ADDRESS"
 	WithholdingFromKey = "KINETIX_NOTARY_WITHHOLDING_FROM_BLOCK"
+	LogRangeKey        = "KINETIX_NOTARY_RPC_LOG_RANGE"
 	AnswererKeyKey     = "KINETIX_NOTARY_ANSWERER_PRIVATE_KEY"
 	PaymentAddressKey  = "KINETIX_NOTARY_PAYMENT_GRPC_ADDR"
 	PKIDirKey          = "KINETIX_PKI_DIR"
@@ -44,6 +45,7 @@ type Daemon struct {
 	StatementKeys   Secret
 	Withholding     notary.Address
 	WithholdingFrom uint64
+	LogRange        uint64
 	AnswererKey     Secret
 	PaymentAddress  string
 	PKIDir          string
@@ -129,6 +131,15 @@ func LoadDaemon(lookup Lookup) (Daemon, error) {
 		}
 
 		cfg.WithholdingFrom = block
+	}
+
+	if raw := required(LogRangeKey); raw != "" {
+		blocks, err := strconv.ParseUint(raw, 10, 64)
+		if err != nil || blocks == 0 {
+			problems = append(problems, LogRangeKey+" must be the most blocks one eth_getLogs may span")
+		}
+
+		cfg.LogRange = blocks
 	}
 
 	if raw := required(AnswererKeyKey); raw != "" {

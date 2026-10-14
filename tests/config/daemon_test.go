@@ -26,6 +26,7 @@ func daemonValues() map[string]string {
 		config.StatementKeysKey:   statementKeys,
 		config.WithholdingKey:     "0x00000000000000000000000000000000d0d0d0d0",
 		config.WithholdingFromKey: "48063900",
+		config.LogRangeKey:        "200",
 		config.AnswererKeyKey:     answererKey,
 		config.RPCTimeoutKey:      "10s",
 		config.DatabaseURLKey:     "postgres://notary@kinetix-notary-db:5432/notary",
@@ -62,6 +63,7 @@ func TestADaemonConfigurationLoadsWithTheEstatesDefaults(t *testing.T) {
 	require.Equal(t, 3*time.Minute, cfg.SnapshotTimeout)
 	require.Equal(t, "0x00000000000000000000000000000000d0d0d0d0", cfg.Withholding.Hex())
 	require.Equal(t, uint64(48063900), cfg.WithholdingFrom)
+	require.Equal(t, uint64(200), cfg.LogRange)
 	require.Equal(t, answererKey, cfg.AnswererKey.Reveal())
 }
 
@@ -103,6 +105,7 @@ func TestEveryMissingOrBrokenSettingIsNamedAtOnce(t *testing.T) {
 	delete(values, config.JWTAudienceKey)
 	values[config.WithholdingKey] = "0x0000000000000000000000000000000000000000"
 	values[config.WithholdingFromKey] = "yesterday"
+	values[config.LogRangeKey] = "0"
 	delete(values, config.AnswererKeyKey)
 
 	_, err := config.LoadDaemon(from(values))
@@ -124,6 +127,7 @@ func TestEveryMissingOrBrokenSettingIsNamedAtOnce(t *testing.T) {
 		config.JWTAudienceKey,
 		config.WithholdingKey,
 		config.WithholdingFromKey,
+		config.LogRangeKey,
 		config.AnswererKeyKey,
 	} {
 		require.ErrorContains(t, err, key)
@@ -147,6 +151,15 @@ func TestTheMigratorNeedsOnlyTheDatabase(t *testing.T) {
 
 	_, err = config.LoadMigrator(from(map[string]string{}))
 	require.ErrorContains(t, err, config.DatabaseURLKey)
+}
+
+func TestTheLogRangeIsRequiredBecauseItBelongsToTheRPCEndpoint(t *testing.T) {
+	values := daemonValues()
+	delete(values, config.LogRangeKey)
+
+	_, err := config.LoadDaemon(from(values))
+
+	require.ErrorContains(t, err, config.LogRangeKey+" is not set")
 }
 
 func TestTheWithholdingCourtIsRequired(t *testing.T) {

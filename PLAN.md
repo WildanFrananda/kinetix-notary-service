@@ -721,7 +721,7 @@ Prometheus had never scraped the notary, so the stall, abandon, runway and prove
 silent since step 4. That is fixed in infrastructure, and `bin/prod-deploy` now refuses a service that
 Prometheus does not scrape. **6b**, pushing statements to holders, is notification's work.
 
-#### Step 7 — withholding (`WithholdingCourt`). **Ruled 2026-10-13 (decision 15); being built.**
+#### Step 7 — withholding (`WithholdingCourt`). **Ruled 2026-10-13 (decision 15); released 2026-10-14 (v1.0.0), scan fix pending (7-7).**
 
 Step 6 punishes a lie the notary signed; this step punishes the silence that would hide an omitted
 account — the limit PLAN §3 admits today. A holder registers a statement address (a key in their own
@@ -815,8 +815,8 @@ possible extension and is not part of this proposal.
   - **7-4c** (**done 2026-10-14**) answering. The answerer key (decision 16) sends answers with its own
     nonce, and a stuck one is replaced at the same nonce, an eighth dearer, under the fee ceiling.
     notaryd reads `StatementRequested` logs (100 000 blocks back from the head at start, never before
-    `KINETIX_NOTARY_WITHHOLDING_FROM_BLOCK`, 2 000 per call; nothing is stored, because a request lives
-    24 hours), asks the court whether each is still open, and answers from its own records after
+    `KINETIX_NOTARY_WITHHOLDING_FROM_BLOCK`, `KINETIX_NOTARY_RPC_LOG_RANGE` blocks per call; nothing is
+    stored, because a request lives 24 hours), asks the court whether each is still open, and answers from its own records after
     rebuilding the epoch's root. A request it cannot answer, and a refusal or a disagreement for one
     request, is counted and logged as an error without holding up the others; an outage is retried.
     Gauges: `kinetix_notary_withholding_silences`, `_open_requests`, `_unanswerable_requests` and
@@ -837,6 +837,20 @@ possible extension and is not part of this proposal.
   prod and shared compose lines and three Grafana rules; the gateway carries the `POST` route. Left,
   all the user's: fund the answerer, the lab's answerer key, then the release
   (infra `docs/NOTARY-WITHHOLDING-DEPLOY.md`).
+- **7-7** release. **Released by the user on 2026-10-14** as notary v1.0.0 and gateway v1.1.0. The
+  deploy checked out on migrations, the court, the answerer and the Grafana rules.
+
+  Every pass over the withholding court still failed, from the first minute. Each `eth_getLogs` asked
+  sepolia.base.org for 2 000 blocks, and the endpoint answers at most 201
+  (`eth_getLogs is limited to a 200 range`, HTTP 413). anvil and the fork test answer any range, so
+  neither could have shown it. Nothing was missed, because registration had not opened.
+
+  The fix, built and green (`bin/ci-go`, 85.4%), not yet released:
+  - the span is `KINETIX_NOTARY_RPC_LOG_RANGE`, required, because the limit belongs to the endpoint;
+  - `Answerer.CheckScan` asks for one full span ending at the head before notaryd starts, so an endpoint
+    that refuses it fails the deploy, not every pass;
+  - `kinetix_notary_withholding_passes_total{outcome}` counts each pass, and infra's
+    `withholding-stalled` rule pages when thirty minutes pass without a served one.
 
 #### Step 8 — threshold anchoring (`AnchorCouncil`)
 

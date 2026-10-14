@@ -26,6 +26,7 @@ type WithholdingCourt struct {
 	States        map[RequestKey]RequestRecord
 	Silences      uint64
 	Err           error
+	MaxRange      uint64
 	Scanned       [][2]uint64
 }
 
@@ -63,6 +64,16 @@ func (w *WithholdingCourt) LatestBlock(context.Context) (uint64, error) {
 func (w *WithholdingCourt) Requests(_ context.Context, from, to uint64) ([]notary.WithholdingRequest, error) {
 	if w.Err != nil {
 		return nil, w.Err
+	}
+
+	if w.MaxRange > 0 && to-from+1 > w.MaxRange {
+		return nil, notary.Errf(
+			notary.KindLedgerUnavailable,
+			"notarytest.WithholdingCourt.Requests",
+			nil,
+			"eth_getLogs answers at most %d blocks",
+			w.MaxRange,
+		)
 	}
 
 	w.Scanned = append(w.Scanned, [2]uint64{from, to})

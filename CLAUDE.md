@@ -59,8 +59,14 @@ it is configured with, never the one a document names, and reports beside every 
 proof's statement is attributable to the epoch's signer and how many faults the epoch carries.
 
 notaryd also needs `KINETIX_NOTARY_WITHHOLDING_COURT_ADDRESS`, `KINETIX_NOTARY_WITHHOLDING_FROM_BLOCK` (the block
-the withholding court was deployed in) and `KINETIX_NOTARY_ANSWERER_PRIVATE_KEY`, and refuses to start unless
-the withholding court stands beside its court, reads its ledger and hashes a registration as it does.
+the withholding court was deployed in), `KINETIX_NOTARY_ANSWERER_PRIVATE_KEY` and `KINETIX_NOTARY_RPC_LOG_RANGE`
+(the most blocks the RPC endpoint answers in one `eth_getLogs`).
+
+It refuses to start unless:
+- the withholding court stands beside its court;
+- it reads the notary's ledger;
+- it hashes a registration the way the notary does;
+- the endpoint answers one full log span ending at the head.
 
 `deploy/<network>.env` holds only public values and is committed. Keys never are: the deployer and
 admin keystores live in `KINETIX_NOTARY_KEYSTORE_DIR` (refused when inside a git work tree), the
@@ -294,6 +300,12 @@ A failure must never be reported as a definite answer. In this service that mean
 - **A zero account secret means the first derivation.** `Opening.Commitment` picks `H(0x04 ‖ kind ‖ salt ‖
   holder)` for an epoch built before secrets and `H(0x06 ‖ H(0x05 ‖ kind ‖ secret ‖ holder) ‖ salt)` after,
   the way an all-zero salt is refused everywhere: the source never draws one.
+- **An RPC endpoint limits `eth_getLogs`, and nothing local shows it.** sepolia.base.org answers at most
+  201 blocks per query and refuses more with HTTP 413. notaryd v1.0.0 asked for 2 000, and every pass
+  over the withholding court failed in production from its first minute. anvil answers any range, and so
+  does the fork test, because anvil serves a forked chain's logs itself. The span is now
+  `KINETIX_NOTARY_RPC_LOG_RANGE`, and notaryd probes one full span before it starts. Measure a new
+  endpoint's limit with `curl` before you point notaryd at it.
 - **A request the notary cannot answer is never retried in silence.** It is logged as an error and
   counted in `kinetix_notary_withholding_unanswerable_requests`. An outage is retried. A refusal for
   one request never holds up the others, because each lost request becomes someone's recorded silence.
@@ -304,7 +316,7 @@ Steps 1–5 are done: contracts v1.0.23, payment v0.1.11, notaryd v0.2.0 anchori
 the proof API (v0.3.0, gateway v1.0.0) live and proven end to end in the lab on 2026-10-13. Step 6a —
 the statement court and a signed statement on every proof — is live: the production court
 `0xE1Ffcb004Dd734F83ED0B194fdaFF5B0c7c5927B` and notaryd v0.4.0, proven in production on 2026-10-13.
-Step 7 (withholding, PLAN.md step 7 and decisions 15–17) is built and green: `WithholdingCourt`, the
-second commitment derivation, registration through the API and answering. Its deploy and release are the
-user's (infra `docs/NOTARY-WITHHOLDING-DEPLOY.md`). 6b (delivery through notification) and steps 8–14 do
-not exist yet. Contract deploys stay manual, never in CI.
+Step 7 (withholding, PLAN.md step 7 and decisions 15–17) is live: the withholding court `0xe980…a601`,
+notaryd v1.0.0 and gateway v1.1.0, released on 2026-10-14. That release scanned in spans the public RPC
+refuses, and the fix (PLAN.md 7-7) is built but not yet released. 6b (delivery through notification)
+and steps 8–14 do not exist yet. Contract deploys stay manual, never in CI.

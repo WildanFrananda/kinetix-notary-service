@@ -7,4 +7,5 @@ type Observer interface {
 	OpenRequests(count int)
 	Unanswerable(count int)
 	AnswererBalance(wei *big.Int)
+	Pass(served bool)
 }

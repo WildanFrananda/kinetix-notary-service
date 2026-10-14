@@ -25,12 +25,23 @@ type observed struct {
 	open         int
 	unanswerable int
 	balance      *big.Int
+	served       int
+	failed       int
 }
 
 func (o *observed) Silences(total uint64)        { o.silences = total }
 func (o *observed) OpenRequests(count int)       { o.open = count }
 func (o *observed) Unanswerable(count int)       { o.unanswerable = count }
 func (o *observed) AnswererBalance(wei *big.Int) { o.balance = wei }
+
+func (o *observed) Pass(served bool) {
+	if served {
+		o.served++
+		return
+	}
+
+	o.failed++
+}
 
 type rig struct {
 	court         *notarytest.WithholdingCourt
@@ -67,8 +78,11 @@ func newRig(t *testing.T) *rig {
 		State:    notary.StateFinalized,
 	}
 
+	court := notarytest.NewWithholdingCourt(identity, scheme)
+	court.MaxRange = 201
+
 	return &rig{
-		court: notarytest.NewWithholdingCourt(identity, scheme),
+		court: court,
 		chain: &notarytest.AnswerChain{Address: notary.Address{0xa5}, BalanceValue: big.NewInt(42)},
 		source: &notarytest.ProofSource{
 			Records: map[uint64]notary.EpochRecord{epoch: record},
@@ -78,7 +92,7 @@ func newRig(t *testing.T) *rig {
 		observer:      &observed{},
 		record:        record,
 		now:           time.Unix(1760003600, 0).UTC(),
-		policy:        answering.Policy{FromBlock: 0, Lookback: 100_000, Span: 2_000},
+		policy:        answering.Policy{FromBlock: 0, Lookback: 100_000, Span: 200},
 	}
 }
 
@@ -200,7 +214,7 @@ func TestTheScanStartsALookbackBehindTheHeadButNeverBeforeTheDeployBlock(t *test
 	require.Equal(t, uint64(250_000), r.court.Scanned[len(r.court.Scanned)-1][1])
 
 	for _, span := range r.court.Scanned {
-		require.LessOrEqual(t, span[1]-span[0]+1, uint64(2_000))
+		require.LessOrEqual(t, span[1]-span[0]+1, r.policy.Span)
 	}
 
 	r.court.Scanned = nil
@@ -259,11 +273,14 @@ func TestARefusalBecomesUnanswerableButAnOutageIsRetried(t *testing.T) {
 
 	require.Equal(t, notary.KindLedgerUnavailable, notary.KindOf(a.Tick(context.Background())))
 	require.Equal(t, 1, r.observer.open)
+	require.Equal(t, 1, r.observer.failed)
+	require.Equal(t, 0, r.observer.served)
 
 	r.chain.Err = nil
 
 	require.NoError(t, a.Tick(context.Background()))
 	require.Len(t, r.chain.Answers, 1)
+	require.Equal(t, 1, r.observer.served)
 
 	r = newRig(t)
 	r.request(t, r.account(3).ID, 1, 50)
@@ -282,4 +299,47 @@ func TestARequestPastItsDeadlineIsDropped(t *testing.T) {
 
 	require.Empty(t, r.chain.Answers)
 	require.Equal(t, 0, r.observer.open)
+}
+
+func TestAScanTheRPCEndpointRefusesFailsEveryPassAndIsCounted(t *testing.T) {
+	r := newRig(t)
+	r.request(t, r.account(3).ID, 1, 50)
+	r.court.Latest = 5_000
+	r.policy.Span = 2_000
+	a := r.answerer()
+
+	for range 3 {
+		require.Equal(t, notary.KindLedgerUnavailable, notary.KindOf(a.Tick(context.Background())))
+	}
+
+	require.Empty(t, r.chain.Answers)
+	require.Equal(t, 3, r.observer.failed)
+	require.Equal(t, 0, r.observer.served)
+}
+
+func TestTheStartUpProbeAsksForOneFullSpanEndingAtTheHead(t *testing.T) {
+	r := newRig(t)
+	r.court.Latest = 48_089_057
+
+	require.NoError(t, r.answerer().CheckScan(context.Background()))
+	require.Equal(t, [][2]uint64{{48_088_858, 48_089_057}}, r.court.Scanned)
+
+	r.court.Scanned = nil
+	r.court.Latest = 50
+
+	require.NoError(t, r.answerer().CheckScan(context.Background()))
+	require.Equal(t, [][2]uint64{{0, 50}}, r.court.Scanned)
+}
+
+func TestTheStartUpProbeRefusesALogRangeTheRPCEndpointRejects(t *testing.T) {
+	r := newRig(t)
+	r.court.Latest = 48_089_057
+	r.policy.Span = 2_000
+
+	err := r.answerer().CheckScan(context.Background())
+
+	require.Equal(t, notary.KindLedgerUnavailable, notary.KindOf(err))
+	require.ErrorContains(t, err, "2000 blocks")
+	require.ErrorContains(t, err, "at most 201 blocks")
+	require.Empty(t, r.court.Scanned)
 }

@@ -13,10 +13,7 @@ import (
 	"github.com/WildanFrananda/kinetix-notary-service/internal/notary"
 )
 
-const (
-	answerLookbackBlocks = 100_000
-	answerScanSpan       = 2_000
-)
+const answerLookbackBlocks = 100_000
 
 type answerChainParams struct {
 	dig.In
@@ -67,7 +64,7 @@ func provideAnswerer(p answererParams) *answering.Answerer {
 		answering.Policy{
 			FromBlock: p.Config.WithholdingFrom,
 			Lookback:  answerLookbackBlocks,
-			Span:      answerScanSpan,
+			Span:      p.Config.LogRange,
 		},
 	)
 }
