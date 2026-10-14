@@ -31,9 +31,10 @@ bin/dev go test ./tests/fixtures -update        # regenerate the differential fi
 bin/dev down                                    # stop the chain
 ```
 
-The image built from `Dockerfile` carries three binaries and runs `notaryd` by default:
-`notary-migrate` is the one-shot migrator, and an account holder verifies with
-`docker run <image> notary-verify proof.json` (the image used to start `notary-verify` itself).
+The image built from `Dockerfile` carries four binaries and runs `notaryd` by default:
+`notary-migrate` is the one-shot migrator, `notary-watch` is the council's second member (PLAN.md step 8),
+and an account holder verifies with `docker run <image> notary-verify proof.json` (the image used to
+start `notary-verify` itself).
 `bin/generate` runs every generator — abigen, protoc through `bin/sync-contracts` (contracts pinned to a
 tag and its commit), sqlc — and nothing it writes is ever committed.
 
@@ -51,6 +52,12 @@ bin/new-answerer-key prod                       # the answerer, straight into th
 bin/fund-anchorer|fund-answerer base-sepolia 0.001   # the deployer pays a hot key's gas
 bin/deploy-withholding base-sepolia [--broadcast]    # the withholding court beside the court; dry run by default
 bin/inspect-withholding base-sepolia            # its facts, the answerer's balance and the recorded silences
+bin/new-watch-key prod                          # the watch's council key, straight into the SOPS store; it never holds ETH
+bin/deploy-council base-sepolia [--broadcast]   # the anchor council beside the ledger; dry run by default
+bin/inspect-council base-sepolia                # its facts, its members and who holds the anchorer role
+bin/fund-admin base-sepolia 0.00002             # the admin's gas for the two role changes below
+bin/hand-over-anchoring base-sepolia [--broadcast]           # the admin grants the council the anchorer role
+bin/retire-anchorer base-sepolia <council anchor tx> [--broadcast]   # then revokes the anchorer key's own
 ```
 
 `notary-verify` reads `KINETIX_NOTARY_RPC_URL`, `KINETIX_NOTARY_CHAIN_ID`, `KINETIX_NOTARY_LEDGER_ADDRESS`,
@@ -67,6 +74,17 @@ It refuses to start unless:
 - it reads the notary's ledger;
 - it hashes a registration the way the notary does;
 - the endpoint answers one full log span ending at the head.
+
+From step 8 notaryd anchors through the `AnchorCouncil` and also needs `KINETIX_NOTARY_COUNCIL_ADDRESS` and
+`KINETIX_NOTARY_WATCH_GRPC_ADDR`. It refuses to start unless the council anchors its ledger, holds the
+anchorer role there, counts the anchorer key as a member, needs no more than the two approvals notaryd
+gathers, and hashes an approval as Go does.
+
+`notary-watch` reads the verifier's five variables, `KINETIX_NOTARY_COUNCIL_ADDRESS`,
+`KINETIX_NOTARY_WATCH_PRIVATE_KEY`, `KINETIX_NOTARY_PAYMENT_GRPC_ADDR`, `KINETIX_PKI_DIR`,
+`KINETIX_NOTARY_WATCH_GRPC_PORT` and `KINETIX_NOTARY_HTTP_PORT` (`KINETIX_TRUST_DOMAIN` optional). It keeps
+no database, admits only the `notary` identity on its gRPC port, and refuses to start unless its key is a
+member of the council and the council hashes an approval as Go does.
 
 `deploy/<network>.env` holds only public values and is committed. Keys never are: the deployer and
 admin keystores live in `KINETIX_NOTARY_KEYSTORE_DIR` (refused when inside a git work tree), the
@@ -97,7 +115,8 @@ as `verify-contracts` and `verify-go`.
 | `internal/ethereum` | the above + go-ethereum + `internal/contractgen` — the only adapter that touches a chain |
 | `internal/payment`, `internal/mesh` | `internal/notary` + gRPC + `internal/protogen` — the only adapters that speak gRPC |
 | `internal/postgres` | `internal/notary` + pgx + goose + `internal/storegen` — the only adapter that touches Postgres |
-| `internal/anchoring`, `internal/proving`, `internal/registering`, `internal/answering` | `internal/notary` only, like `internal/verifying` |
+| `internal/anchoring`, `internal/proving`, `internal/registering`, `internal/answering`, `internal/approving` | `internal/notary` only, like `internal/verifying` |
+| `internal/epochwatch` | `internal/notary` + gRPC + `internal/protogen` + `internal/mesh` — the watch's server and notaryd's client |
 | `internal/wiring` | everything; the composition root, and the only package outside `cmd/` allowed to import dig |
 | `cmd/…` | everything |
 
@@ -128,12 +147,15 @@ Package names say what a package provides (`keccak.NewScheme`, `ethereum.NewLedg
   would make the repository disagree with the verified bytecode); for `StatementCourt`, Aderyn
   `centralization-risk` (the admin schedules signers, by design) and `reentrancy-state-change` (its only
   external calls are `view` reads of the immutable ledger, compiled to STATICCALL, which cannot re-enter;
-  Slither, which tells a STATICCALL apart, reports nothing there). An accepted entry that stops being
-  reported also fails, so the list cannot rot. forge-lint's `reentrancy-events` is off in `foundry.toml`
+  Slither, which tells a STATICCALL apart, reports nothing there); for `AnchorCouncil`, Aderyn
+  `centralization-risk` (the admin schedules memberships, behind a 7-day delay, by design). An accepted
+  entry that stops being reported also fails, so the list cannot rot. forge-lint's `reentrancy-events` is off in `foundry.toml`
   for the same reason and with the same backstop: it flags any event after any external call.
-- **One lint setting is a decision, not a silencing.** `wrapcheck` ignores `.RecvMsg(`: the gRPC
+- **Two lint settings are decisions, not silencings.** `wrapcheck` ignores `.RecvMsg(`: the gRPC
   client interceptor that counts calls must hand the stream's own error back unchanged, because callers
-  compare `io.EOF` by identity and a wrapped end of stream reads as a failure.
+  compare `io.EOF` by identity and a wrapped end of stream reads as a failure. It also ignores
+  `status.Error(`: the watch's handler must return a gRPC status as it is, because a wrapped one reaches
+  the caller as `Unknown` and notaryd could no longer tell a refusal from an outage.
 - **The differential fixture is a contract between the languages.** `tests/fixtures` regenerates
   `contracts/test/fixtures/scheme-v1.json` and fails when the committed file differs; Foundry's
   `Differential.t.sol` re-verifies every tree, proof, rejection and digest in it. Proven on
@@ -310,6 +332,42 @@ A failure must never be reported as a definite answer. In this service that mean
   counted in `kinetix_notary_withholding_unanswerable_requests`. An outage is retried. A refusal for
   one request never holds up the others, because each lost request becomes someone's recorded silence.
 
+- **The laptop has a Foundry of its own, 1.7.1 in `~/.foundry`, and a `sh -c` the rewriter splits runs it.**
+  On 2026-10-14 `forge fmt` meant for the toolchain ran on the Mac instead: it ignored the frozen-file
+  list, rewrapped `src/SumTree.sol` and fifteen other tracked files, and reformatted the Soldeer
+  dependencies. The tracked files were restored from `HEAD` and `dependencies/`, `out/` and `cache/`
+  reinstalled in the image. Run forge as `docker compose -f toolchain/compose.yaml run --rm --no-deps -T
+  -w /workspace/contracts toolchain forge …`, and read `git status` after any formatter.
+- **Slither taints a whole storage struct when one field comes from `block.timestamp`.** `pending.members.length
+  == 0` was reported as a dangerous strict equality because the same struct holds `activatesAt`. The council
+  asks a private view, `_hasPending()`, which compares with `!=`.
+- **Aderyn reads a storage array handed to a `memory` parameter as an edit that will not persist** — a high
+  finding, even for a read. Copy it into a `memory` local first. Its `costly-loop` flags any storage write
+  inside a loop, which is why the council keeps no membership mapping: it assigns the whole list and scans
+  at most sixteen addresses.
+- **forge-lint refuses a `revert` inside a loop.** The loop returns the first offending index and the revert
+  follows it.
+- **A deploy that reverts inside `vm.startBroadcast` leaves the broadcast open**, so a second expected revert
+  in the same test fails with "a broadcast is active already". One refused deploy per test.
+
+- **A client-streaming call never returns `io.EOF`.** The interceptor that counts gRPC calls counted on
+  `io.EOF` or an error, so every successful `ApproveEpoch` went uncounted; the daemon test that asserts
+  the watch call found it. A stream that is not server-streaming now counts on its one successful
+  `RecvMsg`.
+- **Asking the watch about an epoch already on chain abandons it.** The watch checks the proposal against
+  the ledger's next epoch, which has moved on; notaryd would read the refusal as a disagreement. `submit`
+  reads the ledger first and moves a landed epoch on without asking.
+
+- **A keystore needs a terminal.** `cast send --keystore` asks for the password on the TTY, so a script
+  that signs must not run its container with `-T`. The first `bin/hand-over-anchoring` did, and on
+  2026-10-14 it stopped with `No such device or address (os error 6)` before signing anything. Read-only
+  scripts keep `-T`; the deploy and funding scripts never had it.
+
+- **Base Sepolia hands back a receipt before `latest` holds the transaction.** sepolia.base.org answers
+  `cast send` with a preconfirmed receipt (`blockHash` all zeros), and a `cast call` made at once still
+  reads the old state. The first `bin/hand-over-anchoring` checked once and reported a successful grant
+  as failed on 2026-10-14; both admin scripts now wait up to 60 s for `latest` to show the change.
+
 ## Not built yet
 
 Steps 1–5 are done: contracts v1.0.23, payment v0.1.11, notaryd v0.2.0 anchoring on Base Sepolia, and
@@ -318,5 +376,10 @@ the statement court and a signed statement on every proof — is live: the produ
 `0xE1Ffcb004Dd734F83ED0B194fdaFF5B0c7c5927B` and notaryd v0.4.0, proven in production on 2026-10-13.
 Step 7 (withholding, PLAN.md step 7 and decisions 15–17) is live: the withholding court `0xe980…a601`,
 notaryd v1.0.0 and gateway v1.1.0, released on 2026-10-14. That release scanned in spans the public RPC
-refuses, and the fix (PLAN.md 7-7) is built but not yet released. 6b (delivery through notification)
-and steps 8–14 do not exist yet. Contract deploys stay manual, never in CI.
+refuses; v1.0.1 fixed it the same day and is proven in production (PLAN.md 7-7). Step 8 (threshold
+anchoring, decisions 18–21) is being built: the council, payment's snapshot record, `notary-watch` and
+notaryd's council mode are done and green (PLAN.md 8-1 to 8-6), on contracts v1.2.0. The council is
+deployed on Base Sepolia and holds the anchorer role; the release (infra A, payment, infra B, notary
+v1.1.0) and the anchorer key's retirement remain (PLAN.md 8-7). 6b
+(delivery through notification) and steps 9–14 do not exist yet. Contract deploys stay manual, never in
+CI.

@@ -11,7 +11,7 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-func (m *Metrics) ClientInterceptors(peer string) []grpc.DialOption {
+func (e *edge) ClientInterceptors(peer string) []grpc.DialOption {
 	return []grpc.DialOption{
 		grpc.WithChainUnaryInterceptor(func(
 			ctx context.Context,
@@ -22,7 +22,7 @@ func (m *Metrics) ClientInterceptors(peer string) []grpc.DialOption {
 			opts ...grpc.CallOption,
 		) error {
 			err := invoker(ctx, method, req, reply, cc, opts...)
-			m.grpcCalls.WithLabelValues(peer, method, status.Code(err).String()).Inc()
+			e.grpcCalls.WithLabelValues(peer, method, status.Code(err).String()).Inc()
 
 			return err
 		}),
@@ -36,27 +36,32 @@ func (m *Metrics) ClientInterceptors(peer string) []grpc.DialOption {
 		) (grpc.ClientStream, error) {
 			stream, err := streamer(ctx, desc, cc, method, opts...)
 			if err != nil {
-				m.grpcCalls.WithLabelValues(peer, method, status.Code(err).String()).Inc()
+				e.grpcCalls.WithLabelValues(peer, method, status.Code(err).String()).Inc()
 				return nil, err
 			}
 
-			return &countedStream{ClientStream: stream, count: func(code codes.Code) {
-				m.grpcCalls.WithLabelValues(peer, method, code.String()).Inc()
-			}}, nil
+			return &countedStream{
+				ClientStream: stream,
+				single:       !desc.ServerStreams,
+				count: func(code codes.Code) {
+					e.grpcCalls.WithLabelValues(peer, method, code.String()).Inc()
+				},
+			}, nil
 		}),
 	}
 }
 
 type countedStream struct {
 	grpc.ClientStream
-	once  sync.Once
-	count func(codes.Code)
+	single bool
+	once   sync.Once
+	count  func(codes.Code)
 }
 
 func (s *countedStream) RecvMsg(message any) error {
 	err := s.ClientStream.RecvMsg(message)
 	switch {
-	case errors.Is(err, io.EOF):
+	case errors.Is(err, io.EOF), err == nil && s.single:
 		s.once.Do(func() { s.count(codes.OK) })
 	case err != nil:
 		s.once.Do(func() { s.count(status.Code(err)) })

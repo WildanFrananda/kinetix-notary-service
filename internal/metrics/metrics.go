@@ -4,7 +4,6 @@ import (
 	"math"
 	"math/big"
 	"net/http"
-	"strconv"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -28,10 +27,9 @@ type Build struct {
 }
 
 type Metrics struct {
+	edge
+
 	registry     *prometheus.Registry
-	httpRequests *prometheus.CounterVec
-	httpDuration *prometheus.HistogramVec
-	grpcCalls    *prometheus.CounterVec
 	lastEpoch    prometheus.Gauge
 	lastAsOf     prometheus.Gauge
 	abandoned    prometheus.Gauge
@@ -71,29 +69,8 @@ func New(build Build) *Metrics {
 	info.WithLabelValues(build.Service, build.Version).Set(1)
 
 	m := &Metrics{
+		edge:     newEdge(),
 		registry: registry,
-		httpRequests: prometheus.NewCounterVec(
-			prometheus.CounterOpts{
-				Name: "kinetix_http_requests_total",
-				Help: "HTTP requests served, by method, route template and status.",
-			},
-			[]string{"method", "route", "status"},
-		),
-		httpDuration: prometheus.NewHistogramVec(
-			prometheus.HistogramOpts{
-				Name:    "kinetix_http_request_duration_seconds",
-				Help:    "HTTP request duration in seconds.",
-				Buckets: prometheus.DefBuckets,
-			},
-			[]string{"method", "route"},
-		),
-		grpcCalls: prometheus.NewCounterVec(
-			prometheus.CounterOpts{
-				Name: "kinetix_grpc_client_calls_total",
-				Help: "gRPC calls this service made, by peer, method and final code.",
-			},
-			[]string{"peer", "grpc_method", "grpc_code"},
-		),
 		lastEpoch: prometheus.NewGauge(prometheus.GaugeOpts{
 			Name: "kinetix_notary_last_finalized_epoch",
 			Help: "Number of the newest epoch the ledger holds at a finalized block.",
@@ -154,10 +131,9 @@ func New(build Build) *Metrics {
 			[]string{"outcome"},
 		),
 	}
+	m.register(factory)
+
 	for _, c := range []prometheus.Collector{
-		m.httpRequests,
-		m.httpDuration,
-		m.grpcCalls,
 		m.lastEpoch,
 		m.lastAsOf,
 		m.abandoned,
@@ -188,15 +164,6 @@ func New(build Build) *Metrics {
 
 func (m *Metrics) Handler() http.Handler {
 	return promhttp.HandlerFor(m.registry, promhttp.HandlerOpts{Registry: m.registry})
-}
-
-func (m *Metrics) SeedRoute(method, route string) {
-	m.httpRequests.WithLabelValues(method, route, strconv.Itoa(http.StatusOK))
-	m.httpDuration.WithLabelValues(method, route)
-}
-
-func (m *Metrics) SeedCall(peer, method string) {
-	m.grpcCalls.WithLabelValues(peer, method, "OK")
 }
 
 func (m *Metrics) LeaseHeld(held bool) {

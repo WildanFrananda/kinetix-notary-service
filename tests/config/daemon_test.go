@@ -28,6 +28,8 @@ func daemonValues() map[string]string {
 		config.WithholdingFromKey: "48063900",
 		config.LogRangeKey:        "200",
 		config.AnswererKeyKey:     answererKey,
+		config.CouncilAddressKey:  "0x00000000000000000000000000000000c0c0c0c1",
+		config.WatchAddressKey:    "kinetix-notary-watch:50070",
 		config.RPCTimeoutKey:      "10s",
 		config.DatabaseURLKey:     "postgres://notary@kinetix-notary-db:5432/notary",
 		config.AnchorerKeyKey:     anchorerKey,
@@ -65,6 +67,8 @@ func TestADaemonConfigurationLoadsWithTheEstatesDefaults(t *testing.T) {
 	require.Equal(t, uint64(48063900), cfg.WithholdingFrom)
 	require.Equal(t, uint64(200), cfg.LogRange)
 	require.Equal(t, answererKey, cfg.AnswererKey.Reveal())
+	require.Equal(t, "0x00000000000000000000000000000000c0c0c0c1", cfg.Council.Hex())
+	require.Equal(t, "kinetix-notary-watch:50070", cfg.WatchAddress)
 }
 
 func TestSecretsNeverPrint(t *testing.T) {
@@ -107,6 +111,8 @@ func TestEveryMissingOrBrokenSettingIsNamedAtOnce(t *testing.T) {
 	values[config.WithholdingFromKey] = "yesterday"
 	values[config.LogRangeKey] = "0"
 	delete(values, config.AnswererKeyKey)
+	values[config.CouncilAddressKey] = "0x0000000000000000000000000000000000000000"
+	values[config.WatchAddressKey] = "no-port"
 
 	_, err := config.LoadDaemon(from(values))
 
@@ -129,6 +135,8 @@ func TestEveryMissingOrBrokenSettingIsNamedAtOnce(t *testing.T) {
 		config.WithholdingFromKey,
 		config.LogRangeKey,
 		config.AnswererKeyKey,
+		config.CouncilAddressKey,
+		config.WatchAddressKey,
 	} {
 		require.ErrorContains(t, err, key)
 	}

@@ -88,7 +88,26 @@ for file in "$HERE"/deploy/*.env; do
       exit 1
     fi
 
+    if [ -z "${KINETIX_NOTARY_COUNCIL_MEMBERS:-}" ]; then
+      echo "deploy/$network.env names no council members: run bin/new-watch-key, then set KINETIX_NOTARY_WATCH_ADDRESS and KINETIX_NOTARY_COUNCIL_MEMBERS" >&2
+      exit 1
+    fi
+
+    KINETIX_NOTARY_LEDGER_ADDRESS="$ledger" forge script script/DeployAnchorCouncil.s.sol:DeployAnchorCouncil \
+      --rpc-url "$RPC" \
+      --unlocked \
+      --sender "$SENDER" \
+      --broadcast \
+      --slow > /dev/null
+    council="$(expect_create2 DeployAnchorCouncil.s.sol "$KINETIX_NOTARY_CHAIN_ID")"
+    deployed_at "$council"
+
+    if [ "$(cast call "$council" 'ledger()(address)' --rpc-url "$RPC")" != "$ledger" ]; then
+      echo "the rehearsed council at $council does not stand beside the rehearsed ledger $ledger" >&2
+      exit 1
+    fi
+
     kill "$(cat "$WORK/anvil.pid")"
-    echo "$network (chain $KINETIX_NOTARY_CHAIN_ID): ledger $ledger, court $court and withholding court $withholding, all through the CREATE2 factory"
+    echo "$network (chain $KINETIX_NOTARY_CHAIN_ID): ledger $ledger, court $court, withholding court $withholding and council $council, all through the CREATE2 factory"
   )
 done

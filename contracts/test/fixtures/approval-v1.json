@@ -1,0 +1,55 @@
+{
+  "name": "Kinetix Anchor Council",
+  "version": "1",
+  "chainId": "84532",
+  "council": "0x13aba3d002038f23aaba46b69c564afea49970e2",
+  "ledger": "0x86096f0a7c2cafddd253afe35362a25e3e085e90",
+  "member": "0xb7abee37ac7d0222a66ca36607a6fb428aab42cb",
+  "approvalCount": 4,
+  "approvals": [
+    {
+      "number": "0",
+      "previousDigest": "0x0000000000000000000000000000000000000000000000000000000000000000",
+      "root": "0xf2ee15ea639b73fa3db9b34a245bdfa015c260c598b211bf05a1ecc4b3e3b4f2",
+      "total": "0",
+      "leafCount": "0",
+      "asOf": "1",
+      "epochDigest": "0xd631bab4beaddfc855386ffe2011b9f14b8e10b27a55277b80b8fb57ac13c22d",
+      "digest": "0x7b774d98da9d90d4cc03359889f76ee17a7c4359cc2bfdd25bc09f00f3eaccb3",
+      "signature": "0xba17c4c53e6a73d51d4d97696c9c3665b579877516e7d2e844dfd4db0504396972a516750ca16d0a87afa331647be91615c67d1240953354e6d3b2b1f6097d521b"
+    },
+    {
+      "number": "41",
+      "previousDigest": "0x3615a75fb53f672f9aafe60eb6fb89a805ea204afc96db476ac6b9c7e31f58ff",
+      "root": "0x4f9b28781f78100a7b95c99f063b1d54c692419f02d1475a4f94168c73b01e32",
+      "total": "50000000",
+      "leafCount": "7",
+      "asOf": "1791961931",
+      "epochDigest": "0xc7fb546985ba0cc420a2345d8fed09de230be9294708bfdf72244c5673d190e5",
+      "digest": "0x5124a084c6d1063278b809a38c299558c105ee8994dedc532a3067fe44ae7711",
+      "signature": "0xe71b35245786baa55fa396e2e7a74d4ba2624ff16011ec2fa533165886dae83317276e7f3f173f77be02ae3d4be392e7418de7bc998fd8c627faa02aea9b3aa21c"
+    },
+    {
+      "number": "1099511627776",
+      "previousDigest": "0x64eef504153eb2220fde44efde48e155236edf44007eaf511371c429eddc73d6",
+      "root": "0xd0f97deef4210a7792e4aea037a03e079d3b95b5e23da221752f0d1f54ab6b54",
+      "total": "9223372036854775807",
+      "leafCount": "4294967296",
+      "asOf": "9223372036854775807",
+      "epochDigest": "0x8d51d1411559b4cbf36c44e2a80bc56d162156950b6004654c32636a6fbf0a0f",
+      "digest": "0x5d26c0eec768d5946e86d955cdbf716a5e924ec3b37041118f8853ae4454d52d",
+      "signature": "0x475cdffc99a146b61d0171b4a1a5ad0854fe0c5a6e1b2236158585a2fa62790d396069fd1681408e44cf033ee5873f953096eae4aae03316241262ad45f32ea01c"
+    },
+    {
+      "number": "18446744073709551615",
+      "previousDigest": "0x173da99bff7a89dc7d5bb5083b5d0d037fa1ecfc0d00d5c8989e921c27c47dd1",
+      "root": "0xb64b84267a486e121a0ee371b1469fd0e564d4fcf300e766b2d82a430e1f2ad1",
+      "total": "18446744073709551615",
+      "leafCount": "18446744073709551615",
+      "asOf": "1",
+      "epochDigest": "0x9e7a2da4924c767de1bd0cfb3253057090f56ae969d6dd7b588540e7df20d50f",
+      "digest": "0x5cf8b7dc40b9843345f319cdd3b26f0f98f203bbd162396b35552190c5b6affa",
+      "signature": "0x425691b6924480c1333a6a077b5b3b59bfdd9f1778fe6f7b81664061be1020e71cb6fa224d774826dc00e4ea7cbb036b2613adf26795f38ae0a8876b42eaf0401c"
+    }
+  ]
+}

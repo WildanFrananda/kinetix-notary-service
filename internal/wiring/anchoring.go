@@ -39,6 +39,7 @@ func providePolicy(p policyParams) (anchoring.Policy, error) {
 	return anchoring.Policy{
 		Instance:      host + "-" + hex.EncodeToString(suffix),
 		Ledger:        p.Config.Chain.Ledger,
+		Council:       notary.CouncilIdentity{ChainID: p.Config.Chain.Ledger.ChainID, Address: p.Config.Council},
 		Currency:      p.Config.Currency,
 		EpochInterval: p.Config.EpochInterval,
 		ReplaceAfter:  replaceAfter,
@@ -56,6 +57,7 @@ type anchorerParams struct {
 	Source   notary.SnapshotSource
 	Store    notary.EpochStore
 	Chain    notary.AnchorChain
+	Quorum   anchoring.Quorum
 	Observer anchoring.Observer
 	Clock    func() time.Time
 	Log      *slog.Logger
@@ -70,6 +72,7 @@ func provideAnchorer(p anchorerParams) *anchoring.Anchorer {
 		p.Source,
 		p.Store,
 		p.Chain,
+		p.Quorum,
 		p.Observer,
 		p.Clock,
 		p.Log,

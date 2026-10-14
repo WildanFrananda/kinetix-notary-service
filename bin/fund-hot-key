@@ -9,8 +9,9 @@ AMOUNT="${3:-}"
 case "$ROLE" in
   anchorer) ADDRESS_KEY=KINETIX_NOTARY_ANCHORER_ADDRESS ;;
   answerer) ADDRESS_KEY=KINETIX_NOTARY_ANSWERER_ADDRESS ;;
+  admin) ADDRESS_KEY=KINETIX_NOTARY_ADMIN_ADDRESS ;;
   *)
-    echo "usage: bin/fund-hot-key <anchorer|answerer> <network> <ether>" >&2
+    echo "usage: bin/fund-hot-key <anchorer|answerer|admin> <network> <ether>" >&2
     exit 64
     ;;
 esac

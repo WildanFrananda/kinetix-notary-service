@@ -16,12 +16,12 @@ func (r *statusRecorder) WriteHeader(status int) {
 	r.ResponseWriter.WriteHeader(status)
 }
 
-func (m *Metrics) Instrument(route string, next http.Handler) http.Handler {
+func (e *edge) Instrument(route string, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		started := time.Now()
 		recorder := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
 		next.ServeHTTP(recorder, r)
-		m.httpRequests.WithLabelValues(r.Method, route, strconv.Itoa(recorder.status)).Inc()
-		m.httpDuration.WithLabelValues(r.Method, route).Observe(time.Since(started).Seconds())
+		e.httpRequests.WithLabelValues(r.Method, route, strconv.Itoa(recorder.status)).Inc()
+		e.httpDuration.WithLabelValues(r.Method, route).Observe(time.Since(started).Seconds())
 	})
 }

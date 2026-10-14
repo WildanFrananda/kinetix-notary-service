@@ -3,12 +3,14 @@ package integration_test
 import (
 	"bytes"
 	"context"
+	"crypto/ecdsa"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -25,10 +27,12 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/dig"
+	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/WildanFrananda/kinetix-notary-service/internal/anchoring"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/answering"
+	"github.com/WildanFrananda/kinetix-notary-service/internal/approving"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/config"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/keccak"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/metrics"
@@ -47,10 +51,15 @@ import (
 const databaseURLKey = "KINETIX_NOTARY_TEST_DATABASE_URL"
 
 type estate struct {
+	t           *testing.T
 	chain       *chain
 	ledger      notary.LedgerIdentity
 	court       notary.Address
 	withholding notary.Address
+	council     notary.Address
+	watch       *approving.Approver
+	watchHTTP   http.Handler
+	snapshots   uint64
 	dbURL       string
 	pool        *pgxpool.Pool
 	payment     *notarytest.LiabilityServer
@@ -83,7 +92,11 @@ func newEstate(t *testing.T) *estate {
 	ctx := context.Background()
 	latest, err := c.client.HeaderByNumber(ctx, nil)
 	require.NoError(t, err)
-	e := &estate{chain: c, ledger: c.identity(c.deploy(t)), now: time.Unix(int64(latest.Time), 0).UTC()}
+	e := &estate{t: t, chain: c, ledger: c.identity(c.deploy(t)), now: time.Unix(int64(latest.Time), 0).UTC()}
+	watchKey, watch := memberKey(t)
+	council := c.deployCouncil(t, common.Address(e.ledger.Address), notary.Address(c.from), watch)
+	c.handOver(t, common.Address(e.ledger.Address), council)
+	e.council = notary.Address(council)
 	statementKey, statementSigner := notarytest.StatementKey(t, "estate-signer")
 	e.court = notary.Address(c.deployCourt(t, common.Address(e.ledger.Address), statementSigner))
 	e.withholding = notary.Address(c.deployWithholding(t, common.Address(e.court)))
@@ -102,6 +115,7 @@ func newEstate(t *testing.T) *estate {
 	pki := notarytest.NewPKI(t)
 	e.payment = &notarytest.LiabilityServer{Script: e.snapshot}
 	address := notarytest.ServeLiabilities(t, pki.Issue(t, "kinetix.local", "payment"), e.payment)
+	watchAddress := e.serveWatch(t, pki, address, watchKey)
 	e.values = map[string]string{
 		config.RPCURLKey:          c.url,
 		config.ChainIDKey:         strconv.FormatUint(e.ledger.ChainID, 10),
@@ -112,6 +126,8 @@ func newEstate(t *testing.T) *estate {
 		config.WithholdingFromKey: "0",
 		config.LogRangeKey:        "200",
 		config.AnswererKeyKey:     "0x" + hex.EncodeToString(crypto.FromECDSA(answererKey)),
+		config.CouncilAddressKey:  e.council.Hex(),
+		config.WatchAddressKey:    watchAddress,
 		config.RPCTimeoutKey:      "10s",
 		config.DatabaseURLKey:     e.dbURL,
 		config.AnchorerKeyKey:     "0x" + hex.EncodeToString(crypto.FromECDSA(c.key)),
@@ -154,6 +170,68 @@ func schema(t *testing.T, base string) string {
 	return base + separator + "search_path=" + name
 }
 
+func (e *estate) serveWatch(t *testing.T, pki *notarytest.PKI, payment string, key *ecdsa.PrivateKey) string {
+	t.Helper()
+
+	values := map[string]string{
+		config.RPCURLKey:         e.chain.url,
+		config.ChainIDKey:        strconv.FormatUint(e.ledger.ChainID, 10),
+		config.LedgerAddressKey:  e.ledger.Address.Hex(),
+		config.CourtAddressKey:   e.court.Hex(),
+		config.RPCTimeoutKey:     "10s",
+		config.CouncilAddressKey: e.council.Hex(),
+		config.WatchKeyKey:       "0x" + hex.EncodeToString(crypto.FromECDSA(key)),
+		config.PaymentAddressKey: payment,
+		config.PKIDirKey:         pki.Issue(t, "kinetix.local", "notary-watch"),
+		config.WatchGRPCPortKey:  "50070",
+		config.HTTPPortKey:       "18011",
+	}
+	lookup := func(key string) (string, bool) {
+		value, ok := values[key]
+		return value, ok
+	}
+	container, err := wiring.Watch(
+		lookup,
+		metrics.Build{Service: "kinetix-notary-watch-service", Version: "test"},
+		slog.New(slog.NewTextHandler(io.Discard, nil)),
+	)
+	require.NoError(t, err)
+
+	var (
+		approver *approving.Approver
+		server   *grpc.Server
+		handler  http.Handler
+	)
+
+	invoked := container.Invoke(func(a *approving.Approver, s *grpc.Server, h http.Handler) {
+		approver, server, handler = a, s, h
+	})
+	require.NoError(t, invoked)
+	require.NoError(t, approver.CheckCouncil(context.Background()))
+
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+
+	go func() { _ = server.Serve(listener) }()
+
+	t.Cleanup(server.Stop)
+
+	e.watch = approver
+	e.watchHTTP = handler
+
+	return listener.Addr().String()
+}
+
+func (e *estate) scrapeWatch(t *testing.T) string {
+	t.Helper()
+
+	response := httptest.NewRecorder()
+	e.watchHTTP.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/metrics", nil))
+	require.Equal(t, http.StatusOK, response.Code)
+
+	return response.Body.String()
+}
+
 func (e *estate) snapshot() []*paymentv1.StreamLiabilitySnapshotResponse {
 	head, err := e.chain.client.HeaderByNumber(context.Background(), nil)
 	if err != nil {
@@ -162,10 +240,10 @@ func (e *estate) snapshot() []*paymentv1.StreamLiabilitySnapshotResponse {
 
 	accounts := make([]*paymentv1.LiabilityAccount, 0, 9)
 
-	var total int64
-
 	e.mu.Lock()
 	omit := e.omit
+	e.snapshots++
+	sequence := e.snapshots
 	e.mu.Unlock()
 
 	for i := range 9 {
@@ -173,30 +251,22 @@ func (e *estate) snapshot() []*paymentv1.StreamLiabilitySnapshotResponse {
 			continue
 		}
 
-		amount := int64(1_000_000 * (i + 1))
-		total += amount
 		accounts = append(accounts, &paymentv1.LiabilityAccount{
 			Kind:    paymentv1.LiabilityKind(i%5 + 1),
 			Holder:  &paymentv1.LiabilityAccount_PrincipalId{PrincipalId: fmt.Sprintf("principal-%d", i)},
-			Balance: &commonv1.Money{AmountMinor: amount, Currency: "IDR"},
+			Balance: &commonv1.Money{AmountMinor: int64(1_000_000 * (i + 1)), Currency: "IDR"},
 		})
 	}
 
-	return []*paymentv1.StreamLiabilitySnapshotResponse{
-		{Part: &paymentv1.StreamLiabilitySnapshotResponse_Header{Header: &paymentv1.LiabilitySnapshotHeader{
-			AsOf:     timestamppb.New(time.Unix(int64(head.Time)-5, 0)),
-			Currency: "IDR",
-		}}},
-		{
-			Part: &paymentv1.StreamLiabilitySnapshotResponse_Accounts{
-				Accounts: &paymentv1.LiabilityAccountBatch{Accounts: accounts},
-			},
-		},
-		{Part: &paymentv1.StreamLiabilitySnapshotResponse_Trailer{Trailer: &paymentv1.LiabilitySnapshotTrailer{
-			AccountCount: int64(len(accounts)),
-			Total:        &commonv1.Money{AmountMinor: total, Currency: "IDR"},
-		}}},
-	}
+	parts, _ := notarytest.SnapshotStream(
+		e.t,
+		notarytest.SnapshotID(e.t, sequence),
+		timestamppb.New(time.Unix(int64(head.Time)-5, 0)),
+		"IDR",
+		accounts,
+	)
+
+	return parts
 }
 
 func (e *estate) clock() time.Time {
@@ -330,9 +400,23 @@ func TestTheDaemonAnchorsPaymentsSnapshotAndEveryAccountVerifiesOnChain(t *testi
 		body,
 		`kinetix_grpc_client_calls_total{grpc_code="OK",grpc_method="/payment.v1.LiabilityService/StreamLiabilitySnapshot",peer="payment"} 1`,
 	)
+	require.Contains(
+		t,
+		body,
+		`kinetix_grpc_client_calls_total{grpc_code="OK",grpc_method="/notary.v1.EpochWatchService/ApproveEpoch",peer="notary-watch"} 1`,
+	)
 	require.Contains(t, body, "kinetix_notary_anchorer_balance_wei")
 	require.Contains(t, body, "kinetix_http_requests_total")
 	require.NotContains(t, body, "principal-")
+
+	watched := e.scrapeWatch(t)
+	require.Contains(t, watched, `kinetix_build_info{service="kinetix-notary-watch-service",version="test"} 1`)
+	require.Contains(
+		t,
+		watched,
+		`kinetix_grpc_server_calls_total{grpc_code="OK",grpc_method="/notary.v1.EpochWatchService/ApproveEpoch"} 1`,
+	)
+	require.Contains(t, watched, `kinetix_notary_watch_approvals_total{outcome="approved"} 1`)
 
 	ready := httptest.NewRecorder()
 	r.Handler.ServeHTTP(ready, httptest.NewRequest(http.MethodGet, "/health/ready", nil))
@@ -341,6 +425,38 @@ func TestTheDaemonAnchorsPaymentsSnapshotAndEveryAccountVerifiesOnChain(t *testi
 	live := httptest.NewRecorder()
 	r.Handler.ServeHTTP(live, httptest.NewRequest(http.MethodGet, "/health/live", nil))
 	require.Equal(t, http.StatusOK, live.Code)
+}
+
+func TestAnEpochTheWatchCannotMatchToPaymentsRecordIsAbandoned(t *testing.T) {
+	e := newEstate(t)
+	r := e.start(t)
+	e.payment.Tamper = func(record *paymentv1.GetLiabilitySnapshotRecordResponse) {
+		record.Digest[0] ^= 0xff
+	}
+
+	err := r.Anchorer.Tick(context.Background())
+
+	require.Equal(t, notary.KindApprovalRefused, notary.KindOf(err), err)
+	require.Equal(t, "abandoned", e.state(t, 0))
+
+	var reason string
+	require.NoError(
+		t,
+		e.pool.QueryRow(context.Background(), "SELECT abandoned_reason FROM epochs WHERE number = 0").Scan(&reason),
+	)
+	require.Contains(t, reason, "payment recorded snapshot")
+
+	var attempts int64
+	require.NoError(t, e.pool.QueryRow(context.Background(), "SELECT count(*) FROM attempts").Scan(&attempts))
+	require.Zero(t, attempts)
+
+	watched := e.scrapeWatch(t)
+	require.Contains(
+		t,
+		watched,
+		`kinetix_grpc_server_calls_total{grpc_code="FailedPrecondition",grpc_method="/notary.v1.EpochWatchService/ApproveEpoch"} 1`,
+	)
+	require.Contains(t, watched, `kinetix_notary_watch_approvals_total{outcome="refused"} 1`)
 }
 
 func TestADaemonThatDiesMidEpochIsFinishedByTheNextWithoutASecondTransaction(t *testing.T) {

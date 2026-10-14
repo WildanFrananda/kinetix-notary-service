@@ -18,7 +18,7 @@ if [ -n "$offenders" ]; then
   failed=1
 fi
 
-for usecase in verifying anchoring proving watching registering answering; do
+for usecase in verifying anchoring proving watching registering answering approving; do
   if ! go list "$MODULE/internal/$usecase" >/dev/null 2>&1; then
     continue
   fi
@@ -63,10 +63,11 @@ offenders="$(
   { imports google.golang.org/grpc; imports google.golang.org/protobuf; } \
     | grep -v -e "^$MODULE/cmd/" -e "^$MODULE/internal/wiring$" -e "^$MODULE/internal/payment$" \
       -e "^$MODULE/internal/mesh$" -e "^$MODULE/internal/metrics$" -e "^$MODULE/internal/protogen/" \
+      -e "^$MODULE/internal/epochwatch$" \
     || true
 )"
 if [ -n "$offenders" ]; then
-  echo "gRPC belongs to the gRPC adapters (payment, mesh, metrics), but these import it:"
+  echo "gRPC belongs to the gRPC adapters (payment, mesh, metrics, epochwatch), but these import it:"
   echo "$offenders" | sed 's/^/  /'
   failed=1
 fi

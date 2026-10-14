@@ -37,24 +37,7 @@ func (Scheme) StatementDigest(court notary.CourtIdentity, statement notary.State
 		statement.SiblingsHash,
 	)
 
-	return typedData(CourtName, CourtVersion, court, structure)
-}
-
-func typedData(name, version string, court notary.CourtIdentity, structure notary.Digest) notary.Digest {
-	domain := words(
-		digest([]byte(domainType)),
-		digest([]byte(name)),
-		digest([]byte(version)),
-		uintWord(court.ChainID),
-		addressWord(court.Address),
-	)
-
-	packed := make([]byte, 0, 2+32+32)
-	packed = append(packed, 0x19, 0x01)
-	packed = append(packed, domain[:]...)
-	packed = append(packed, structure[:]...)
-
-	return digest(packed)
+	return typedData(courtDomain, court.ChainID, court.Address, structure)
 }
 
 func words(parts ...notary.Digest) notary.Digest {

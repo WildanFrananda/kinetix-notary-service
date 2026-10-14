@@ -38,5 +38,26 @@ func Snapshot(t *testing.T, asOf uint64, liabilities []notary.Liability) notary.
 	snapshot, err := notary.NewSnapshot(Unix(t, asOf), "IDR", liabilities)
 	require.NoError(t, err)
 
-	return snapshot
+	record := notary.SnapshotRecord{
+		AsOf:     snapshot.AsOf(),
+		Currency: snapshot.Currency(),
+		Count:    uint64(len(liabilities)),
+		Total:    snapshot.Total(),
+	}
+	digest, err := notary.SnapshotDigest(record, liabilities)
+	require.NoError(t, err)
+
+	recorded, err := snapshot.Recorded(SnapshotID(t, asOf), 0, digest)
+	require.NoError(t, err)
+
+	return recorded
+}
+
+func SnapshotID(t *testing.T, seed uint64) notary.SnapshotID {
+	t.Helper()
+
+	id, err := notary.NewSnapshotID(fmt.Sprintf("00000000-0000-4000-8000-%012x", seed&0xffffffffffff))
+	require.NoError(t, err)
+
+	return id
 }

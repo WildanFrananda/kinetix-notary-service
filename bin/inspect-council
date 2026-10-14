@@ -1,0 +1,82 @@
+#!/usr/bin/env sh
+set -eu
+
+HERE="$(cd "$(dirname "$0")/.." && pwd)"
+NETWORK="${1:-}"
+
+if [ -z "$NETWORK" ] || [ ! -f "$HERE/deploy/$NETWORK.env" ]; then
+  echo "usage: bin/inspect-council <network>   (reads deploy/<network>.env)" >&2
+  exit 64
+fi
+: "${KINETIX_NOTARY_RPC_URL:?set KINETIX_NOTARY_RPC_URL to the network RPC endpoint}"
+
+docker compose -f "$HERE/toolchain/compose.yaml" build --quiet toolchain >&2
+exec docker compose -f "$HERE/toolchain/compose.yaml" run --rm --no-deps -T \
+  -e KINETIX_NOTARY_RPC_URL toolchain sh -c '
+  set -eu
+  network="$1"
+  set -a
+  . "./deploy/$network.env"
+  set +a
+  council="${KINETIX_NOTARY_COUNCIL_ADDRESS:-}"
+  if [ -z "$council" ]; then
+    echo "KINETIX_NOTARY_COUNCIL_ADDRESS is empty in deploy/$network.env" >&2
+    exit 78
+  fi
+  rpc="$KINETIX_NOTARY_RPC_URL"
+  ledger="$KINETIX_NOTARY_LEDGER_ADDRESS"
+  failed=0
+  expect() {
+    if [ "$(printf %s "$2" | tr A-F a-f)" = "$(printf %s "$3" | tr A-F a-f)" ]; then
+      printf "  ok    %-24s %s\n" "$1" "$2"
+    else
+      printf "  WRONG %-24s %s (expected %s)\n" "$1" "$2" "$3"
+      failed=1
+    fi
+  }
+  show() {
+    printf "        %-24s %s\n" "$1" "$2"
+  }
+  call() {
+    cast call "$council" "$@" --rpc-url "$rpc" | sed "s/ \[.*\]\$//"
+  }
+  ascending() {
+    printf %s "$1" | tr A-F a-f | tr "," "\n" | sed "s/^ *//; s/ *\$//" | sort | paste -sd, -
+  }
+
+  echo "anchor council $council on deploy/$network.env"
+  expect "chain id" "$(cast chain-id --rpc-url "$rpc")" "$KINETIX_NOTARY_CHAIN_ID"
+  code="$(cast code "$council" --rpc-url "$rpc")"
+  if [ "$code" = "0x" ]; then
+    echo "  WRONG no contract at $council"
+    exit 1
+  fi
+  show "code bytes" "$(( (${#code} - 2) / 2 ))"
+  expect "anchors the ledger" "$(call "ledger()(address)")" "$ledger"
+  members="$(call "members()(address[])" | tr -d "[] " )"
+  expect "members" "$(ascending "$members")" "$(ascending "$KINETIX_NOTARY_COUNCIL_MEMBERS")"
+  expect "threshold" "$(call "threshold()(uint8)")" "$KINETIX_NOTARY_COUNCIL_THRESHOLD"
+  expect "membership delay" "$(call "membershipChangeDelay()(uint64)")" "$KINETIX_NOTARY_MEMBERSHIP_CHANGE_DELAY_SECONDS"
+  expect "admin" "$(call "defaultAdmin()(address)")" "$KINETIX_NOTARY_COUNCIL_ADMIN_ADDRESS"
+  expect "admin transfer delay" "$(call "defaultAdminDelay()(uint48)")" "$KINETIX_NOTARY_COUNCIL_ADMIN_TRANSFER_DELAY_SECONDS"
+  domain="$(cast call "$council" "eip712Domain()(bytes1,string,string,uint256,address,bytes32,uint256[])" --rpc-url "$rpc" | sed -n 2,3p | tr -d "\"" | paste -sd/ -)"
+  expect "approval domain" "$domain" "Kinetix Anchor Council/1"
+  pending="$(cast call "$council" "pendingMembership()((address[],uint8,uint64))" --rpc-url "$rpc")"
+  show "pending membership" "$pending"
+  role="$(cast call "$ledger" "ANCHORER_ROLE()(bytes32)" --rpc-url "$rpc")"
+  show "council anchors" "$(cast call "$ledger" "hasRole(bytes32,address)(bool)" "$role" "$council" --rpc-url "$rpc")"
+  if [ -n "${KINETIX_NOTARY_ANCHORER_ADDRESS:-}" ]; then
+    show "anchorer key anchors" "$(cast call "$ledger" "hasRole(bytes32,address)(bool)" "$role" "$KINETIX_NOTARY_ANCHORER_ADDRESS" --rpc-url "$rpc")"
+  fi
+  if [ "${KINETIX_NOTARY_VERIFY_SOURCE:-}" = "true" ] && [ "${KINETIX_NOTARY_VERIFIER:-}" = "sourcify" ]; then
+    verdict="$(curl -fsS --max-time 30 "https://sourcify.dev/server/v2/contract/$KINETIX_NOTARY_CHAIN_ID/$council" \
+      | python3 -c "import json, sys; print(json.load(sys.stdin).get(\"runtimeMatch\") or \"none\")" 2>/dev/null \
+      || echo "unreachable")"
+    case "$verdict" in
+      match | exact_match) expect "source on sourcify" "$verdict" "$verdict" ;;
+      unreachable) printf "  ?     %-24s %s\n" "source on sourcify" "sourcify could not be asked" ; failed=1 ;;
+      *) expect "source on sourcify" "$verdict" "match" ;;
+    esac
+  fi
+  exit "$failed"
+' sh "$NETWORK"

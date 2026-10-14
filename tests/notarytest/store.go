@@ -11,7 +11,7 @@ import (
 type Store struct {
 	Now      func() time.Time
 	Records  map[uint64]notary.EpochRecord
-	Accounts map[uint64][]notary.Account
+	Stored   map[uint64][]notary.Account
 	Secrets  map[notary.AccountKey]notary.AccountSecret
 	attempts map[uint64][]notary.Attempt
 	holder   string
@@ -26,7 +26,7 @@ func NewStore(now func() time.Time) *Store {
 	return &Store{
 		Now:      now,
 		Records:  map[uint64]notary.EpochRecord{},
-		Accounts: map[uint64][]notary.Account{},
+		Stored:   map[uint64][]notary.Account{},
 		Secrets:  map[notary.AccountKey]notary.AccountSecret{},
 		attempts: map[uint64][]notary.Attempt{},
 	}
@@ -110,14 +110,15 @@ func (s *Store) SaveBuilt(
 	}
 
 	record := notary.EpochRecord{
-		Ledger:   ledger,
-		Header:   plan.Header,
-		Digest:   plan.Digest,
-		Currency: plan.Currency,
-		State:    notary.StateBuilt,
+		Ledger:     ledger,
+		Header:     plan.Header,
+		Digest:     plan.Digest,
+		Currency:   plan.Currency,
+		State:      notary.StateBuilt,
+		SnapshotID: plan.SnapshotID,
 	}
 	s.Records[plan.Header.Number] = record
-	s.Accounts[plan.Header.Number] = plan.Accounts
+	s.Stored[plan.Header.Number] = plan.Accounts
 
 	return record, nil
 }
@@ -241,4 +242,8 @@ func (s *Store) RecentCosts(_ context.Context, limit int32) ([]uint64, error) {
 
 func (s *Store) AttemptsOf(epoch uint64) []notary.Attempt {
 	return append([]notary.Attempt(nil), s.attempts[epoch]...)
+}
+
+func (s *Store) Accounts(_ context.Context, epoch uint64) ([]notary.Account, error) {
+	return s.Stored[epoch], nil
 }

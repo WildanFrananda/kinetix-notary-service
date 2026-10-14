@@ -7,6 +7,7 @@ type Snapshot struct {
 	currency    string
 	liabilities []Liability
 	total       uint64
+	record      SnapshotRecord
 }
 
 func NewSnapshot(asOf UnixTime, currency string, liabilities []Liability) (Snapshot, error) {
@@ -83,6 +84,54 @@ func (s Snapshot) Liabilities() []Liability {
 
 func (s Snapshot) Total() uint64 {
 	return s.total
+}
+
+func (s Snapshot) Recorded(id SnapshotID, nanos uint32, digest Digest) (Snapshot, error) {
+	const op = "notary.Snapshot.Recorded"
+
+	if id.IsZero() {
+		return Snapshot{}, Errf(KindSourceRefused, op, nil, "the snapshot carries no id")
+	}
+
+	if nanos >= 1_000_000_000 {
+		return Snapshot{}, Errf(KindSourceRefused, op, nil, "the snapshot time has %d nanoseconds", nanos)
+	}
+
+	record := SnapshotRecord{
+		ID:       id,
+		AsOf:     s.asOf,
+		Nanos:    nanos,
+		Currency: s.currency,
+		Count:    uint64(len(s.liabilities)),
+		Total:    s.total,
+	}
+
+	computed, err := SnapshotDigest(record, s.liabilities)
+	if err != nil {
+		return Snapshot{}, err
+	}
+
+	if computed != digest {
+		return Snapshot{}, Errf(
+			KindDisagreement,
+			op,
+			nil,
+			"payment digests snapshot %s as %s, its rows give %s",
+			id,
+			digest.Hex(),
+			computed.Hex(),
+		)
+	}
+
+	record.Digest = digest
+	recorded := s
+	recorded.record = record
+
+	return recorded, nil
+}
+
+func (s Snapshot) Record() SnapshotRecord {
+	return s.record
 }
 
 func isISOCurrency(code string) bool {

@@ -24,6 +24,9 @@ type rig struct {
 	store    *notarytest.Store
 	source   *notarytest.Source
 	observer *notarytest.Observer
+	council  *notarytest.Council
+	watch    *notarytest.Watch
+	signer   notary.ApprovalSigner
 	anchorer *anchoring.Anchorer
 	policy   anchoring.Policy
 }
@@ -37,12 +40,31 @@ func newRig(t *testing.T) *rig {
 		observer: &notarytest.Observer{},
 	}
 	r.store = notarytest.NewStore(r.clock)
+	r.signer = notarytest.ApprovalSigner(t, "anchorer")
+	r.chain.From = r.signer.Member()
+	watcher := notarytest.ApprovalSigner(t, "watch")
+	r.watch = &notarytest.Watch{
+		Signer:    watcher,
+		Scheme:    keccak.NewScheme(),
+		Approvals: keccak.NewScheme(),
+		Council:   notarytest.CouncilIdentity,
+		Ledger:    ledgerID.Address,
+	}
+	r.council = &notarytest.Council{
+		Answers:        notarytest.CouncilIdentity,
+		Ledger:         ledgerID.Address,
+		Members:        map[notary.Address]bool{r.signer.Member(): true, watcher.Member(): true},
+		ThresholdValue: 2,
+		Anchors:        true,
+		Scheme:         keccak.NewScheme(),
+	}
 	r.source = &notarytest.Source{Next: func() (notary.Snapshot, error) {
 		return notarytest.Snapshot(t, uint64(r.now.Unix())-30, notarytest.Liabilities(t, 12)), nil
 	}}
 	r.policy = anchoring.Policy{
 		Instance:      "notaryd-1",
 		Ledger:        ledgerID,
+		Council:       notarytest.CouncilIdentity,
 		Currency:      "IDR",
 		EpochInterval: time.Hour,
 		ReplaceAfter:  5 * time.Minute,
@@ -63,6 +85,7 @@ func (r *rig) build() {
 		r.source,
 		r.store,
 		r.chain,
+		anchoring.Quorum{Council: r.council, Watch: r.watch, Signer: r.signer, Scheme: keccak.NewScheme()},
 		r.observer,
 		r.clock,
 		slog.New(slog.NewTextHandler(io.Discard, nil)),
@@ -98,7 +121,7 @@ func TestAnEpochIsBuiltSentMinedAndFinalized(t *testing.T) {
 	require.Equal(t, notary.StateSubmitted, r.state(t, 0))
 	require.Len(t, r.chain.Broadcasts, 1)
 	require.Equal(t, []string{"IDR"}, r.source.Asked)
-	require.Len(t, r.store.Accounts[0], 12)
+	require.Len(t, r.store.Stored[0], 12)
 	require.True(t, r.observer.Held)
 
 	r.chain.Mine()
@@ -329,18 +352,21 @@ func TestAnEpochAlreadyOnChainIsWatchedNotResent(t *testing.T) {
 	require.NoError(t, r.tick(t))
 	header := r.store.Records[0].Header
 	r.store.Records[0] = notary.EpochRecord{
-		Ledger:   ledgerID,
-		Header:   header,
-		Digest:   r.store.Records[0].Digest,
-		Currency: "IDR",
-		State:    notary.StateBuilt,
+		Ledger:     ledgerID,
+		Header:     header,
+		Digest:     r.store.Records[0].Digest,
+		Currency:   "IDR",
+		State:      notary.StateBuilt,
+		SnapshotID: r.store.Records[0].SnapshotID,
 	}
 	r.chain.Forget()
 	r.chain.Plant(header)
+	r.watch.Err = notary.Errf(notary.KindApprovalRefused, "test", nil, "the ledger has moved past epoch 0")
 
 	require.NoError(t, r.tick(t))
 	require.Equal(t, notary.StateSubmitted, r.state(t, 0))
 	require.Len(t, r.chain.Broadcasts, 1)
+	require.Len(t, r.watch.Proposals, 1)
 
 	require.NoError(t, r.tick(t))
 	require.Equal(t, notary.StateMined, r.state(t, 0))

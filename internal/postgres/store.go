@@ -219,7 +219,12 @@ func (s *Store) SaveBuilt(
 		}
 	}
 
-	err := s.fenced(ctx, op, lease, func(tx pgx.Tx, q *storegen.Queries) error {
+	snapshot, err := uuidOf(op, plan.SnapshotID)
+	if err != nil {
+		return notary.EpochRecord{}, err
+	}
+
+	err = s.fenced(ctx, op, lease, func(tx pgx.Tx, q *storegen.Queries) error {
 		if err := keepSecrets(ctx, op, q, plan.Accounts); err != nil {
 			return err
 		}
@@ -236,6 +241,7 @@ func (s *Store) SaveBuilt(
 			LeafCount:      ints[3],
 			AsOf:           ints[4],
 			Currency:       plan.Currency,
+			SnapshotID:     snapshot,
 		}); err != nil {
 			return err
 		}
@@ -272,11 +278,12 @@ func (s *Store) SaveBuilt(
 	}
 
 	return notary.EpochRecord{
-		Ledger:   ledger,
-		Header:   header,
-		Digest:   plan.Digest,
-		Currency: plan.Currency,
-		State:    notary.StateBuilt,
+		Ledger:     ledger,
+		Header:     header,
+		Digest:     plan.Digest,
+		Currency:   plan.Currency,
+		State:      notary.StateBuilt,
+		SnapshotID: plan.SnapshotID,
 	}, nil
 }
 

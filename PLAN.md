@@ -49,6 +49,10 @@ timestamped record that no single party controls.
 | 15 | Withholding (2026-10-13) | Step 7 as proposed, R1–R5: the notary signs registrations, a second commitment derivation from a switch epoch, the inclusion proof is the answer and anyone may post it, a 7-day request window and a 24-hour answer deadline, and a separate MIT `WithholdingCourt` beside the deployed court. |
 | 16 | Answering key (2026-10-14) | A **fifth key**, the answerer, in SOPS like the anchorer. It sends `answer` transactions and nothing else. The anchorer judges its own anchor by its nonce, so a second sender on that key would make it misread its own epoch, and a leak of one key never hands over another. |
 | 17 | Proving the statement address (2026-10-14) | The holder signs an EIP-712 `RegistrationRequest{holder, principal, issuedAt}` under the withholding court's domain with the key of the address they register, and posts it with their access token. The notary refuses a signature that does not recover to that address, a principal that is not the token's, or an `issuedAt` older than five minutes. |
+| 18 | Council threshold (2026-10-14) | **2-of-2**: the notary and the watch. No spare key: a third Kinetix key would let Kinetix anchor without the watch, and the council would mean nothing. A stopped watch stops anchoring, and the three-hour finality alert says so. The contract refuses any threshold below 2. |
+| 19 | Where the watch lives (2026-10-14) | **`cmd/notary-watch` in this repository**, with its own image entry, container, SPIFFE identity and key. `bin/check-boundaries` keeps it away from the anchoring and Postgres code. |
+| 20 | How the watch sees the same snapshot (2026-10-14) | **Payment records each snapshot** — its time, currency, count, total and a SHA-256 digest of its rows — and serves that record to the watch. notaryd forwards the rows; the watch checks them against payment's record, not against anything notaryd says. Payment keeps three values per snapshot and needs no new key. |
+| 21 | The notary's council key (2026-10-14) | **The anchorer key** signs the notary's approval and still sends the transaction and pays its gas. Only the watch gets a new key, the sixth. |
 
 ## 3. What the proof does and does not prove
 
@@ -721,7 +725,7 @@ Prometheus had never scraped the notary, so the stall, abandon, runway and prove
 silent since step 4. That is fixed in infrastructure, and `bin/prod-deploy` now refuses a service that
 Prometheus does not scrape. **6b**, pushing statements to holders, is notification's work.
 
-#### Step 7 — withholding (`WithholdingCourt`). **Ruled 2026-10-13 (decision 15); released 2026-10-14 (v1.0.0), scan fix pending (7-7).**
+#### Step 7 — withholding (`WithholdingCourt`). **Ruled 2026-10-13 (decision 15); live 2026-10-14 (v1.0.1).**
 
 Step 6 punishes a lie the notary signed; this step punishes the silence that would hide an omitted
 account — the limit PLAN §3 admits today. A holder registers a statement address (a key in their own
@@ -845,26 +849,197 @@ possible extension and is not part of this proposal.
   (`eth_getLogs is limited to a 200 range`, HTTP 413). anvil and the fork test answer any range, so
   neither could have shown it. Nothing was missed, because registration had not opened.
 
-  The fix, built and green (`bin/ci-go`, 85.4%), not yet released:
+  The fix, green in `bin/ci-go` (85.4%):
   - the span is `KINETIX_NOTARY_RPC_LOG_RANGE`, required, because the limit belongs to the endpoint;
   - `Answerer.CheckScan` asks for one full span ending at the head before notaryd starts, so an endpoint
     that refuses it fails the deploy, not every pass;
   - `kinetix_notary_withholding_passes_total{outcome}` counts each pass, and infra's
     `withholding-stalled` rule pages when thirty minutes pass without a served one.
 
-#### Step 8 — threshold anchoring (`AnchorCouncil`)
+  **Released 2026-10-14 as v1.0.1** (infra `a30c510` first), deployed 06:11 UTC, and proven on the server
+  by 09:15 UTC:
+  - `notaryd starting` logs `log_range 200`; passes 713 `served`, 0 `failed`; no gauge reads `NaN`;
+  - epochs 37 onward carry account ids, and every account's secret is kept;
+  - a fresh customer's epoch 41 proof through Kong is `inclusion.v2` with its `secret`, and
+    `notary-verify` reports `included` and `attributable`;
+  - a holder-signed registration through Kong returned one registration from epoch 42; the same body
+    naming another holder was refused 403.
+
+#### Step 8 — threshold anchoring (`AnchorCouncil`). **Ruled 2026-10-14 (decisions 18–21); built, waiting on the production council.**
 
 One hot key can anchor anything today. The council holds `ANCHORER_ROLE` and anchors an epoch only
 with k-of-n EIP-712 signatures over its header (domain-separated by chain id and ledger address).
 
 - Members: the notary's signer and **`notary-watch`**, an independent process with its own key that
-  pulls the same snapshot from payment, rebuilds the tree on its own, and signs only when the root
-  matches. Long term the watcher belongs to a different operator.
+  checks the epoch against payment's own record of the snapshot, rebuilds the tree on its own, and
+  signs only when the root matches. Long term the watcher belongs to a different operator.
 - Anyone holding enough signatures may submit (a relayer, or step 10's sponsored transaction).
-- A member signing two different headers for one epoch is provable equivocation, recorded through
-  the court's fault list.
-- Membership and threshold change through the admin with a delay, and never below 2-of-n once the
-  watcher exists.
+- Membership and threshold change through the admin with a delay, and never below 2-of-n.
+
+**Design settled 2026-10-14.**
+
+*The approval.* EIP-712, domain `{name: "Kinetix Anchor Council", version: "1", chainId,
+verifyingContract: the council}`, type `EpochApproval(address ledger,uint64 number,bytes32 digest)`,
+where `digest` is the epoch digest of §4. The digest already commits to the scheme, the number, the
+previous digest, the root, the total, the leaf count and the snapshot time, so signing it signs the
+whole header, and the council computes it with the ledger's own `EpochChain`.
+
+*Anchoring.* `anchor(header, signatures)` is permissionless. Signatures come in ascending order of the
+address they recover to, so a repeated signer is refused without a mapping; every one must recover to
+a current member, and at least `threshold` must be given. Then the council calls `ledger.anchor`, and a
+ledger refusal reaches the caller with its own revert data, so notaryd decodes `EpochAlreadyAnchored`,
+`SnapshotInFuture` and the rest exactly as it does today. `EpochApproved(number, digest, approvers)`
+records who approved.
+
+*Membership.* A list of up to 16 distinct non-zero members and a threshold between 2 and the list's
+length, set at construction. The admin schedules a whole new membership; after 7 days anyone may
+activate it, and the admin may cancel it before. A change is whole, never a single add or remove, so
+no intermediate state can drop below the threshold. Approvals are not stored: they are checked against
+the membership at the moment of `anchor`, so an approval from a removed member stops counting at once.
+
+*Admin.* `AccessControlDefaultAdminRules`, the ledger's admin keystore, a 3-day transfer delay — the
+court's arrangement. The council has no other role and holds no money.
+
+*No equivocation fault.* The first draft recorded two approvals for one epoch as a fault. Two things
+argue against it. The ledger accepts one header per number and refuses the other (`EpochConflict`), so
+a second approval can never become a second history; there is no harm left to punish. And an honest
+watch can approve two different trees of one snapshot, because the notary draws fresh salts for every
+build: convicting it would punish honesty. The court is immutable and its two fault kinds are fixed,
+so there is nothing to record there either. What a stranger can check is in `EpochApproved`.
+
+*The snapshot record* (decision 20, payment's work). The liability stream's header gains a
+`snapshot_id`, its trailer a `digest`: SHA-256 over
+`"kinetix.payment.liability-snapshot.v1" ‖ asOf seconds:u64 ‖ asOf nanos:u32 ‖ currency ‖ count:u64 ‖
+total:u64`, then every account sorted by kind and then by the holder's UTF-8 bytes, each as
+`kind:u8 ‖ holderLength:u8 ‖ holder ‖ amount:u64`. The order is canonical so the watch can rebuild it
+from rows in any order. Payment writes the record before it sends the trailer, so a snapshot the notary
+can use always has one, and serves it from a new `payment.v1.LiabilityRecordService` that the watch
+alone may call. notaryd recomputes the digest on every snapshot and refuses one it cannot reproduce,
+so a Java↔Go encoding drift stops the first epoch, not the first watch call.
+
+*The watch.* Stateless: no database. It serves `notary.v1.EpochWatchService/ApproveEpoch`, a client
+stream of one proposal (snapshot id, header) then batches of accounts (kind, holder, amount, secret,
+salt), over the mesh, to the `notary` identity only. It approves only when:
+- payment's record for the snapshot id exists, and its time, currency, count and total match the
+  proposal, and the rows hash to its digest;
+- the header's number is the ledger's `nextEpoch`, its previous digest the ledger's `head`, and its
+  snapshot time the record's, in whole seconds;
+- the tree it rebuilds — account ids from the secrets, commitments from the salts, leaves sorted by
+  commitment — has the header's root, total and leaf count.
+
+A disagreement is `FAILED_PRECONDITION` with the reason; an outage of the chain or of payment is
+`UNAVAILABLE`.
+
+*notaryd.* In the `built` state it signs its own approval with the anchorer key, asks the watch for
+its approval, and sends `council.anchor` from the anchorer. Approvals are not stored: ECDSA here is
+deterministic, so asking again after a restart returns the same signature. A watch refusal abandons the
+epoch, because the notary and the watch disagreeing is an incident; an outage is retried. It refuses
+to start unless the council reads its ledger, holds the anchorer role there, counts the anchorer key
+as a member and hashes an approval as Go does. The epoch row keeps its `snapshot_id` (migration 00004).
+
+*Cutover*, after the council is deployed: the ledger admin grants the council `ANCHORER_ROLE`, the
+notary is released in council mode, its first epoch through the council goes final, and only then is
+the anchorer key's own role revoked. From then on a stolen anchorer key anchors nothing alone.
+
+*Work order*, each part green before the next:
+
+- **8-1** the contract: `AnchorCouncil`, its interface, `PendingMembership`, `ApprovalHashing`; unit,
+  fuzz and handler-based invariant suites; the deploy script through the CREATE2 factory and
+  `bin/rehearse-deploy`; Slither and Aderyn.
+- **8-2** Go↔Solidity: the approval digest in `internal/keccak`, a fixture signed in Go and verified by
+  Foundry; a fork test where a council beside the live ledger anchors its next epoch with two
+  approvals and refuses one.
+- **8-3** `kinetix-contracts`: the stream's new fields, `payment.v1.LiabilityRecordService` and
+  `notary.v1.EpochWatchService`, each new service in a file of its own. The user publishes.
+- **8-4** payment: the digest, the record (a Liquibase changelog from the entity), the record service,
+  the allow-list entry.
+- **8-5** `notary-watch`: the use case, the gRPC server with a peer check, the payment record client,
+  config, metrics; tested over real mTLS.
+- **8-6** notaryd in council mode: the snapshot digest check, the approval round, the council writer,
+  start-up checks, migration 00004, an end-to-end run on anvil with a real watch.
+- **8-7** the estate: `bin/deploy-council`, `bin/inspect-council`, `bin/new-watch-key`,
+  `bin/hand-over-anchoring`, the lab council and watch, compose, the `notary-watch` PKI leaf,
+  allow-lists, Grafana rules, the deploy document. Then the council on Base Sepolia and the cutover,
+  by the user's keystores.
+
+**Status, 2026-10-14: 8-1, 8-2 and 8-3 built and green.** The contracts gate passes except the deploy
+rehearsal, which waits for the watch's address: 203 tests on the CI profile, 12 fork tests, Slither 0,
+Aderyn nothing new. `bin/ci-go` exits 0 at 85.5%. What each part proved:
+
+| Part | Proof |
+|---|---|
+| 8-1 | 36 unit, 5 fuzz (20 000 runs on CI) and 5 invariants over 131 072 calls on CI. Three planted mutations each turned suites red: no threshold check (unit, fuzz, invariant), a repeated approver counted twice (unit, fuzz, invariant, once the handler and the fuzz learned to repeat one) and, below, a renamed EIP-712 field. `anchor` through the council measured at most 183k gas against ≈144k for the ledger alone. The deploy script went through the CREATE2 factory on anvil with chain id 84532, and refuses a network with no council members |
+| 8-2 | Go signs four approvals, from epoch 0 to `uint64` max; Foundry rebuilds the same epoch digest, the same EIP-712 digest and the same signer. Renaming `number` to `epoch` in Go's type string turned Foundry red. On a fork of Base Sepolia at block 48063800, a council beside the live ledger takes the anchorer role from the admin, the old hot key is refused, two approvals anchor the next epoch, one approval anchors nothing, and the ledger's own refusals come back through the council unchanged |
+| 8-3 | `kinetix-contracts`: `snapshot_id` and `digest` added to the liability stream, `payment/v1/liability_record.proto` and `notary/v1/watch.proto`, each a new service in a new file; `buf lint` with moneylint, `buf format` and `tools/breaking-gate` against `main` all pass in a container. Published by the user on 2026-10-15 as **v1.2.0** = `48d7806308461c877e81bede8f254664b76cbc09` |
+
+Building it changed one shared piece: the EIP-712 domain in `internal/keccak` is now one value per
+contract (`courtDomain`, `withholdingDomain`, `councilDomain`), because golangci's `unparam` saw every
+caller pass the version `"1"`. The statement and withholding digests are unchanged, and their fixtures
+still pass byte for byte.
+
+**Status, 2026-10-14 later: 8-4, 8-5 and 8-6 built and green.** `bin/ci-go` exits 0 with golangci 0 and
+coverage 86.0%; payment's suite passes 248 tests with 0 skipped against a freshly migrated Postgres 16.
+Both run against the new protos copied into each repository's ignored `.contracts/`; the pins move once
+the user tags `kinetix-contracts`. What each part proved:
+
+| Part | Proof |
+|---|---|
+| 8-4 | payment records every snapshot before its trailer and serves the record to the watch alone. The snapshot digest has a known-answer vector computed by an independent Python implementation, and Java and Go both reproduce it; dropping the canonical sort in Java turned both of its known-answer tests red. A snapshot whose record cannot be written ends without a trailer. The table came from the entity through `diffChangeLog`; seven unrelated drift changesets the diff also proposed were left out |
+| 8-5 | `notary-watch` approves only when payment's record, the ledger's head and its own rebuild of the tree all agree: fifteen kinds of disagreement are each refused, and an outage of payment or the chain is reported as one, never as a refusal. Over real mTLS a 1 201-account proposal crosses whole, a caller that is not `notary` and a server that is not `notary-watch` are both refused, and a malformed proposal is the caller's mistake |
+| 8-6 | notaryd verifies every snapshot's digest itself, keeps its `snapshot_id` (migration 00004), and in `built` asks the watch, signs its own approval and sends `council.anchor`. A watch refusal abandons the epoch with the watch's reason; an outage leaves it built and asks again. An epoch already on chain is moved on without asking the watch, which a planted mutation proved necessary. On anvil, with a real `AnchorCouncil`, the anchorer role handed to it and a real watch in process, the daemon anchors, finalizes and every account verifies; a payment record that disagrees with what notaryd saw makes the real watch refuse and the epoch is abandoned with no transaction sent |
+
+Found on the way: the gRPC client counter never counted a successful client-streaming call, because it
+counted only on `io.EOF`, which such a call never returns. The daemon test that asserts the watch call
+caught it.
+
+**8-7, as far as it can go before the production council exists (2026-10-14).**
+- **This repository:**
+  - `bin/new-watch-key`, `bin/deploy-council`, `bin/inspect-council`, `bin/fund-admin` (the admin has
+    never held gas), `bin/hand-over-anchoring` and `bin/retire-anchorer`.
+  - `retire-anchorer` takes the transaction of an anchor through the council as its proof, because the
+    public endpoint will not scan logs wide enough to find one.
+  - The admin scripts were rehearsed read-only against Base Sepolia. That rehearsal caught the pinned
+    `cast` printing a receipt's status as `true`, which the first draft compared with `1 (success)` and
+    would always have refused.
+  - shellcheck is clean at warning level.
+- **Infrastructure:**
+  - The lab script deploys the lab council at `0xF92c3A6eEC782530b5907315E152669256a237a4`, hands it the
+    role and revokes the anchorer key's. Rehearsed twice on a throwaway chain: it landed at its address,
+    and the second run changed nothing.
+  - The lab runs `kinetix-notary-watch-service`. The name is the one the PKI's DNS SAN gives it, which
+    the client's hostname check needs.
+  - Payment's allow-list names `notary-watch@payment.v1.LiabilityRecordService`, and `bin/kinetix-pki`
+    knows `notary-watch`.
+  - `docs/NOTARY-COUNCIL-DEPLOY.md` and `docs/NOTARY-LAB.md` are written; `compose-check` passes, dev 47
+    and prod 33.
+- **The watch key (user, 2026-10-14):** `0x9ae6E5Eae21b41Dc0744Ea9FB3d2AB4D33F106C6`, in the prod store.
+  The members are now in `deploy/base-sepolia.env`. On an anvil fork of Base Sepolia at block 48109915
+  the deploy went out as one CREATE2, landed at `0xf6c33dE8F884fCcfE523DdC43d454AD7023D791b` for
+  2,797,275 gas, read back the right ledger, members, threshold and admin, and took the anchorer role
+  from the impersonated admin for 51,486 gas.
+- **Deployed by the user on 2026-10-14:** the council at `0xf6c33dE8F884fCcfE523DdC43d454AD7023D791b`,
+  exactly where the rehearsal said, and the anchorer role handed to it (tx `0xf745…191e`, block 48110555,
+  51,486 gas). The anchorer key holds the role too until the retirement step.
+- **The watch's mTLS leaves (2026-10-14):** the production leaf from the production CA, as
+  `spiffe://kinetix.local/service/notary-watch`, copied to the server with the notary's owners; the dev
+  leaf and the lab key in the dev store.
+- **Contracts v1.2.0 (2026-10-15):** payment and this repository are pinned to it. The Go generated from
+  the tag is byte for byte the pre-tag copy's; payment passes 248 tests with none skipped, with its
+  protobuf generated again; `bin/ci-go` exits 0, golangci 0, coverage 85.9%.
+- **Found while adding the production lines, and fixed:**
+  - the watch serves gRPC but counted nothing it answered, and infra's deploy gate requires
+    `kinetix_grpc_server_calls_total` of every gRPC server. It now counts every call by method and code,
+    seeded at zero; taking the interceptor out turns both daemon tests that assert it red;
+  - it named itself `kinetix-notary-watch` in `kinetix_build_info`, where every process in the estate
+    uses its compose service name. It is `kinetix-notary-watch-service` now, as its Prometheus target is.
+- **Production compose (infra):** `x-notary-chain-env` in `compose.yaml` holds the chain, the contracts and
+  the mesh notaryd and the watch share, and `x-notary-chain-prod` overrides it once for both, with the
+  production council. `compose-check` passes, dev 47 and prod 34.
+- **The release order changed** to infra A, payment, infra B, notary v1.1.0
+  (`docs/NOTARY-COUNCIL-DEPLOY.md` step 8). A deploy recreates only its own service on infra's `main`,
+  so payment admits the watch only if the allow-list lands before payment's release; and every deploy
+  runs the metrics gate over every target, so the watch's target, its conformance entry and its
+  `bin/prod-deploy` sibling (B) wait until payment is live.
 
 #### Step 9 — ledger directory (`LedgerDirectory`)
 

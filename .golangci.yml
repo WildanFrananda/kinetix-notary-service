@@ -34,6 +34,7 @@ linters:
         - .Errf(
         - .Wrap(
         - .RecvMsg(
+        - status.Error(
       ignore-package-globs:
         - github.com/WildanFrananda/kinetix-notary-service/*
 

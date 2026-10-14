@@ -18,6 +18,7 @@ import (
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/ethereum/go-ethereum/rpc"
 
+	"github.com/WildanFrananda/kinetix-notary-service/internal/contractgen/council"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/contractgen/ledger"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/notary"
 )
@@ -25,14 +26,16 @@ import (
 const gasMarginPercent = 120
 
 type Writer struct {
-	client   *ethclient.Client
-	binding  *ledger.LiabilityLedger
-	contract *bind.BoundContract
-	ledger   notary.LedgerIdentity
-	key      *ecdsa.PrivateKey
-	from     common.Address
-	signer   types.Signer
-	timeout  time.Duration
+	client         *ethclient.Client
+	binding        *ledger.LiabilityLedger
+	councilBinding *council.AnchorCouncil
+	contract       *bind.BoundContract
+	ledger         notary.LedgerIdentity
+	target         common.Address
+	key            *ecdsa.PrivateKey
+	from           common.Address
+	signer         types.Signer
+	timeout        time.Duration
 }
 
 var _ notary.AnchorChain = (*Writer)(nil)
@@ -42,14 +45,16 @@ func NewWriter(client *ethclient.Client, settings Settings, key *ecdsa.PrivateKe
 	chainID := new(big.Int).SetUint64(settings.Ledger.ChainID)
 
 	return &Writer{
-		client:   client,
-		binding:  binding,
-		contract: binding.Instance(client, common.Address(settings.Ledger.Address)),
-		ledger:   settings.Ledger,
-		key:      key,
-		from:     crypto.PubkeyToAddress(key.PublicKey),
-		signer:   types.LatestSignerForChainID(chainID),
-		timeout:  settings.Timeout,
+		client:         client,
+		binding:        binding,
+		councilBinding: council.NewAnchorCouncil(),
+		contract:       binding.Instance(client, common.Address(settings.Ledger.Address)),
+		ledger:         settings.Ledger,
+		target:         common.Address(settings.Council),
+		key:            key,
+		from:           crypto.PubkeyToAddress(key.PublicKey),
+		signer:         types.LatestSignerForChainID(chainID),
+		timeout:        settings.Timeout,
 	}
 }
 
@@ -79,86 +84,8 @@ func (w *Writer) Anchorer() notary.Address {
 	return notary.Address(w.from)
 }
 
-func (w *Writer) VerifyAnchorer(ctx context.Context) error {
-	const op = "ethereum.Writer.VerifyAnchorer"
-
-	ctx, cancel := context.WithTimeout(ctx, w.timeout)
-	defer cancel()
-
-	opts := &bind.CallOpts{Context: ctx}
-
-	role, err := bind.Call(w.contract, opts, w.binding.PackANCHORERROLE(), w.binding.UnpackANCHORERROLE)
-	if err != nil {
-		return unavailable(op, err)
-	}
-
-	holds, err := bind.Call(w.contract, opts, w.binding.PackHasRole(role, w.from), w.binding.UnpackHasRole)
-	if err != nil {
-		return unavailable(op, err)
-	}
-
-	if !holds {
-		return notary.Errf(
-			notary.KindNotAnchorer,
-			op,
-			nil,
-			"%s does not hold the anchorer role on %s",
-			w.from.Hex(),
-			w.ledger.Address.Hex(),
-		)
-	}
-
-	return nil
-}
-
 func (w *Writer) Head(ctx context.Context) (notary.LedgerHead, error) {
-	const op = "ethereum.Writer.Head"
-
-	ctx, cancel := context.WithTimeout(ctx, w.timeout)
-	defer cancel()
-
-	opts := &bind.CallOpts{Context: ctx}
-
-	var head notary.LedgerHead
-
-	next, err := bind.Call(w.contract, opts, w.binding.PackNextEpoch(), w.binding.UnpackNextEpoch)
-	if err != nil {
-		return head, unavailable(op, err)
-	}
-
-	digest, err := bind.Call(w.contract, opts, w.binding.PackHead(), w.binding.UnpackHead)
-	if err != nil {
-		return head, unavailable(op, err)
-	}
-
-	lastAsOf, err := bind.Call(w.contract, opts, w.binding.PackLastAsOf(), w.binding.UnpackLastAsOf)
-	if err != nil {
-		return head, unavailable(op, err)
-	}
-
-	genesisEpoch, err := bind.Call(w.contract, opts, w.binding.PackGenesisEpoch(), w.binding.UnpackGenesisEpoch)
-	if err != nil {
-		return head, unavailable(op, err)
-	}
-
-	genesisDigest, err := bind.Call(w.contract, opts, w.binding.PackGenesisDigest(), w.binding.UnpackGenesisDigest)
-	if err != nil {
-		return head, unavailable(op, err)
-	}
-
-	sealed, err := bind.Call(w.contract, opts, w.binding.PackIsSealed(), w.binding.UnpackIsSealed)
-	if err != nil {
-		return head, unavailable(op, err)
-	}
-
-	return notary.LedgerHead{
-		NextEpoch:     next,
-		Head:          digest,
-		LastAsOf:      lastAsOf,
-		GenesisEpoch:  genesisEpoch,
-		GenesisDigest: genesisDigest,
-		Sealed:        sealed,
-	}, nil
+	return readHead(ctx, "ethereum.Writer.Head", w.contract, w.binding, w.timeout)
 }
 
 func (w *Writer) EpochAtLatest(ctx context.Context, number uint64) (notary.AnchoredEpoch, bool, error) {
@@ -272,6 +199,7 @@ func (w *Writer) Fees(ctx context.Context) (uint64, uint64, error) {
 func (w *Writer) Prepare(
 	ctx context.Context,
 	header notary.EpochHeader,
+	approvals []notary.Signature,
 	nonce uint64,
 	fees notary.FeeQuote,
 ) (notary.PreparedAnchor, error) {
@@ -280,15 +208,23 @@ func (w *Writer) Prepare(
 	ctx, cancel := context.WithTimeout(ctx, w.timeout)
 	defer cancel()
 
-	calldata := w.binding.PackAnchor(ledger.EpochHeader{
-		Number:         header.Number,
-		PreviousDigest: header.PreviousDigest,
-		Root:           header.Root,
-		Total:          header.Total,
-		LeafCount:      header.LeafCount,
-		AsOf:           header.AsOf.Seconds(),
-	})
-	to := common.Address(w.ledger.Address)
+	signatures := make([][]byte, len(approvals))
+	for i := range approvals {
+		signatures[i] = approvals[i][:]
+	}
+
+	calldata := w.councilBinding.PackAnchor(
+		council.EpochHeader{
+			Number:         header.Number,
+			PreviousDigest: header.PreviousDigest,
+			Root:           header.Root,
+			Total:          header.Total,
+			LeafCount:      header.LeafCount,
+			AsOf:           header.AsOf.Seconds(),
+		},
+		signatures,
+	)
+	to := w.target
 	feeCap := new(big.Int).SetUint64(fees.MaxFeePerGas)
 	tipCap := new(big.Int).SetUint64(fees.MaxPriorityFeePerGas)
 
@@ -320,12 +256,12 @@ func (w *Writer) Resign(previous notary.PreparedAnchor, fees notary.FeeQuote) (n
 		)
 	}
 
-	if tx.To() == nil || *tx.To() != common.Address(w.ledger.Address) || tx.Nonce() != previous.Nonce {
+	if tx.To() == nil || *tx.To() != w.target || tx.Nonce() != previous.Nonce {
 		return notary.PreparedAnchor{}, notary.Errf(
 			notary.KindInvalidArgument,
 			op,
 			nil,
-			"%s is not an anchor to this ledger",
+			"%s is not an anchor through this council",
 			previous.Hash.Hex(),
 		)
 	}
@@ -339,7 +275,7 @@ func (w *Writer) sign(
 	calldata []byte,
 	fees notary.FeeQuote,
 ) (notary.PreparedAnchor, error) {
-	to := common.Address(w.ledger.Address)
+	to := w.target
 
 	tx, err := types.SignNewTx(w.key, w.signer, &types.DynamicFeeTx{
 		ChainID:   new(big.Int).SetUint64(w.ledger.ChainID),

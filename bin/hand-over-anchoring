@@ -1,0 +1,94 @@
+#!/usr/bin/env sh
+set -eu
+
+HERE="$(cd "$(dirname "$0")/.." && pwd)"
+NETWORK="${1:-}"
+MODE="${2:-}"
+
+case "$MODE" in
+  "" | --broadcast) ;;
+  *)
+    echo "usage: bin/hand-over-anchoring <network> [--broadcast]" >&2
+    exit 64
+    ;;
+esac
+if [ -z "$NETWORK" ] || [ ! -f "$HERE/deploy/$NETWORK.env" ]; then
+  echo "usage: bin/hand-over-anchoring <network> [--broadcast]   (reads deploy/<network>.env)" >&2
+  exit 64
+fi
+: "${KINETIX_NOTARY_RPC_URL:?set KINETIX_NOTARY_RPC_URL to the network RPC endpoint}"
+KEYSTORES="$(sh "$HERE/bin/keystore-dir")"
+if [ ! -f "$KEYSTORES/notary-admin" ]; then
+  echo "no notary-admin keystore in $KEYSTORES: the ledger's admin grants the role" >&2
+  exit 1
+fi
+
+set -- run --rm --no-deps -e KINETIX_NOTARY_RPC_URL -v "$KEYSTORES:/keystores:ro"
+PASSWORD_ARG=""
+if [ -n "${KINETIX_NOTARY_KEYSTORE_PASSWORD_FILE:-}" ]; then
+  set -- "$@" -v "$KINETIX_NOTARY_KEYSTORE_PASSWORD_FILE:/run/keystore-password:ro"
+  PASSWORD_ARG=--password-file
+fi
+
+docker compose -f "$HERE/toolchain/compose.yaml" build --quiet toolchain >&2
+exec docker compose -f "$HERE/toolchain/compose.yaml" "$@" toolchain sh -c '
+  set -eu
+  network="$1"
+  mode="$2"
+  password_arg="$3"
+  set -a
+  . "./deploy/$network.env"
+  set +a
+  for key in KINETIX_NOTARY_CHAIN_ID KINETIX_NOTARY_LEDGER_ADDRESS KINETIX_NOTARY_ADMIN_ADDRESS KINETIX_NOTARY_COUNCIL_ADDRESS; do
+    eval "value=\${$key:-}"
+    if [ -z "$value" ]; then
+      echo "$key is empty in deploy/$network.env" >&2
+      exit 78
+    fi
+  done
+  rpc="$KINETIX_NOTARY_RPC_URL"
+  ledger="$KINETIX_NOTARY_LEDGER_ADDRESS"
+  council="$KINETIX_NOTARY_COUNCIL_ADDRESS"
+  served="$(cast chain-id --rpc-url "$rpc")"
+  if [ "$served" != "$KINETIX_NOTARY_CHAIN_ID" ]; then
+    echo "the RPC endpoint serves chain $served, deploy/$network.env is for chain $KINETIX_NOTARY_CHAIN_ID" >&2
+    exit 1
+  fi
+  if [ "$(cast code "$council" --rpc-url "$rpc")" = "0x" ]; then
+    echo "there is no council at $council: run bin/deploy-council first" >&2
+    exit 1
+  fi
+  anchors="$(cast call "$council" "ledger()(address)" --rpc-url "$rpc" | tr A-F a-f)"
+  if [ "$anchors" != "$(printf %s "$ledger" | tr A-F a-f)" ]; then
+    echo "the council at $council anchors $anchors, not $ledger" >&2
+    exit 1
+  fi
+  role="$(cast call "$ledger" "ANCHORER_ROLE()(bytes32)" --rpc-url "$rpc")"
+  if [ "$(cast call "$ledger" "hasRole(bytes32,address)(bool)" "$role" "$council" --rpc-url "$rpc")" = "true" ]; then
+    echo "the council already holds the anchorer role on $ledger; nothing to do"
+    exit 0
+  fi
+
+  cast call "$ledger" "grantRole(bytes32,address)" "$role" "$council" --from "$KINETIX_NOTARY_ADMIN_ADDRESS" --rpc-url "$rpc" >/dev/null
+  if [ "$mode" != "--broadcast" ]; then
+    echo "dry run: the admin $KINETIX_NOTARY_ADMIN_ADDRESS may grant the anchorer role on $ledger to $council."
+    echo "nothing was sent. Re-run with --broadcast to grant it."
+    exit 0
+  fi
+
+  set -- "$ledger" "grantRole(bytes32,address)" "$role" "$council" --rpc-url "$rpc" --keystore /keystores/notary-admin
+  if [ -n "$password_arg" ]; then
+    set -- "$@" --password-file /run/keystore-password
+  fi
+  cast send "$@"
+  waited=0
+  until [ "$(cast call "$ledger" "hasRole(bytes32,address)(bool)" "$role" "$council" --rpc-url "$rpc")" = "true" ]; do
+    if [ "$waited" -ge 60 ]; then
+      echo "the grant was sent, but the council does not hold the role at the latest block after 60 s" >&2
+      exit 1
+    fi
+    sleep 2
+    waited=$((waited + 2))
+  done
+  echo "the council $council now holds the anchorer role on $ledger; the anchorer key still does too until bin/retire-anchorer"
+' sh "$NETWORK" "$MODE" "$PASSWORD_ARG"

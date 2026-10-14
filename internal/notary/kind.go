@@ -31,6 +31,9 @@ const (
 	KindRegistrationNotOpen
 	KindAnswerRefused
 	KindUnanswerable
+	KindWrongCouncil
+	KindApprovalRefused
+	KindSnapshotUnknown
 )
 
 func (k Kind) String() string {
@@ -89,6 +92,12 @@ func (k Kind) String() string {
 		return "answer_refused"
 	case KindUnanswerable:
 		return "unanswerable"
+	case KindWrongCouncil:
+		return "wrong_council"
+	case KindApprovalRefused:
+		return "approval_refused"
+	case KindSnapshotUnknown:
+		return "snapshot_unknown"
 	default:
 		return "unknown"
 	}

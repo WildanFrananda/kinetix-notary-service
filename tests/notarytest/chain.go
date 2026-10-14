@@ -34,6 +34,7 @@ type Chain struct {
 	FeesErr       error
 	BroadcastErr  error
 	Broadcasts    []notary.Digest
+	Approvals     [][]notary.Signature
 
 	block     uint64
 	finalized uint64
@@ -64,14 +65,6 @@ func NewChain(scheme notary.Scheme) *Chain {
 }
 
 func (c *Chain) Anchorer() notary.Address { return c.From }
-
-func (c *Chain) VerifyAnchorer(context.Context) error {
-	if !c.Authorized {
-		return notary.Errf(notary.KindNotAnchorer, "notarytest.Chain", nil, "not the anchorer")
-	}
-
-	return nil
-}
 
 func (c *Chain) Head(context.Context) (notary.LedgerHead, error) {
 	head := notary.LedgerHead{
@@ -123,9 +116,20 @@ func (c *Chain) Fees(context.Context) (uint64, uint64, error) {
 func (c *Chain) Prepare(
 	ctx context.Context,
 	header notary.EpochHeader,
+	approvals []notary.Signature,
 	nonce uint64,
 	fees notary.FeeQuote,
 ) (notary.PreparedAnchor, error) {
+	c.Approvals = append(c.Approvals, approvals)
+	if len(approvals) < 2 {
+		return notary.PreparedAnchor{}, notary.Errf(
+			notary.KindAnchorRefused,
+			"notarytest.Chain",
+			nil,
+			"NotEnoughApprovals",
+		)
+	}
+
 	if err := c.refuse(ctx, header); err != nil {
 		return notary.PreparedAnchor{}, err
 	}

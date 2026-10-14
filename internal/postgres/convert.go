@@ -1,7 +1,10 @@
 package postgres
 
 import (
+	"encoding/hex"
 	"math"
+
+	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/WildanFrananda/kinetix-notary-service/internal/notary"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/storegen"
@@ -93,6 +96,11 @@ func recordOf(op string, row storegen.Epoch) (notary.EpochRecord, error) {
 		reason = *row.AbandonedReason
 	}
 
+	snapshot, err := snapshotIDOf(op, row.SnapshotID)
+	if err != nil {
+		return notary.EpochRecord{}, err
+	}
+
 	return notary.EpochRecord{
 		Ledger: notary.LedgerIdentity{ChainID: values[3], Address: address},
 		Header: notary.EpochHeader{
@@ -107,7 +115,38 @@ func recordOf(op string, row storegen.Epoch) (notary.EpochRecord, error) {
 		Currency:        row.Currency,
 		State:           state,
 		AbandonedReason: reason,
+		SnapshotID:      snapshot,
 	}, nil
+}
+
+func uuidOf(op string, id notary.SnapshotID) (pgtype.UUID, error) {
+	if id.IsZero() {
+		return pgtype.UUID{}, nil
+	}
+
+	var u pgtype.UUID
+	if err := u.Scan(string(id)); err != nil {
+		return pgtype.UUID{}, notary.Errf(notary.KindInvalidArgument, op, err, "snapshot id %s", id)
+	}
+
+	return u, nil
+}
+
+func snapshotIDOf(op string, u pgtype.UUID) (notary.SnapshotID, error) {
+	if !u.Valid {
+		return "", nil
+	}
+
+	b := u.Bytes
+	text := hex.EncodeToString(b[0:4]) + "-" + hex.EncodeToString(b[4:6]) + "-" + hex.EncodeToString(b[6:8]) + "-" +
+		hex.EncodeToString(b[8:10]) + "-" + hex.EncodeToString(b[10:16])
+
+	id, err := notary.NewSnapshotID(text)
+	if err != nil {
+		return "", notary.Errf(notary.KindStoreUnavailable, op, err, "")
+	}
+
+	return id, nil
 }
 
 func receiptOf(op string, hash notary.Digest, block, gasUsed, price, l1Fee *int64) (*notary.AnchorReceipt, error) {

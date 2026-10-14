@@ -8,6 +8,8 @@ import (
 type snapshotReader struct {
 	currency    string
 	asOf        notary.UnixTime
+	nanos       uint32
+	id          notary.SnapshotID
 	headed      bool
 	trailed     bool
 	liabilities []notary.Liability
@@ -64,7 +66,19 @@ func (r *snapshotReader) header(op string, header *paymentv1.LiabilitySnapshotHe
 		return refused(op, "the snapshot time %v is unusable", stamp.AsTime())
 	}
 
+	id, err := notary.NewSnapshotID(header.GetSnapshotId())
+	if err != nil {
+		return refused(op, "the snapshot carries no usable id; payment predates the snapshot record")
+	}
+
+	nanos, ok := nanosOf(stamp.GetNanos())
+	if !ok {
+		return refused(op, "the snapshot time has %d nanoseconds", stamp.GetNanos())
+	}
+
 	r.asOf = asOf
+	r.nanos = nanos
+	r.id = id
 	r.headed = true
 
 	return nil
@@ -165,7 +179,26 @@ func (r *snapshotReader) finish(op string) (notary.Snapshot, error) {
 		return notary.Snapshot{}, notary.Errf(notary.KindSourceRefused, op, err, "")
 	}
 
-	return snapshot, nil
+	digest, ok := digestOf(r.trailer.GetDigest())
+	if !ok {
+		return notary.Snapshot{}, refused(
+			op,
+			"the trailer carries no 32-byte digest; payment predates the snapshot record",
+		)
+	}
+
+	return snapshot.Recorded(r.id, r.nanos, digest)
+}
+
+func digestOf(raw []byte) (notary.Digest, bool) {
+	var digest notary.Digest
+	if len(raw) != len(digest) {
+		return digest, false
+	}
+
+	copy(digest[:], raw)
+
+	return digest, true
 }
 
 func kindOf(kind paymentv1.LiabilityKind) (notary.AccountKind, bool, bool) {

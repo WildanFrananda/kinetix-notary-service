@@ -33,12 +33,13 @@ type schemeResult struct {
 	Scheme      notary.Scheme
 	Statements  notary.StatementScheme
 	Withholding notary.WithholdingScheme
+	Approvals   notary.ApprovalScheme
 }
 
 func provideScheme() schemeResult {
 	scheme := keccak.NewScheme()
 
-	return schemeResult{Scheme: scheme, Statements: scheme, Withholding: scheme}
+	return schemeResult{Scheme: scheme, Statements: scheme, Withholding: scheme, Approvals: scheme}
 }
 
 type ledgerParams struct {

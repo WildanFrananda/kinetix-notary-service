@@ -20,6 +20,7 @@ const (
 	LogRangeKey        = "KINETIX_NOTARY_RPC_LOG_RANGE"
 	AnswererKeyKey     = "KINETIX_NOTARY_ANSWERER_PRIVATE_KEY"
 	PaymentAddressKey  = "KINETIX_NOTARY_PAYMENT_GRPC_ADDR"
+	WatchAddressKey    = "KINETIX_NOTARY_WATCH_GRPC_ADDR"
 	PKIDirKey          = "KINETIX_PKI_DIR"
 	TrustDomainKey     = "KINETIX_TRUST_DOMAIN"
 	CurrencyKey        = "KINETIX_NOTARY_CURRENCY"
@@ -47,6 +48,8 @@ type Daemon struct {
 	WithholdingFrom uint64
 	LogRange        uint64
 	AnswererKey     Secret
+	Council         notary.Address
+	WatchAddress    string
 	PaymentAddress  string
 	PKIDir          string
 	TrustDomains    []string
@@ -155,18 +158,19 @@ func LoadDaemon(lookup Lookup) (Daemon, error) {
 		cfg.PaymentAddress = raw
 	}
 
-	cfg.PKIDir = required(PKIDirKey)
+	cfg.Council = councilAddress(required(CouncilAddressKey), &problems)
 
-	cfg.TrustDomains = []string{defaultTrustDomain}
-	if raw := optional(TrustDomainKey); raw != "" {
-		cfg.TrustDomains = nil
-
-		for _, domain := range strings.Split(raw, ",") {
-			if domain = strings.TrimSpace(domain); domain != "" {
-				cfg.TrustDomains = append(cfg.TrustDomains, domain)
-			}
+	if raw := required(WatchAddressKey); raw != "" {
+		host, port, err := net.SplitHostPort(raw)
+		if err != nil || host == "" || port == "" {
+			problems = append(problems, WatchAddressKey+" must be host:port")
 		}
+
+		cfg.WatchAddress = raw
 	}
+
+	cfg.PKIDir = required(PKIDirKey)
+	cfg.TrustDomains = trustDomains(lookup)
 
 	if raw := required(CurrencyKey); raw != "" {
 		if len(raw) != 3 || strings.ToUpper(raw) != raw ||

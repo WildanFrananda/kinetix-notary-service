@@ -20,9 +20,21 @@ SELECT * FROM epochs WHERE state = 'finalized' ORDER BY number DESC LIMIT 1;
 
 -- name: InsertEpoch :exec
 INSERT INTO epochs (
-    number, state, chain_id, ledger_address, scheme, previous_digest, root, digest, total, leaf_count, as_of, currency
+    number,
+    state,
+    chain_id,
+    ledger_address,
+    scheme,
+    previous_digest,
+    root,
+    digest,
+    total,
+    leaf_count,
+    as_of,
+    currency,
+    snapshot_id
 ) VALUES (
-    $1, 'built', $2, $3, $4, $5, $6, $7, $8, $9, $10, $11
+    $1, 'built', $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12
 );
 
 -- name: InsertAccounts :copyfrom
