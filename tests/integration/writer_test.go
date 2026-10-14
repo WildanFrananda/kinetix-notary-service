@@ -36,7 +36,15 @@ func newWriterRig(t *testing.T) *writerRig {
 func (r *writerRig) plan(t *testing.T, number uint64, previous notary.Digest, asOf uint64) notary.EpochPlan {
 	t.Helper()
 	snapshot := notarytest.Snapshot(t, asOf, notarytest.Liabilities(t, 21))
-	plan, err := notary.PlanEpoch(keccak.NewScheme(), &notarytest.Salts{Seed: number}, number, previous, snapshot)
+	plan, err := notary.PlanEpoch(
+		keccak.NewScheme(),
+		&notarytest.Salts{Seed: number},
+		&notarytest.Secrets{},
+		nil,
+		number,
+		previous,
+		snapshot,
+	)
 	require.NoError(t, err)
 
 	return plan

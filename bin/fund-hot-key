@@ -1,0 +1,85 @@
+#!/usr/bin/env sh
+set -eu
+
+HERE="$(cd "$(dirname "$0")/.." && pwd)"
+ROLE="${1:-}"
+NETWORK="${2:-}"
+AMOUNT="${3:-}"
+
+case "$ROLE" in
+  anchorer) ADDRESS_KEY=KINETIX_NOTARY_ANCHORER_ADDRESS ;;
+  answerer) ADDRESS_KEY=KINETIX_NOTARY_ANSWERER_ADDRESS ;;
+  *)
+    echo "usage: bin/fund-hot-key <anchorer|answerer> <network> <ether>" >&2
+    exit 64
+    ;;
+esac
+if [ -z "$NETWORK" ] || [ ! -f "$HERE/deploy/$NETWORK.env" ]; then
+  echo "usage: bin/fund-$ROLE <network> <ether>   (reads deploy/<network>.env)" >&2
+  exit 64
+fi
+case "$AMOUNT" in
+  "" | *[!0-9.]* | *.*.* | .* | *.)
+    echo "usage: bin/fund-$ROLE <network> <ether>   (a decimal amount such as 0.012)" >&2
+    exit 64
+    ;;
+esac
+: "${KINETIX_NOTARY_RPC_URL:?set KINETIX_NOTARY_RPC_URL to the network RPC endpoint}"
+KEYSTORES="$(sh "$HERE/bin/keystore-dir")"
+if [ ! -f "$KEYSTORES/notary-deployer" ]; then
+  echo "no notary-deployer keystore in $KEYSTORES" >&2
+  exit 1
+fi
+
+set -- run --rm --no-deps -e KINETIX_NOTARY_RPC_URL -v "$KEYSTORES:/keystores:ro"
+PASSWORD_ARG=""
+if [ -n "${KINETIX_NOTARY_KEYSTORE_PASSWORD_FILE:-}" ]; then
+  set -- "$@" -v "$KINETIX_NOTARY_KEYSTORE_PASSWORD_FILE:/run/keystore-password:ro"
+  PASSWORD_ARG=--password-file
+fi
+
+docker compose -f "$HERE/toolchain/compose.yaml" build --quiet toolchain >&2
+exec docker compose -f "$HERE/toolchain/compose.yaml" "$@" toolchain sh -c '
+  set -eu
+  network="$1"
+  amount="$2"
+  password_arg="$3"
+  role="$4"
+  address_key="$5"
+  set -a
+  . "./deploy/$network.env"
+  set +a
+  eval "target=\${$address_key:-}"
+  if [ -z "$target" ] || [ -z "${KINETIX_NOTARY_CHAIN_ID:-}" ]; then
+    echo "deploy/$network.env names no $role or no chain" >&2
+    exit 78
+  fi
+  served="$(cast chain-id --rpc-url "$KINETIX_NOTARY_RPC_URL")"
+  if [ "$served" != "$KINETIX_NOTARY_CHAIN_ID" ]; then
+    echo "the RPC endpoint serves chain $served, deploy/$network.env is for chain $KINETIX_NOTARY_CHAIN_ID" >&2
+    exit 1
+  fi
+  deployer="$(cast wallet address --keystore /keystores/notary-deployer ${password_arg:+--password-file /run/keystore-password})"
+  if [ "$deployer" = "$(cast to-check-sum-address "$target")" ]; then
+    echo "the deployer and the $role are the same address; nothing to move" >&2
+    exit 1
+  fi
+  wei="$(cast to-wei "$amount" ether)"
+  balance="$(cast balance "$deployer" --rpc-url "$KINETIX_NOTARY_RPC_URL")"
+  reserve="$(cast to-wei 0.0005 ether)"
+  if ! python3 -c "import sys; sys.exit(0 if int(sys.argv[1]) >= int(sys.argv[2]) + int(sys.argv[3]) else 1)" \
+    "$balance" "$wei" "$reserve"; then
+    echo "the deployer holds $(cast from-wei "$balance") ETH; sending $amount would leave less than 0.0005 for its own gas" >&2
+    exit 1
+  fi
+  echo "from      $deployer ($(cast from-wei "$balance") ETH)"
+  echo "to        $target, the $role ($(cast balance --ether "$target" --rpc-url "$KINETIX_NOTARY_RPC_URL") ETH)"
+  echo "amount    $amount ETH on chain $KINETIX_NOTARY_CHAIN_ID"
+  set -- "$target" --value "$wei" --rpc-url "$KINETIX_NOTARY_RPC_URL" \
+    --keystore /keystores/notary-deployer
+  if [ -n "$password_arg" ]; then
+    set -- "$@" --password-file /run/keystore-password
+  fi
+  cast send "$@" > /dev/null
+  echo "sent; the $role now holds $(cast balance --ether "$target" --rpc-url "$KINETIX_NOTARY_RPC_URL") ETH"
+' sh "$NETWORK" "$AMOUNT" "$PASSWORD_ARG" "$ROLE" "$ADDRESS_KEY"

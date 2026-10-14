@@ -74,7 +74,21 @@ for file in "$HERE"/deploy/*.env; do
       exit 1
     fi
 
+    KINETIX_NOTARY_COURT_ADDRESS="$court" forge script script/DeployWithholdingCourt.s.sol:DeployWithholdingCourt \
+      --rpc-url "$RPC" \
+      --unlocked \
+      --sender "$SENDER" \
+      --broadcast \
+      --slow > /dev/null
+    withholding="$(expect_create2 DeployWithholdingCourt.s.sol "$KINETIX_NOTARY_CHAIN_ID")"
+    deployed_at "$withholding"
+
+    if [ "$(cast call "$withholding" 'court()(address)' --rpc-url "$RPC")" != "$court" ]; then
+      echo "the rehearsed withholding court at $withholding does not stand beside the rehearsed court $court" >&2
+      exit 1
+    fi
+
     kill "$(cat "$WORK/anvil.pid")"
-    echo "$network (chain $KINETIX_NOTARY_CHAIN_ID): ledger $ledger and court $court, both through the CREATE2 factory"
+    echo "$network (chain $KINETIX_NOTARY_CHAIN_ID): ledger $ledger, court $court and withholding court $withholding, all through the CREATE2 factory"
   )
 done

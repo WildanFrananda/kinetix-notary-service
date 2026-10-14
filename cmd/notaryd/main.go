@@ -16,11 +16,13 @@ import (
 	"go.uber.org/dig"
 
 	"github.com/WildanFrananda/kinetix-notary-service/internal/anchoring"
+	"github.com/WildanFrananda/kinetix-notary-service/internal/answering"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/config"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/metrics"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/notary"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/payment"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/proving"
+	"github.com/WildanFrananda/kinetix-notary-service/internal/registering"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/watching"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/wiring"
 )
@@ -29,16 +31,19 @@ var version = "unknown"
 
 type daemon struct {
 	dig.In
-	Config  config.Daemon
-	Client  *ethclient.Client
-	Pool    *pgxpool.Pool
-	Payment *payment.Source
-	Ledger  notary.Ledger
-	Chain   notary.AnchorChain
-	Runner  *anchoring.Runner
-	Prover  *proving.Prover
-	Watcher *watching.Watcher
-	Handler http.Handler
+	Config    config.Daemon
+	Client    *ethclient.Client
+	Pool      *pgxpool.Pool
+	Payment   *payment.Source
+	Ledger    notary.Ledger
+	Chain     notary.AnchorChain
+	Runner    *anchoring.Runner
+	Prover    *proving.Prover
+	Registrar *registering.Registrar
+	Answerer  *answering.Answerer
+	Answers   notary.AnswerChain
+	Watcher   *watching.Watcher
+	Handler   http.Handler
 }
 
 func main() {
@@ -98,6 +103,10 @@ func serve(ctx context.Context, log *slog.Logger, d daemon) error {
 		return err
 	}
 
+	if err := d.Registrar.CheckWithholding(ctx); err != nil {
+		return err
+	}
+
 	log.InfoContext(
 		ctx,
 		"notaryd starting",
@@ -111,6 +120,10 @@ func serve(ctx context.Context, log *slog.Logger, d daemon) error {
 		d.Chain.Anchorer().Hex(),
 		"court",
 		d.Config.Chain.Court.Hex(),
+		"withholding_court",
+		d.Config.Withholding.Hex(),
+		"answerer",
+		d.Answers.Answerer().Hex(),
 		"currency",
 		d.Config.Currency,
 		"epoch_interval",
@@ -143,6 +156,13 @@ func serve(ctx context.Context, log *slog.Logger, d daemon) error {
 		close(watched)
 	}()
 
+	answered := make(chan struct{})
+
+	go func() {
+		d.Answerer.Run(ctx, d.Config.Tick)
+		close(answered)
+	}()
+
 	var failure error
 
 	select {
@@ -162,6 +182,7 @@ func serve(ctx context.Context, log *slog.Logger, d daemon) error {
 
 	<-ran
 	<-watched
+	<-answered
 	log.Info("notaryd stopped cleanly")
 
 	return failure

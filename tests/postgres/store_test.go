@@ -19,7 +19,10 @@ import (
 	"github.com/WildanFrananda/kinetix-notary-service/tests/notarytest"
 )
 
-const databaseURLKey = "KINETIX_NOTARY_TEST_DATABASE_URL"
+const (
+	databaseURLKey = "KINETIX_NOTARY_TEST_DATABASE_URL"
+	schemaVersion  = int64(3)
+)
 
 var ledgerID = notary.LedgerIdentity{ChainID: 84532, Address: notary.Address{0x4e, 0x86}}
 
@@ -61,7 +64,7 @@ func open(t *testing.T) *db {
 	before, after, err := postgres.Migrate(ctx, pool)
 	require.NoError(t, err)
 	require.Equal(t, int64(0), before)
-	require.Equal(t, int64(1), after)
+	require.Equal(t, schemaVersion, after)
 
 	return &db{pool: pool, store: postgres.NewStore(pool, keccak.NewScheme())}
 }
@@ -79,7 +82,15 @@ func (d *db) lease(t *testing.T, instance string) notary.Lease {
 func plan(t *testing.T, number uint64, previous notary.Digest, accounts int) notary.EpochPlan {
 	t.Helper()
 	snapshot := notarytest.Snapshot(t, 1760000000+number, notarytest.Liabilities(t, accounts))
-	p, err := notary.PlanEpoch(keccak.NewScheme(), &notarytest.Salts{Seed: number}, number, previous, snapshot)
+	p, err := notary.PlanEpoch(
+		keccak.NewScheme(),
+		&notarytest.Salts{Seed: number},
+		&notarytest.Secrets{},
+		nil,
+		number,
+		previous,
+		snapshot,
+	)
 	require.NoError(t, err)
 
 	return p
@@ -100,8 +111,8 @@ func TestMigratingTwiceChangesNothing(t *testing.T) {
 	before, after, err := postgres.Migrate(context.Background(), d.pool)
 
 	require.NoError(t, err)
-	require.Equal(t, int64(1), before)
-	require.Equal(t, int64(1), after)
+	require.Equal(t, schemaVersion, before)
+	require.Equal(t, schemaVersion, after)
 }
 
 func TestOneWriterHoldsTheLeaseUntilItLapses(t *testing.T) {

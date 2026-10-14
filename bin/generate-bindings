@@ -14,9 +14,12 @@ forge inspect ILiabilityLedger abi --json > "$WORK/ILiabilityLedger.abi"
 forge inspect StatementCourt abi --json > "$WORK/StatementCourt.abi"
 forge inspect StatementCourt bytecode > "$WORK/StatementCourt.bin"
 forge inspect IStatementCourt abi --json > "$WORK/IStatementCourt.abi"
+forge inspect WithholdingCourt abi --json > "$WORK/WithholdingCourt.abi"
+forge inspect WithholdingCourt bytecode > "$WORK/WithholdingCourt.bin"
+forge inspect IWithholdingCourt abi --json > "$WORK/IWithholdingCourt.abi"
 
 rm -rf "$GEN"
-mkdir -p "$GEN/ledger" "$GEN/ledgerinterface" "$GEN/court" "$GEN/courtinterface"
+mkdir -p "$GEN/ledger" "$GEN/ledgerinterface" "$GEN/court" "$GEN/courtinterface" "$GEN/withholding" "$GEN/withholdinginterface"
 abigen --v2 \
   --abi "$WORK/LiabilityLedger.abi" \
   --bin "$WORK/LiabilityLedger.bin" \
@@ -39,5 +42,16 @@ abigen --v2 \
   --pkg courtinterface \
   --type IStatementCourt \
   --out "$GEN/courtinterface/istatement_court.go"
+abigen --v2 \
+  --abi "$WORK/WithholdingCourt.abi" \
+  --bin "$WORK/WithholdingCourt.bin" \
+  --pkg withholding \
+  --type WithholdingCourt \
+  --out "$GEN/withholding/withholding_court.go"
+abigen --v2 \
+  --abi "$WORK/IWithholdingCourt.abi" \
+  --pkg withholdinginterface \
+  --type IWithholdingCourt \
+  --out "$GEN/withholdinginterface/iwithholding_court.go"
 
 echo "generated $GEN"

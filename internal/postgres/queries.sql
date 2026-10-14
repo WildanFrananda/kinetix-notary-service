@@ -26,8 +26,24 @@ INSERT INTO epochs (
 );
 
 -- name: InsertAccounts :copyfrom
-INSERT INTO accounts (epoch_number, position, holder, kind, amount, salt, commitment)
-VALUES ($1, $2, $3, $4, $5, $6, $7);
+INSERT INTO accounts (epoch_number, position, holder, kind, amount, salt, commitment, account)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8);
+
+-- name: AccountSecretsFor :many
+SELECT holder, kind, secret
+FROM account_secrets
+WHERE (holder, kind) IN (
+    SELECT unnest(sqlc.arg(holders)::text[]), unnest(sqlc.arg(kinds)::smallint[])
+);
+
+-- name: InsertAccountSecrets :exec
+INSERT INTO account_secrets (holder, kind, secret, account)
+SELECT
+    unnest(sqlc.arg(holders)::text[]),
+    unnest(sqlc.arg(kinds)::smallint[]),
+    unnest(sqlc.arg(secrets)::bytea[]),
+    unnest(sqlc.arg(accounts)::bytea[])
+ON CONFLICT (holder, kind) DO NOTHING;
 
 -- name: TransitionEpoch :execrows
 UPDATE epochs
@@ -68,7 +84,25 @@ LIMIT sqlc.arg(row_limit);
 SELECT * FROM epochs WHERE number = $1;
 
 -- name: EpochAccounts :many
-SELECT position, holder, kind, amount, salt, commitment
-FROM accounts
-WHERE epoch_number = $1
-ORDER BY position;
+SELECT a.position, a.holder, a.kind, a.amount, a.salt, a.commitment, a.account, s.secret
+FROM accounts a
+LEFT JOIN account_secrets s ON s.account = a.account
+WHERE a.epoch_number = $1
+ORDER BY a.position;
+
+-- name: InsertRegistrations :exec
+INSERT INTO registrations (digest, holder_address, account, from_epoch, principal, kind, signature)
+SELECT
+    unnest(sqlc.arg(digests)::bytea[]),
+    unnest(sqlc.arg(holder_addresses)::bytea[]),
+    unnest(sqlc.arg(accounts)::bytea[]),
+    unnest(sqlc.arg(from_epochs)::bigint[]),
+    unnest(sqlc.arg(principals)::text[]),
+    unnest(sqlc.arg(kinds)::smallint[]),
+    unnest(sqlc.arg(signatures)::bytea[])
+ON CONFLICT (digest) DO NOTHING;
+
+-- name: RegistrationByDigest :one
+SELECT digest, holder_address, account, from_epoch, kind, signature
+FROM registrations
+WHERE digest = $1;

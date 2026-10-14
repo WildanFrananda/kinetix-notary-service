@@ -25,6 +25,8 @@ func epoch(t *testing.T, number uint64, state notary.EpochState) (notary.EpochRe
 	plan, err := notary.PlanEpoch(
 		keccak.NewScheme(),
 		&notarytest.Salts{Seed: number},
+		&notarytest.Secrets{},
+		nil,
 		number,
 		notary.Digest{},
 		snapshot,
@@ -103,10 +105,14 @@ func TestAPrincipalGetsAProofForEachOfItsOwnAccountsAndNothingElse(t *testing.T)
 	for _, claim := range bundle.Claims {
 		require.Equal(t, ledgerID, claim.Ledger)
 		require.Equal(t, holder, claim.Opening.Holder)
+		require.False(t, claim.Opening.Secret.IsZero())
 		require.Equal(
 			t,
 			claim.Entry.Commitment,
-			scheme.Commitment(claim.Opening.Holder, claim.Opening.Kind, claim.Opening.Salt),
+			scheme.AccountCommitment(
+				scheme.AccountID(claim.Opening.Holder, claim.Opening.Kind, claim.Opening.Secret),
+				claim.Opening.Salt,
+			),
 		)
 		require.NoError(t, notary.VerifyInclusion(scheme, anchored, claim.Entry, claim.Proof))
 
@@ -194,6 +200,16 @@ func TestStoredAccountsThatDoNotRebuildTheAnchoredRootAreNeverServed(t *testing.
 		},
 		"a commitment changed": func(a []notary.Account) []notary.Account {
 			a[5].Commitment[0] ^= 0xff
+
+			return a
+		},
+		"a secret changed": func(a []notary.Account) []notary.Account {
+			a[2].Secret[0] ^= 0xff
+
+			return a
+		},
+		"a salt changed": func(a []notary.Account) []notary.Account {
+			a[4].Salt[0] ^= 0xff
 
 			return a
 		},
@@ -364,5 +380,45 @@ func TestTheCourtIsCheckedBeforeTheNotaryServes(t *testing.T) {
 
 			require.Equal(t, c.kind, notary.KindOf(err))
 		})
+	}
+}
+
+func TestAnEpochBuiltBeforeSecretsIsProvenWithoutOne(t *testing.T) {
+	scheme := keccak.NewScheme()
+	record, accounts := epoch(t, 0, notary.StateFinalized)
+
+	entries := make([]notary.Entry, len(accounts))
+	for i := range accounts {
+		account := &accounts[i]
+		account.Secret = notary.AccountSecret{}
+		account.ID = notary.Digest{}
+		account.Commitment = scheme.Commitment(account.Liability.Holder, account.Liability.Kind, account.Salt)
+		entries[i] = notary.Entry{Commitment: account.Commitment, Amount: account.Liability.Amount}
+	}
+
+	tree, err := notary.BuildTree(scheme, 0, entries)
+	require.NoError(t, err)
+
+	record.Header, err = tree.Header(notary.Digest{}, record.Header.AsOf)
+	require.NoError(t, err)
+
+	s := &notarytest.ProofSource{
+		Records: map[uint64]notary.EpochRecord{0: record},
+		Stored:  map[uint64][]notary.Account{0: accounts},
+	}
+	holder := accounts[0].Liability.Holder
+
+	bundle, err := newProver(t, s).Proofs(context.Background(), holder, proving.Number(0))
+
+	require.NoError(t, err)
+	require.NotEmpty(t, bundle.Claims)
+
+	for _, claim := range bundle.Claims {
+		require.True(t, claim.Opening.Secret.IsZero())
+		require.Equal(
+			t,
+			scheme.Commitment(claim.Opening.Holder, claim.Opening.Kind, claim.Opening.Salt),
+			claim.Entry.Commitment,
+		)
 	}
 }

@@ -53,6 +53,7 @@ func router(a *auth, i *issuer) http.Handler {
 		http.NotFoundHandler(),
 		func(*http.Request) error { return nil },
 		httpapi.NewProofHandler(a, i, keccak.NewScheme(), slog.New(slog.NewTextHandler(io.Discard, nil))),
+		httpapi.NewRegistrationHandler(a, &registrant{}, slog.New(slog.NewTextHandler(io.Discard, nil))),
 	)
 }
 
@@ -78,6 +79,8 @@ func bundle(t *testing.T) proving.Bundle {
 	plan, err := notary.PlanEpoch(
 		scheme,
 		&notarytest.Salts{Seed: 3},
+		&notarytest.Secrets{},
+		nil,
 		3,
 		notary.Digest{},
 		notarytest.Snapshot(t, 1760000000, liabilities),

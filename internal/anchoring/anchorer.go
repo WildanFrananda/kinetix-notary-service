@@ -12,6 +12,7 @@ import (
 type Anchorer struct {
 	scheme   notary.Scheme
 	salts    notary.SaltSource
+	secrets  notary.SecretSource
 	source   notary.SnapshotSource
 	store    notary.EpochStore
 	chain    notary.AnchorChain
@@ -24,6 +25,7 @@ type Anchorer struct {
 func NewAnchorer(
 	scheme notary.Scheme,
 	salts notary.SaltSource,
+	secrets notary.SecretSource,
 	source notary.SnapshotSource,
 	store notary.EpochStore,
 	chain notary.AnchorChain,
@@ -35,6 +37,7 @@ func NewAnchorer(
 	return &Anchorer{
 		scheme:   scheme,
 		salts:    salts,
+		secrets:  secrets,
 		source:   source,
 		store:    store,
 		chain:    chain,
@@ -157,7 +160,19 @@ func (a *Anchorer) begin(ctx context.Context, lease notary.Lease) error {
 		)
 	}
 
-	plan, err := notary.PlanEpoch(a.scheme, a.salts, head.NextEpoch, head.Head, snapshot)
+	liabilities := snapshot.Liabilities()
+
+	keys := make([]notary.AccountKey, len(liabilities))
+	for i, liability := range liabilities {
+		keys[i] = notary.AccountKey{Holder: liability.Holder, Kind: liability.Kind}
+	}
+
+	known, err := a.store.AccountSecrets(ctx, keys)
+	if err != nil {
+		return err
+	}
+
+	plan, err := notary.PlanEpoch(a.scheme, a.salts, a.secrets, known, head.NextEpoch, head.Head, snapshot)
 	if err != nil {
 		return err
 	}

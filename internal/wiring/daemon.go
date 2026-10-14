@@ -39,6 +39,11 @@ func Daemon(lookup config.Lookup, build metrics.Build, log *slog.Logger) (*dig.C
 		provideWatcher,
 		provideAuthenticator,
 		provideProofHandler,
+		provideWithholdingCourt,
+		provideRegistrar,
+		provideRegistrationHandler,
+		provideAnswerChain,
+		provideAnswerer,
 		provideHTTP,
 	}
 	for _, provider := range providers {

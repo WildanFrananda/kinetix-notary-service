@@ -54,24 +54,22 @@ func NewWriter(client *ethclient.Client, settings Settings, key *ecdsa.PrivateKe
 }
 
 func ParseAnchorerKey(text string) (*ecdsa.PrivateKey, error) {
+	return parseKey("ethereum.ParseAnchorerKey", "anchorer", text)
+}
+
+func ParseAnswererKey(text string) (*ecdsa.PrivateKey, error) {
+	return parseKey("ethereum.ParseAnswererKey", "answerer", text)
+}
+
+func parseKey(op, name, text string) (*ecdsa.PrivateKey, error) {
 	digits, found := strings.CutPrefix(strings.TrimSpace(text), "0x")
 	if !found || len(digits) != 64 {
-		return nil, notary.Errf(
-			notary.KindInvalidArgument,
-			"ethereum.ParseAnchorerKey",
-			nil,
-			"the anchorer key is not 0x and 64 hex digits",
-		)
+		return nil, notary.Errf(notary.KindInvalidArgument, op, nil, "the %s key is not 0x and 64 hex digits", name)
 	}
 
 	key, err := crypto.HexToECDSA(digits)
 	if err != nil {
-		return nil, notary.Errf(
-			notary.KindInvalidArgument,
-			"ethereum.ParseAnchorerKey",
-			nil,
-			"the anchorer key is not a secp256k1 private key",
-		)
+		return nil, notary.Errf(notary.KindInvalidArgument, op, nil, "the %s key is not a secp256k1 private key", name)
 	}
 
 	return key, nil

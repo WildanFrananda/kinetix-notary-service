@@ -52,6 +52,7 @@ type anchorerParams struct {
 	dig.In
 	Scheme   notary.Scheme
 	Salts    notary.SaltSource
+	Secrets  notary.SecretSource
 	Source   notary.SnapshotSource
 	Store    notary.EpochStore
 	Chain    notary.AnchorChain
@@ -62,7 +63,18 @@ type anchorerParams struct {
 }
 
 func provideAnchorer(p anchorerParams) *anchoring.Anchorer {
-	return anchoring.NewAnchorer(p.Scheme, p.Salts, p.Source, p.Store, p.Chain, p.Observer, p.Clock, p.Log, p.Policy)
+	return anchoring.NewAnchorer(
+		p.Scheme,
+		p.Salts,
+		p.Secrets,
+		p.Source,
+		p.Store,
+		p.Chain,
+		p.Observer,
+		p.Clock,
+		p.Log,
+		p.Policy,
+	)
 }
 
 type runnerParams struct {

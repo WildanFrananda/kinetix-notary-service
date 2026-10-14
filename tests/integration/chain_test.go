@@ -19,6 +19,7 @@ import (
 
 	"github.com/WildanFrananda/kinetix-notary-service/internal/contractgen/court"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/contractgen/ledger"
+	"github.com/WildanFrananda/kinetix-notary-service/internal/contractgen/withholding"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/ethereum"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/keccak"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/notary"
@@ -105,6 +106,23 @@ func (c *chain) deployCourt(t *testing.T, ledgerAddress common.Address, signer n
 	address, tx, err := bind.DeployContract(
 		c.transactor(),
 		common.FromHex(court.StatementCourtMetaData.Bin),
+		c.client,
+		input,
+	)
+	require.NoError(t, err)
+	_, err = bind.WaitDeployed(context.Background(), c.client, tx.Hash())
+	require.NoError(t, err)
+
+	return address
+}
+
+func (c *chain) deployWithholding(t *testing.T, courtAddress common.Address) common.Address {
+	t.Helper()
+
+	input := withholding.NewWithholdingCourt().PackConstructor(courtAddress, 7*24*3600, 24*3600)
+	address, tx, err := bind.DeployContract(
+		c.transactor(),
+		common.FromHex(withholding.WithholdingCourtMetaData.Bin),
 		c.client,
 		input,
 	)

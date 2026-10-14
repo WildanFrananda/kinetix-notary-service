@@ -112,6 +112,47 @@ func (s *Store) Accounts(ctx context.Context, epoch uint64) ([]notary.Account, e
 	return accounts, nil
 }
 
+func (s *Store) AccountSecrets(
+	ctx context.Context,
+	keys []notary.AccountKey,
+) (map[notary.AccountKey]notary.AccountSecret, error) {
+	const op = "postgres.Store.AccountSecrets"
+
+	return secretsFor(ctx, op, s.queries, keys)
+}
+
+func secretsFor(
+	ctx context.Context,
+	op string,
+	q *storegen.Queries,
+	keys []notary.AccountKey,
+) (map[notary.AccountKey]notary.AccountSecret, error) {
+	holders := make([]string, len(keys))
+	kinds := make([]int16, len(keys))
+
+	for i, key := range keys {
+		holders[i] = key.Holder.String()
+		kinds[i] = int16(key.Kind)
+	}
+
+	rows, err := q.AccountSecretsFor(ctx, storegen.AccountSecretsForParams{Holders: holders, Kinds: kinds})
+	if err != nil {
+		return nil, unavailable(op, err)
+	}
+
+	secrets := make(map[notary.AccountKey]notary.AccountSecret, len(rows))
+	for _, row := range rows {
+		key, secret, err := secretOf(op, row)
+		if err != nil {
+			return nil, err
+		}
+
+		secrets[key] = secret
+	}
+
+	return secrets, nil
+}
+
 func (s *Store) record(op string, row storegen.Epoch, err error) (notary.EpochRecord, bool, error) {
 	if errors.Is(err, pgx.ErrNoRows) {
 		return notary.EpochRecord{}, false, nil
@@ -161,6 +202,11 @@ func (s *Store) SaveBuilt(
 			return notary.EpochRecord{}, err
 		}
 
+		var id []byte
+		if !account.Secret.IsZero() {
+			id = account.ID[:]
+		}
+
 		rows[i] = []any{
 			ints[0],
 			position,
@@ -169,10 +215,15 @@ func (s *Store) SaveBuilt(
 			amount,
 			account.Salt[:],
 			account.Commitment[:],
+			id,
 		}
 	}
 
 	err := s.fenced(ctx, op, lease, func(tx pgx.Tx, q *storegen.Queries) error {
+		if err := keepSecrets(ctx, op, q, plan.Accounts); err != nil {
+			return err
+		}
+
 		if err := q.InsertEpoch(ctx, storegen.InsertEpochParams{
 			Number:         ints[0],
 			ChainID:        ints[1],
@@ -192,7 +243,7 @@ func (s *Store) SaveBuilt(
 		copied, err := tx.CopyFrom(
 			ctx,
 			pgx.Identifier{"accounts"},
-			[]string{"epoch_number", "position", "holder", "kind", "amount", "salt", "commitment"},
+			[]string{"epoch_number", "position", "holder", "kind", "amount", "salt", "commitment", "account"},
 			pgx.CopyFromRows(rows),
 		)
 		if err != nil {
@@ -227,6 +278,56 @@ func (s *Store) SaveBuilt(
 		Currency: plan.Currency,
 		State:    notary.StateBuilt,
 	}, nil
+}
+
+func keepSecrets(ctx context.Context, op string, q *storegen.Queries, accounts []notary.Account) error {
+	params := storegen.InsertAccountSecretsParams{}
+	keys := make([]notary.AccountKey, 0, len(accounts))
+
+	for _, account := range accounts {
+		if account.Secret.IsZero() {
+			continue
+		}
+
+		params.Holders = append(params.Holders, account.Liability.Holder.String())
+		params.Kinds = append(params.Kinds, int16(account.Liability.Kind))
+		params.Secrets = append(params.Secrets, account.Secret[:])
+		params.Accounts = append(params.Accounts, account.ID[:])
+		keys = append(keys, notary.AccountKey{Holder: account.Liability.Holder, Kind: account.Liability.Kind})
+	}
+
+	if len(keys) == 0 {
+		return nil
+	}
+
+	if err := q.InsertAccountSecrets(ctx, params); err != nil {
+		return notary.Errf(notary.KindStoreUnavailable, op, err, "keeping the account secrets")
+	}
+
+	stored, err := secretsFor(ctx, op, q, keys)
+	if err != nil {
+		return err
+	}
+
+	for _, account := range accounts {
+		if account.Secret.IsZero() {
+			continue
+		}
+
+		key := notary.AccountKey{Holder: account.Liability.Holder, Kind: account.Liability.Kind}
+		if stored[key] != account.Secret {
+			return notary.Errf(
+				notary.KindDisagreement,
+				op,
+				nil,
+				"the database keeps another secret for %s of %s than the epoch was built with",
+				key.Kind,
+				key.Holder,
+			)
+		}
+	}
+
+	return nil
 }
 
 func (s *Store) RecordAttempt(ctx context.Context, lease notary.Lease, attempt notary.Attempt) error {

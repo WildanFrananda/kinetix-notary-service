@@ -12,6 +12,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"github.com/WildanFrananda/kinetix-notary-service/internal/anchoring"
+	"github.com/WildanFrananda/kinetix-notary-service/internal/answering"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/notary"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/watching"
 )
@@ -35,11 +36,16 @@ type Metrics struct {
 	ceilingHits  prometheus.Counter
 	leaseHeld    prometheus.Gauge
 	faults       prometheus.Gauge
+	silences     prometheus.Gauge
+	openRequests prometheus.Gauge
+	unanswerable prometheus.Gauge
+	answerer     prometheus.Gauge
 }
 
 var (
 	_ anchoring.Observer = (*Metrics)(nil)
 	_ watching.Observer  = (*Metrics)(nil)
+	_ answering.Observer = (*Metrics)(nil)
 )
 
 func New(build Build) *Metrics {
@@ -118,6 +124,22 @@ func New(build Build) *Metrics {
 			Name: "kinetix_notary_proven_faults",
 			Help: "Faults the court holds against this notary's statements; NaN until the court is read.",
 		}),
+		silences: prometheus.NewGauge(prometheus.GaugeOpts{
+			Name: "kinetix_notary_withholding_silences",
+			Help: "Requests the withholding court recorded as unanswered; NaN until the court is read.",
+		}),
+		openRequests: prometheus.NewGauge(prometheus.GaugeOpts{
+			Name: "kinetix_notary_withholding_open_requests",
+			Help: "Statement requests this notary has seen open and not yet answered.",
+		}),
+		unanswerable: prometheus.NewGauge(prometheus.GaugeOpts{
+			Name: "kinetix_notary_withholding_unanswerable_requests",
+			Help: "Open statement requests this notary cannot answer from its own records.",
+		}),
+		answerer: prometheus.NewGauge(prometheus.GaugeOpts{
+			Name: "kinetix_notary_answerer_balance_wei",
+			Help: "The answerer's balance; NaN until it is read.",
+		}),
 	}
 	for _, c := range []prometheus.Collector{
 		m.httpRequests,
@@ -132,12 +154,18 @@ func New(build Build) *Metrics {
 		m.ceilingHits,
 		m.leaseHeld,
 		m.faults,
+		m.silences,
+		m.openRequests,
+		m.unanswerable,
+		m.answerer,
 	} {
 		factory(c)
 	}
 
 	m.runway.Set(math.NaN())
 	m.faults.Set(math.NaN())
+	m.silences.Set(math.NaN())
+	m.answerer.Set(math.NaN())
 
 	return m
 }
@@ -195,4 +223,25 @@ func (m *Metrics) FeeCeilingHit() {
 
 func (m *Metrics) ProvenFaults(total uint64) {
 	m.faults.Set(float64(total))
+}
+
+func (m *Metrics) Silences(total uint64) {
+	m.silences.Set(float64(total))
+}
+
+func (m *Metrics) OpenRequests(count int) {
+	m.openRequests.Set(float64(count))
+}
+
+func (m *Metrics) Unanswerable(count int) {
+	m.unanswerable.Set(float64(count))
+}
+
+func (m *Metrics) AnswererBalance(wei *big.Int) {
+	if wei == nil {
+		return
+	}
+
+	value, _ := new(big.Float).SetInt(wei).Float64()
+	m.answerer.Set(value)
 }

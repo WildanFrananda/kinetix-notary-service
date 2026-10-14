@@ -329,3 +329,63 @@ func TestACourtThatCannotBeReadIsNeverAVerdict(t *testing.T) {
 		})
 	}
 }
+
+func TestASecondDerivationAccountOpensOnlyWithItsSecret(t *testing.T) {
+	scheme := keccak.NewScheme()
+	holder := notarytest.Holder(t, "principal-0042")
+	opening := &notary.Opening{
+		Holder: holder,
+		Kind:   notary.AccountCustomerBalance,
+		Salt:   notary.Salt{0x09},
+		Secret: notary.AccountSecret{0x05},
+	}
+	entries := notarytest.Entries(78, 4)
+	entries[1].Commitment = opening.Commitment(scheme)
+
+	tree, err := notary.BuildTree(scheme, 4, entries)
+	require.NoError(t, err)
+
+	proof, err := tree.Prove(1)
+	require.NoError(t, err)
+
+	root := tree.Root()
+	ledger := &notarytest.Ledger{
+		IdentityValue: notarytest.LedgerIdentity,
+		Epochs: map[uint64]notary.AnchoredEpoch{4: {
+			Number:     4,
+			Root:       root.Hash,
+			Total:      root.Sum,
+			LeafCount:  4,
+			AsOf:       notarytest.Unix(t, 1760000000),
+			AnchoredAt: notarytest.Unix(t, 1760000060),
+		}},
+		Confirmed: true,
+	}
+	claim := notary.Claim{
+		Ledger:  notarytest.LedgerIdentity,
+		Epoch:   4,
+		Entry:   entries[1],
+		Proof:   proof,
+		Opening: opening,
+	}
+
+	verification, err := verifierOn(ledger, scheme, courtFor()).Verify(context.Background(), claim)
+	require.NoError(t, err)
+	require.Equal(t, notary.VerdictIncluded, verification.Verdict)
+
+	wrong := *opening
+	wrong.Secret = notary.AccountSecret{0x06}
+	claim.Opening = &wrong
+
+	verification, err = verifierOn(ledger, scheme, courtFor()).Verify(context.Background(), claim)
+	require.NoError(t, err)
+	require.Equal(t, notary.VerdictRejected, verification.Verdict)
+
+	withoutSecret := *opening
+	withoutSecret.Secret = notary.AccountSecret{}
+	claim.Opening = &withoutSecret
+
+	verification, err = verifierOn(ledger, scheme, courtFor()).Verify(context.Background(), claim)
+	require.NoError(t, err)
+	require.Equal(t, notary.VerdictRejected, verification.Verdict)
+}

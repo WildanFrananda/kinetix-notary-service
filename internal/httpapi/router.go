@@ -8,10 +8,17 @@ type Instrument func(route string, next http.Handler) http.Handler
 
 type Check func(r *http.Request) error
 
-func NewRouter(instrument Instrument, metrics http.Handler, ready Check, proofs *ProofHandler) http.Handler {
+func NewRouter(
+	instrument Instrument,
+	metrics http.Handler,
+	ready Check,
+	proofs *ProofHandler,
+	registrations *RegistrationHandler,
+) http.Handler {
 	mux := http.NewServeMux()
 
 	mux.Handle("GET "+ProofsRoute, instrument(ProofsRoute, proofs))
+	mux.Handle("POST "+RegistrationsRoute, instrument(RegistrationsRoute, registrations))
 
 	mux.Handle(
 		"GET /health/live",

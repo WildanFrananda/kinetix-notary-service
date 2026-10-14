@@ -47,12 +47,20 @@ bin/inspect-ledger base-sepolia                 # every on-chain fact checked ag
 bin/new-statement-key prod                      # the statement signer, straight into the SOPS store
 bin/deploy-court base-sepolia [--broadcast]     # the statement court beside the ledger; dry run by default
 bin/inspect-court base-sepolia                  # the court's facts, its signer terms and its faults
+bin/new-answerer-key prod                       # the answerer, straight into the SOPS store
+bin/fund-anchorer|fund-answerer base-sepolia 0.001   # the deployer pays a hot key's gas
+bin/deploy-withholding base-sepolia [--broadcast]    # the withholding court beside the court; dry run by default
+bin/inspect-withholding base-sepolia            # its facts, the answerer's balance and the recorded silences
 ```
 
 `notary-verify` reads `KINETIX_NOTARY_RPC_URL`, `KINETIX_NOTARY_CHAIN_ID`, `KINETIX_NOTARY_LEDGER_ADDRESS`,
 `KINETIX_NOTARY_COURT_ADDRESS` and `KINETIX_NOTARY_RPC_TIMEOUT`, every one required. It trusts the court
 it is configured with, never the one a document names, and reports beside every verdict whether the
 proof's statement is attributable to the epoch's signer and how many faults the epoch carries.
+
+notaryd also needs `KINETIX_NOTARY_WITHHOLDING_COURT_ADDRESS`, `KINETIX_NOTARY_WITHHOLDING_FROM_BLOCK` (the block
+the withholding court was deployed in) and `KINETIX_NOTARY_ANSWERER_PRIVATE_KEY`, and refuses to start unless
+the withholding court stands beside its court, reads its ledger and hashes a registration as it does.
 
 `deploy/<network>.env` holds only public values and is committed. Keys never are: the deployer and
 admin keystores live in `KINETIX_NOTARY_KEYSTORE_DIR` (refused when inside a git work tree), the
@@ -83,7 +91,7 @@ as `verify-contracts` and `verify-go`.
 | `internal/ethereum` | the above + go-ethereum + `internal/contractgen` — the only adapter that touches a chain |
 | `internal/payment`, `internal/mesh` | `internal/notary` + gRPC + `internal/protogen` — the only adapters that speak gRPC |
 | `internal/postgres` | `internal/notary` + pgx + goose + `internal/storegen` — the only adapter that touches Postgres |
-| `internal/anchoring`, `internal/proving` | `internal/notary` only, like `internal/verifying` |
+| `internal/anchoring`, `internal/proving`, `internal/registering`, `internal/answering` | `internal/notary` only, like `internal/verifying` |
 | `internal/wiring` | everything; the composition root, and the only package outside `cmd/` allowed to import dig |
 | `cmd/…` | everything |
 
@@ -275,12 +283,28 @@ A failure must never be reported as a definite answer. In this service that mean
   the court was answered by moving the ledger reads into private views, not by an entry.
 - **gosec G115** flags every narrowing integer conversion; `UnixTime` is a sealed type whose
   constructors check the range, so the conversions happen after a visible bound.
+- **sqlc cannot analyse a multi-argument `unnest`** (`function unnest(unknown, unknown) does not exist`).
+  One `unnest` per column in the select list zips the same way and generates.
+- **Aderyn's `unused-import` does not count a type used only in an error's parameters**, and its
+  `reentrancy-state-change` flags a constructor that assigns immutables after an external call. The
+  withholding court's errors carry no state (`requestOf` reads it), and its constructor reads the court
+  through a private view and assigns `ledger` last. Both were fixed in code, nothing was accepted.
+- **`forge … --root contracts` run from the repository root writes `cache/` there**, fuzz and invariant
+  failure records included. Delete it; it is not `contracts/cache/`, which is ignored.
+- **A zero account secret means the first derivation.** `Opening.Commitment` picks `H(0x04 ‖ kind ‖ salt ‖
+  holder)` for an epoch built before secrets and `H(0x06 ‖ H(0x05 ‖ kind ‖ secret ‖ holder) ‖ salt)` after,
+  the way an all-zero salt is refused everywhere: the source never draws one.
+- **A request the notary cannot answer is never retried in silence.** It is logged as an error and
+  counted in `kinetix_notary_withholding_unanswerable_requests`. An outage is retried. A refusal for
+  one request never holds up the others, because each lost request becomes someone's recorded silence.
 
 ## Not built yet
 
 Steps 1–5 are done: contracts v1.0.23, payment v0.1.11, notaryd v0.2.0 anchoring on Base Sepolia, and
 the proof API (v0.3.0, gateway v1.0.0) live and proven end to end in the lab on 2026-10-13. Step 6a —
-the statement court and a signed statement on every proof — is built and green, and the production
-court is deployed (`0xE1Ffcb004Dd734F83ED0B194fdaFF5B0c7c5927B`, 2026-10-13); the release that makes
-notaryd sign is next. 6b (delivery through notification) and steps 7–14 do not exist yet. Contract
-deploys stay manual, never in CI.
+the statement court and a signed statement on every proof — is live: the production court
+`0xE1Ffcb004Dd734F83ED0B194fdaFF5B0c7c5927B` and notaryd v0.4.0, proven in production on 2026-10-13.
+Step 7 (withholding, PLAN.md step 7 and decisions 15–17) is built and green: `WithholdingCourt`, the
+second commitment derivation, registration through the API and answering. Its deploy and release are the
+user's (infra `docs/NOTARY-WITHHOLDING-DEPLOY.md`). 6b (delivery through notification) and steps 8–14 do
+not exist yet. Contract deploys stay manual, never in CI.
