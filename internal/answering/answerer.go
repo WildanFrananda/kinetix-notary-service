@@ -56,7 +56,40 @@ func NewAnswerer(
 	}
 }
 
+func (a *Answerer) CheckScan(ctx context.Context) error {
+	const op = "answering.Answerer.CheckScan"
+
+	latest, err := a.court.LatestBlock(ctx)
+	if err != nil {
+		return err
+	}
+
+	from := uint64(0)
+	if latest >= a.policy.Span {
+		from = latest - a.policy.Span + 1
+	}
+
+	if _, err := a.court.Requests(ctx, from, latest); err != nil {
+		return notary.Errf(
+			notary.KindOf(err),
+			op,
+			err,
+			"the RPC endpoint does not answer one log query over %d blocks",
+			a.policy.Span,
+		)
+	}
+
+	return nil
+}
+
 func (a *Answerer) Tick(ctx context.Context) error {
+	err := a.serve(ctx)
+	a.observer.Pass(err == nil)
+
+	return err
+}
+
+func (a *Answerer) serve(ctx context.Context) error {
 	if err := a.scan(ctx); err != nil {
 		return err
 	}

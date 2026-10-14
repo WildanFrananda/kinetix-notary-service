@@ -17,6 +17,11 @@ import (
 	"github.com/WildanFrananda/kinetix-notary-service/internal/watching"
 )
 
+const (
+	passServed = "served"
+	passFailed = "failed"
+)
+
 type Build struct {
 	Service string
 	Version string
@@ -40,6 +45,7 @@ type Metrics struct {
 	openRequests prometheus.Gauge
 	unanswerable prometheus.Gauge
 	answerer     prometheus.Gauge
+	passes       *prometheus.CounterVec
 }
 
 var (
@@ -140,6 +146,13 @@ func New(build Build) *Metrics {
 			Name: "kinetix_notary_answerer_balance_wei",
 			Help: "The answerer's balance; NaN until it is read.",
 		}),
+		passes: prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Name: "kinetix_notary_withholding_passes_total",
+				Help: "Passes over the withholding court, by outcome: served, or failed and retried next tick.",
+			},
+			[]string{"outcome"},
+		),
 	}
 	for _, c := range []prometheus.Collector{
 		m.httpRequests,
@@ -158,6 +171,7 @@ func New(build Build) *Metrics {
 		m.openRequests,
 		m.unanswerable,
 		m.answerer,
+		m.passes,
 	} {
 		factory(c)
 	}
@@ -166,6 +180,8 @@ func New(build Build) *Metrics {
 	m.faults.Set(math.NaN())
 	m.silences.Set(math.NaN())
 	m.answerer.Set(math.NaN())
+	m.passes.WithLabelValues(passServed)
+	m.passes.WithLabelValues(passFailed)
 
 	return m
 }
@@ -244,4 +260,13 @@ func (m *Metrics) AnswererBalance(wei *big.Int) {
 
 	value, _ := new(big.Float).SetInt(wei).Float64()
 	m.answerer.Set(value)
+}
+
+func (m *Metrics) Pass(served bool) {
+	if served {
+		m.passes.WithLabelValues(passServed).Inc()
+		return
+	}
+
+	m.passes.WithLabelValues(passFailed).Inc()
 }

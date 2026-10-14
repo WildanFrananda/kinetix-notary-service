@@ -110,6 +110,7 @@ func newEstate(t *testing.T) *estate {
 		config.StatementKeysKey:   "0x" + hex.EncodeToString(crypto.FromECDSA(statementKey)),
 		config.WithholdingKey:     e.withholding.Hex(),
 		config.WithholdingFromKey: "0",
+		config.LogRangeKey:        "200",
 		config.AnswererKeyKey:     "0x" + hex.EncodeToString(crypto.FromECDSA(answererKey)),
 		config.RPCTimeoutKey:      "10s",
 		config.DatabaseURLKey:     e.dbURL,

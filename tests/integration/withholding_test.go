@@ -72,6 +72,8 @@ func TestTheNotaryAnswersWhatItHoldsAndAnOmissionEndsInARecordedSilence(t *testi
 		instance: binding.Instance(e.chain.client, common.Address(e.withholding)),
 	}
 
+	require.NoError(t, r.Answerer.CheckScan(ctx))
+
 	e.tickUntil(t, r, 0, "mined")
 	e.chain.finalize(t)
 	e.tickUntil(t, r, 0, "finalized")
@@ -94,7 +96,11 @@ func TestTheNotaryAnswersWhatItHoldsAndAnOmissionEndsInARecordedSilence(t *testi
 
 	require.NoError(t, r.Answerer.Tick(ctx))
 	require.Equal(t, notary.RequestAnswered, w.state(t, digest, 0))
-	require.Contains(t, e.metric(t, r), "kinetix_notary_withholding_open_requests 0")
+
+	metrics := e.metric(t, r)
+	require.Contains(t, metrics, "kinetix_notary_withholding_open_requests 0")
+	require.Contains(t, metrics, `kinetix_notary_withholding_passes_total{outcome="served"} 1`)
+	require.Contains(t, metrics, `kinetix_notary_withholding_passes_total{outcome="failed"} 0`)
 
 	e.mu.Lock()
 	e.omit = "principal-3"
@@ -110,7 +116,7 @@ func TestTheNotaryAnswersWhatItHoldsAndAnOmissionEndsInARecordedSilence(t *testi
 	require.NoError(t, r.Answerer.Tick(ctx))
 	require.Equal(t, notary.RequestOpen, w.state(t, digest, 1), "an account the epoch left out cannot be answered")
 
-	metrics := e.metric(t, r)
+	metrics = e.metric(t, r)
 	require.Contains(t, metrics, "kinetix_notary_withholding_unanswerable_requests 1")
 	require.Contains(t, metrics, "kinetix_notary_withholding_silences 0")
 

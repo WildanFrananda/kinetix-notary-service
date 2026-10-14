@@ -107,6 +107,10 @@ func serve(ctx context.Context, log *slog.Logger, d daemon) error {
 		return err
 	}
 
+	if err := d.Answerer.CheckScan(ctx); err != nil {
+		return err
+	}
+
 	log.InfoContext(
 		ctx,
 		"notaryd starting",
@@ -124,6 +128,8 @@ func serve(ctx context.Context, log *slog.Logger, d daemon) error {
 		d.Config.Withholding.Hex(),
 		"answerer",
 		d.Answers.Answerer().Hex(),
+		"log_range",
+		d.Config.LogRange,
 		"currency",
 		d.Config.Currency,
 		"epoch_interval",
