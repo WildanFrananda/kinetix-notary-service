@@ -53,6 +53,10 @@ timestamped record that no single party controls.
 | 19 | Where the watch lives (2026-10-14) | **`cmd/notary-watch` in this repository**, with its own image entry, container, SPIFFE identity and key. `bin/check-boundaries` keeps it away from the anchoring and Postgres code. |
 | 20 | How the watch sees the same snapshot (2026-10-14) | **Payment records each snapshot** — its time, currency, count, total and a SHA-256 digest of its rows — and serves that record to the watch. notaryd forwards the rows; the watch checks them against payment's record, not against anything notaryd says. Payment keeps three values per snapshot and needs no new key. |
 | 21 | The notary's council key (2026-10-14) | **The anchorer key** signs the notary's approval and still sends the transaction and pays its gas. Only the watch gets a new key, the sixth. |
+| 22 | What the directory records (2026-10-15) | A generation is a ledger **with its statement court and its withholding court**: chain id, the three addresses, genesis epoch and digest, scheme and registration time. On this chain the directory reads the genesis and the scheme from the ledger itself, and checks that the court judges that ledger and the withholding court stands beside that court. A court is replaced only together with a successor ledger. The council stays out: it is how epochs are anchored, not how they are verified. |
+| 23 | Who registers a successor, and when it counts (2026-10-15) | **The admin only.** A successor on the same chain counts at once, because the directory checks it on chain: the current ledger is sealed, and the successor starts exactly at its sealed head and next epoch. A successor on another chain is proposed with what cannot be checked here (its chain id, addresses and scheme), takes its genesis from the sealed predecessor, and counts after **7 days**; the admin may cancel it until then, and anyone may activate it after. Once a generation lives on another chain, this directory takes no more: the next is registered in a directory on that chain. |
+| 24 | How the off-chain side uses it (2026-10-15) | `notary-verify` is configured with **the directory alone**, beside the RPC URL, chain id and timeout. It resolves the generation that holds the claim's epoch and verifies against that ledger and court; its ledger and court variables go. An epoch whose generation lives on another chain gets a verdict of its own, never "not found". notaryd keeps its explicit addresses and refuses to start unless the directory's current generation is its ledger and courts. |
+| 25 | Deploying it (2026-10-15) | Like every contract beside the ledger: the ledger's admin key, a 3-day admin transfer delay, the CREATE2 factory with a salt, Sourcify. Generation 0 is the v1 ledger with the live court and withholding court, registered by the constructor under the same checks. |
 
 ## 3. What the proof does and does not prove
 
@@ -1061,6 +1065,46 @@ predecessor sealed and the successor's genesis equal to the predecessor's sealed
 both checked on chain; a successor on another chain is recorded with the values it declares and marked
 as such. The v1 ledger is generation 0. Verifiers resolve the current ledger from the directory, so
 their configuration shrinks to one address that never changes.
+
+**Ruled 2026-10-15 (decisions 22–25).** The contract, `src/directory/LedgerDirectory.sol` (MIT):
+
+- `Generation{chainId, ledger, court, withholding, genesisEpoch, genesisDigest, scheme, registeredAt}`,
+  kept in an append-only list. The constructor registers generation 0.
+- `registerSuccessor(ledger, court, withholding)`, admin only. It refuses unless no foreign successor is
+  pending, the current generation is on this chain and its ledger is sealed, all three contracts announce
+  their interfaces, the court judges the ledger, the withholding court stands beside the court, the
+  successor is not sealed, and its genesis epoch and digest are the predecessor's next epoch and head.
+- `proposeForeignSuccessor(chainId, ledger, court, withholding, scheme)`, admin only, under the same
+  predecessor checks; the genesis comes from the sealed predecessor. `cancelForeignSuccessor()` by the
+  admin, `activateForeignSuccessor()` by anyone once the 7-day delay has passed. After that, both
+  registrations refuse with `DirectoryMoved`.
+- Views: `generationCount`, `generation(i)`, `current()`, `pendingSuccessor()`, and `generationOf(epoch)`,
+  which returns the latest generation whose genesis epoch is at or below the epoch. A predecessor sealed
+  before it anchored anything therefore owns no epoch. An epoch below generation 0's genesis reverts
+  `EpochBeforeDirectory`.
+
+**Work order:**
+- **9-1** the contract: unit, fuzz, invariant (append-only, continuity of every local generation, at
+  most one foreign generation and only last), the deploy script through the factory, the deploy
+  rehearsal, and a fork test over the live ledger and courts that seals the ledger on the fork and
+  registers a successor.
+- **9-2** Go: the directory binding and adapter, `notary-verify` on the directory with a verdict for an
+  epoch on another chain, notaryd's start-up check, integration tests on anvil.
+- **9-3** the estate: `bin/deploy-directory`, `bin/inspect-directory`, `bin/register-successor`, the lab
+  directory, compose, the deploy document. Then the directory on Base Sepolia by the user's deployer
+  keystore, and the release.
+
+**Status, 2026-10-15: 9-1 and 9-2 built and green; 9-3 written and rehearsed, waiting on the user's deploy.**
+
+| Part | Proof |
+|---|---|
+| 9-1 | `LedgerDirectory` with 28 unit tests, 4 fuzz tests and a handler-based invariant suite. The suite has five invariants over 16 384 calls: the list only grows; every local successor continues its sealed predecessor; only the last generation may live elsewhere; every epoch has one generation; no action had an outcome the rules forbid. The deploy goes through the CREATE2 factory, and `bin/rehearse-deploy` proves it on chain id 84532. On a fork of Base Sepolia, the live ledger, sealed on the fork, was succeeded and the successor took the next epoch. Five planted mutations each turned suites red: no genesis check, an unsealed predecessor, `generationOf` off by one, a foreign successor a second early, and a court of another ledger. `bin/ci-contracts` exits 0: 243 tests on the CI profile, 15 fork tests, Slither 0, Aderyn's `centralization-risk` accepted. The one `unchecked-return` it raised was fixed in code |
+| 9-2 | `notary-verify` reads the directory alone, resolves the generation holding each epoch and verifies through that ledger and court. It reports `moved` (exit 9) for an epoch held on another chain and `wrong_directory` (exit 8) for anything that is not a directory. notaryd's `DirectoryCheck` refuses to start unless the current generation is its own ledger and courts. On anvil: epoch 0 in a sealed ledger and epoch 1 in its registered successor both verify through the directory, a statement signed for the successor's court is attributable, and a proof naming the wrong generation is `wrong_ledger`. A successor that does not continue the sealed head is refused with `GenesisMismatch`. `bin/ci-go` exits 0, golangci 0, coverage 85.9% |
+| 9-3 | `bin/deploy-directory`, `bin/inspect-directory` and `bin/register-successor`, rehearsed on a fork of Base Sepolia at block 48148939. The production directory lands at `0x6C71162b46620Aa835681ADCDC4DB4ab9bB84ac8` for 2,760,697 gas. The rehearsal caught two faults in the scripts: tuple output cut by commas, and refusals printed as bare selectors. The lab script deploys the lab directory at `0x57C3DF1081c5B42D6104fd160df9BEeBcd573C6c`; it was run twice on a throwaway chain, and the second run changed nothing. Compose names both directories; the rendered models differ from the last commit by that one variable alone. `kinetix-infrastructure/docs/NOTARY-DIRECTORY-DEPLOY.md` is the sequence |
+
+Building it split `config.Verifier`: the daemon and the watch read `config.Chain` (ledger, court) and
+`notary-verify` reads `config.Verifier` (directory). The address, chain id, URL and timeout parsing is
+shared.
 
 #### Step 10 — sponsored gas (`NotaryPaymaster`, ERC-4337)
 

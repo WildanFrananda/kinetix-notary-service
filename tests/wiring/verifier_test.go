@@ -18,8 +18,9 @@ import (
 )
 
 const (
-	anvilLedger = "0x5fbdb2315678afecb367f032d93f642f64180aa3"
-	anvilCourt  = "0xe7f1725e7734ce288f8367e1bb143e90bb3f0512"
+	anvilLedger    = "0x5fbdb2315678afecb367f032d93f642f64180aa3"
+	anvilCourt     = "0xe7f1725e7734ce288f8367e1bb143e90bb3f0512"
+	anvilDirectory = "0x9fe46736679d2d9a65f0992f2272de9f3c7fa6e0"
 )
 
 func lookup(values map[string]string) config.Lookup {
@@ -32,11 +33,10 @@ func lookup(values map[string]string) config.Lookup {
 func TestTheGraphResolvesEveryDependencyOfTheVerifier(t *testing.T) {
 	container, err := wiring.Verifier(
 		lookup(map[string]string{
-			config.RPCURLKey:        "http://127.0.0.1:1",
-			config.ChainIDKey:       "31337",
-			config.LedgerAddressKey: anvilLedger,
-			config.CourtAddressKey:  anvilCourt,
-			config.RPCTimeoutKey:    "2s",
+			config.RPCURLKey:           "http://127.0.0.1:1",
+			config.ChainIDKey:          "31337",
+			config.DirectoryAddressKey: anvilDirectory,
+			config.RPCTimeoutKey:       "2s",
 		}),
 	)
 	require.NoError(t, err)
@@ -45,18 +45,15 @@ func TestTheGraphResolvesEveryDependencyOfTheVerifier(t *testing.T) {
 		func(
 			client *ethclient.Client,
 			scheme notary.Scheme,
-			ledger notary.Ledger,
-			court notary.Court,
-			identity notary.CourtIdentity,
-			v *verifying.Verifier,
+			directory notary.Directory,
+			readers notary.GenerationReaders,
+			v *verifying.DirectoryVerifier,
 		) {
 			defer client.Close()
 
 			require.NotNil(t, v)
-			require.NotNil(t, ledger)
-			require.NotNil(t, court)
-			require.Equal(t, uint64(31337), identity.ChainID)
-			require.Equal(t, anvilCourt, identity.Address.Hex())
+			require.NotNil(t, directory)
+			require.NotNil(t, readers)
 			require.Equal(t, uint16(1), scheme.Version())
 		},
 	)
@@ -64,14 +61,30 @@ func TestTheGraphResolvesEveryDependencyOfTheVerifier(t *testing.T) {
 	require.NoError(t, err)
 }
 
+func TestTheVerifierGraphHoldsNoLedgerOfItsOwn(t *testing.T) {
+	container, err := wiring.Verifier(
+		lookup(map[string]string{
+			config.RPCURLKey:           "http://127.0.0.1:1",
+			config.ChainIDKey:          "31337",
+			config.DirectoryAddressKey: anvilDirectory,
+			config.RPCTimeoutKey:       "2s",
+		}),
+	)
+	require.NoError(t, err)
+
+	require.Error(t, container.Invoke(func(notary.Ledger) {}))
+	require.Error(t, container.Invoke(func(notary.Court) {}))
+}
+
 func TestAMissingSettingSurfacesAsTheRootCause(t *testing.T) {
 	container, err := wiring.Verifier(lookup(map[string]string{}))
 	require.NoError(t, err)
 
-	err = container.Invoke(func(*verifying.Verifier) {})
+	err = container.Invoke(func(*verifying.DirectoryVerifier) {})
 
 	require.Error(t, err)
 	require.ErrorContains(t, dig.RootCause(err), config.RPCURLKey+" is not set")
+	require.ErrorContains(t, dig.RootCause(err), config.DirectoryAddressKey+" is not set")
 }
 
 func TestTheDaemonGraphNamesEveryMissingSettingBeforeTouchingAnything(t *testing.T) {

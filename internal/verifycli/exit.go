@@ -9,6 +9,8 @@ const (
 	ExitWrongLedger    = 5
 	ExitDisagreement   = 6
 	ExitWrongCourt     = 7
+	ExitWrongDirectory = 8
+	ExitMoved          = 9
 	ExitUsage          = 64
 	ExitMalformedProof = 65
 	ExitNoProof        = 66

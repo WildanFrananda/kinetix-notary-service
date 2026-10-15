@@ -58,12 +58,19 @@ bin/inspect-council base-sepolia                # its facts, its members and who
 bin/fund-admin base-sepolia 0.00002             # the admin's gas for the two role changes below
 bin/hand-over-anchoring base-sepolia [--broadcast]           # the admin grants the council the anchorer role
 bin/retire-anchorer base-sepolia <council anchor tx> [--broadcast]   # then revokes the anchorer key's own
+bin/deploy-directory base-sepolia [--broadcast] # the ledger directory, generation 0 = the ledger and its courts
+bin/inspect-directory base-sepolia              # its facts, and that its current generation is deploy/<network>.env's
+bin/register-successor base-sepolia <ledger> <court> <withholding> [--broadcast]   # admin; after a seal
 ```
 
-`notary-verify` reads `KINETIX_NOTARY_RPC_URL`, `KINETIX_NOTARY_CHAIN_ID`, `KINETIX_NOTARY_LEDGER_ADDRESS`,
-`KINETIX_NOTARY_COURT_ADDRESS` and `KINETIX_NOTARY_RPC_TIMEOUT`, every one required. It trusts the court
-it is configured with, never the one a document names, and reports beside every verdict whether the
-proof's statement is attributable to the epoch's signer and how many faults the epoch carries.
+`notary-verify` reads `KINETIX_NOTARY_RPC_URL`, `KINETIX_NOTARY_CHAIN_ID`, `KINETIX_NOTARY_DIRECTORY_ADDRESS`
+and `KINETIX_NOTARY_RPC_TIMEOUT`, every one required (decision 24, step 9). It asks the `LedgerDirectory`
+which generation holds the claim's epoch and verifies against that generation's ledger and court; it
+trusts that court, never the one a document names, and reports beside every verdict whether the
+proof's statement is attributable to the epoch's signer and how many faults the epoch carries. An epoch
+held on another chain is `moved` (exit 9), never `not_anchored`; an address that is not a directory is
+`wrong_directory` (exit 8). The directory is read at `latest`, the epoch itself at `finalized`, so a
+successor that is not final yet can never make an epoch `included`.
 
 notaryd also needs `KINETIX_NOTARY_WITHHOLDING_COURT_ADDRESS`, `KINETIX_NOTARY_WITHHOLDING_FROM_BLOCK` (the block
 the withholding court was deployed in), `KINETIX_NOTARY_ANSWERER_PRIVATE_KEY` and `KINETIX_NOTARY_RPC_LOG_RANGE`
@@ -76,7 +83,9 @@ It refuses to start unless:
 - the endpoint answers one full log span ending at the head.
 
 From step 8 notaryd anchors through the `AnchorCouncil` and also needs `KINETIX_NOTARY_COUNCIL_ADDRESS` and
-`KINETIX_NOTARY_WATCH_GRPC_ADDR`. It refuses to start unless the council anchors its ledger, holds the
+`KINETIX_NOTARY_WATCH_GRPC_ADDR`. From step 9 it also needs `KINETIX_NOTARY_DIRECTORY_ADDRESS`, and refuses to
+start (`wrong_directory`) unless the directory's current generation is its own ledger, court and withholding
+court on its chain: the proofs it serves are verified through that directory. It refuses to start unless the council anchors its ledger, holds the
 anchorer role there, counts the anchorer key as a member, needs no more than the two approvals notaryd
 gathers, and hashes an approval as Go does.
 
@@ -112,7 +121,7 @@ as `verify-contracts` and `verify-go`.
 | Package | May import |
 |---|---|
 | `internal/notary` | the standard library. **Nothing else.** |
-| `internal/verifying` | `internal/notary` only |
+| `internal/verifying` | `internal/notary` only; `DirectoryVerifier` resolves a generation, then verifies through `Verifier` |
 | `internal/keccak`, `prooffile`, `config`, `verifycli` | `internal/notary` + their own library |
 | `internal/ethereum` | the above + go-ethereum + `internal/contractgen` — the only adapter that touches a chain |
 | `internal/payment`, `internal/mesh` | `internal/notary` + gRPC + `internal/protogen` — the only adapters that speak gRPC |
@@ -150,7 +159,8 @@ Package names say what a package provides (`keccak.NewScheme`, `ethereum.NewLedg
   `centralization-risk` (the admin schedules signers, by design) and `reentrancy-state-change` (its only
   external calls are `view` reads of the immutable ledger, compiled to STATICCALL, which cannot re-enter;
   Slither, which tells a STATICCALL apart, reports nothing there); for `AnchorCouncil`, Aderyn
-  `centralization-risk` (the admin schedules memberships, behind a 7-day delay, by design). An accepted
+  `centralization-risk` (the admin schedules memberships, behind a 7-day delay, by design); for
+  `LedgerDirectory`, Aderyn `centralization-risk` (only the admin registers a successor, decision 23). An accepted
   entry that stops being reported also fails, so the list cannot rot. forge-lint's `reentrancy-events` is off in `foundry.toml`
   for the same reason and with the same backstop: it flags any event after any external call.
 - **Two lint settings are decisions, not silencings.** `wrapcheck` ignores `.RecvMsg(`: the gRPC
@@ -365,6 +375,16 @@ A failure must never be reported as a definite answer. In this service that mean
   2026-10-14 it stopped with `No such device or address (os error 6)` before signing anything. Read-only
   scripts keep `-T`; the deploy and funding scripts never had it.
 
+- **`cast call f()(a,b)` and `cast call f()((a,b))` print differently.** The first decodes several return
+  values and prints one per line; the second decodes one tuple and prints `(a, b)` on one line. The first
+  draft of `bin/inspect-directory` cut a tuple by commas out of the per-line form and reported every field
+  `WRONG`; the rehearsal on a fork caught it. It reads `current()` per line now.
+- **`forge create --constructor-args` swallows every flag after it.** Put it last, or `--rpc-url` becomes a
+  constructor argument and forge dials `localhost:8545`.
+- **`cast call` reports a custom error as a bare selector.** `bin/register-successor` names the refusal by
+  looking the selector up in `forge inspect LedgerDirectory errors --json`, so the operator reads
+  `PredecessorNotSealed(address)`, not `custom error 0x92422182`.
+
 - **Base Sepolia hands back a receipt before `latest` holds the transaction.** sepolia.base.org answers
   `cast send` with a preconfirmed receipt (`blockHash` all zeros), and a `cast call` made at once still
   reads the old state. The first `bin/hand-over-anchoring` checked once and reported a successful grant
@@ -381,6 +401,8 @@ notaryd v1.0.0 and gateway v1.1.0, released on 2026-10-14. That release scanned 
 refuses; v1.0.1 fixed it the same day and is proven in production (PLAN.md 7-7). Step 8 (threshold
 anchoring, decisions 18–21) is being built: the council, payment's snapshot record, `notary-watch` and
 notaryd's council mode are live on contracts v1.2.0 and notary v1.1.0: since 2026-10-15 the council
-`0xf6c3…791b` is the ledger's only anchorer, and the anchorer key alone anchors nothing (PLAN.md 8-7). 6b
+`0xf6c3…791b` is the ledger's only anchorer, and the anchorer key alone anchors nothing (PLAN.md 8-7). Step 9
+(the ledger directory, decisions 22–25) is built and green (PLAN.md 9-1, 9-2); its deploy on Base Sepolia and
+the release are 9-3. 6b
 (delivery through notification) and steps 9–14 do not exist yet. Contract deploys stay manual, never in
 CI.

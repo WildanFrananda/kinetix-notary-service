@@ -42,6 +42,7 @@ type daemon struct {
 	Watch     *epochwatch.Client
 	Runner    *anchoring.Runner
 	Prover    *proving.Prover
+	Directory *proving.DirectoryCheck
 	Registrar *registering.Registrar
 	Answerer  *answering.Answerer
 	Answers   notary.AnswerChain
@@ -107,6 +108,10 @@ func serve(ctx context.Context, log *slog.Logger, d daemon) error {
 		return err
 	}
 
+	if err := d.Directory.Check(ctx); err != nil {
+		return err
+	}
+
 	if err := d.Registrar.CheckWithholding(ctx); err != nil {
 		return err
 	}
@@ -134,6 +139,8 @@ func serve(ctx context.Context, log *slog.Logger, d daemon) error {
 		d.Config.Chain.Court.Hex(),
 		"withholding_court",
 		d.Config.Withholding.Hex(),
+		"directory",
+		d.Config.Directory.Hex(),
 		"answerer",
 		d.Answers.Answerer().Hex(),
 		"log_range",

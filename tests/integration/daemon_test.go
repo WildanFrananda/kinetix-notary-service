@@ -56,6 +56,7 @@ type estate struct {
 	ledger      notary.LedgerIdentity
 	court       notary.Address
 	withholding notary.Address
+	directory   notary.Address
 	council     notary.Address
 	watch       *approving.Approver
 	watchHTTP   http.Handler
@@ -76,6 +77,7 @@ type running struct {
 	Handler   http.Handler
 	Verifier  *verifying.Verifier
 	Prover    *proving.Prover
+	Directory *proving.DirectoryCheck
 	Registrar *registering.Registrar
 	Answerer  *answering.Answerer
 }
@@ -100,6 +102,9 @@ func newEstate(t *testing.T) *estate {
 	statementKey, statementSigner := notarytest.StatementKey(t, "estate-signer")
 	e.court = notary.Address(c.deployCourt(t, common.Address(e.ledger.Address), statementSigner))
 	e.withholding = notary.Address(c.deployWithholding(t, common.Address(e.court)))
+	e.directory = notary.Address(
+		c.deployDirectory(t, common.Address(e.ledger.Address), common.Address(e.court), common.Address(e.withholding)),
+	)
 	answererKey, _ := c.funded(t)
 	e.dbURL = schema(t, base)
 	pool, err := pgxpool.New(ctx, e.dbURL)
@@ -117,28 +122,29 @@ func newEstate(t *testing.T) *estate {
 	address := notarytest.ServeLiabilities(t, pki.Issue(t, "kinetix.local", "payment"), e.payment)
 	watchAddress := e.serveWatch(t, pki, address, watchKey)
 	e.values = map[string]string{
-		config.RPCURLKey:          c.url,
-		config.ChainIDKey:         strconv.FormatUint(e.ledger.ChainID, 10),
-		config.LedgerAddressKey:   e.ledger.Address.Hex(),
-		config.CourtAddressKey:    e.court.Hex(),
-		config.StatementKeysKey:   "0x" + hex.EncodeToString(crypto.FromECDSA(statementKey)),
-		config.WithholdingKey:     e.withholding.Hex(),
-		config.WithholdingFromKey: "0",
-		config.LogRangeKey:        "200",
-		config.AnswererKeyKey:     "0x" + hex.EncodeToString(crypto.FromECDSA(answererKey)),
-		config.CouncilAddressKey:  e.council.Hex(),
-		config.WatchAddressKey:    watchAddress,
-		config.RPCTimeoutKey:      "10s",
-		config.DatabaseURLKey:     e.dbURL,
-		config.AnchorerKeyKey:     "0x" + hex.EncodeToString(crypto.FromECDSA(c.key)),
-		config.PaymentAddressKey:  address,
-		config.PKIDirKey:          pki.Issue(t, "kinetix.local", "notary"),
-		config.CurrencyKey:        "IDR",
-		config.MaxFeeKey:          "1000000000000",
-		config.HTTPPortKey:        "18010",
-		config.JWKSURLKey:         e.identity.URL,
-		config.JWTIssuerKey:       notarytest.IdentityIssuer,
-		config.JWTAudienceKey:     notarytest.IdentityAudience,
+		config.RPCURLKey:           c.url,
+		config.ChainIDKey:          strconv.FormatUint(e.ledger.ChainID, 10),
+		config.LedgerAddressKey:    e.ledger.Address.Hex(),
+		config.CourtAddressKey:     e.court.Hex(),
+		config.StatementKeysKey:    "0x" + hex.EncodeToString(crypto.FromECDSA(statementKey)),
+		config.WithholdingKey:      e.withholding.Hex(),
+		config.WithholdingFromKey:  "0",
+		config.LogRangeKey:         "200",
+		config.AnswererKeyKey:      "0x" + hex.EncodeToString(crypto.FromECDSA(answererKey)),
+		config.CouncilAddressKey:   e.council.Hex(),
+		config.DirectoryAddressKey: e.directory.Hex(),
+		config.WatchAddressKey:     watchAddress,
+		config.RPCTimeoutKey:       "10s",
+		config.DatabaseURLKey:      e.dbURL,
+		config.AnchorerKeyKey:      "0x" + hex.EncodeToString(crypto.FromECDSA(c.key)),
+		config.PaymentAddressKey:   address,
+		config.PKIDirKey:           pki.Issue(t, "kinetix.local", "notary"),
+		config.CurrencyKey:         "IDR",
+		config.MaxFeeKey:           "1000000000000",
+		config.HTTPPortKey:         "18010",
+		config.JWKSURLKey:          e.identity.URL,
+		config.JWTIssuerKey:        notarytest.IdentityIssuer,
+		config.JWTAudienceKey:      notarytest.IdentityAudience,
 	}
 
 	return e
@@ -367,6 +373,8 @@ func TestTheDaemonAnchorsPaymentsSnapshotAndEveryAccountVerifiesOnChain(t *testi
 	r := e.start(t)
 	ctx := context.Background()
 
+	require.NoError(t, r.Directory.Check(ctx))
+
 	e.tickUntil(t, r, 0, "mined")
 	e.chain.finalize(t)
 	e.tickUntil(t, r, 0, "finalized")
@@ -425,6 +433,23 @@ func TestTheDaemonAnchorsPaymentsSnapshotAndEveryAccountVerifiesOnChain(t *testi
 	live := httptest.NewRecorder()
 	r.Handler.ServeHTTP(live, httptest.NewRequest(http.MethodGet, "/health/live", nil))
 	require.Equal(t, http.StatusOK, live.Code)
+}
+
+func TestTheDaemonRefusesADirectoryWhoseCurrentLedgerIsNotItsOwn(t *testing.T) {
+	e := newEstate(t)
+	c := e.chain
+	other := c.deploy(t)
+	_, signer := notarytest.StatementKey(t, "other-signer")
+	otherCourt := c.deployCourt(t, other, signer)
+	otherWithholding := c.deployWithholding(t, otherCourt)
+	directory := c.deployDirectory(t, other, otherCourt, otherWithholding)
+	e.values[config.DirectoryAddressKey] = notary.Address(directory).Hex()
+	r := e.start(t)
+
+	err := r.Directory.Check(context.Background())
+
+	require.Equal(t, notary.KindWrongDirectory, notary.KindOf(err), "%v", err)
+	require.ErrorContains(t, err, e.ledger.Address.Hex())
 }
 
 func TestAnEpochTheWatchCannotMatchToPaymentsRecordIsAbandoned(t *testing.T) {

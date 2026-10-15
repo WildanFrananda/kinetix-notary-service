@@ -40,7 +40,7 @@ const (
 )
 
 type Daemon struct {
-	Chain           Verifier
+	Chain           Chain
 	DatabaseURL     Secret
 	AnchorerKey     Secret
 	StatementKeys   Secret
@@ -49,6 +49,7 @@ type Daemon struct {
 	LogRange        uint64
 	AnswererKey     Secret
 	Council         notary.Address
+	Directory       notary.Address
 	WatchAddress    string
 	PaymentAddress  string
 	PKIDir          string
@@ -67,7 +68,7 @@ type Daemon struct {
 func LoadDaemon(lookup Lookup) (Daemon, error) {
 	var problems []string
 
-	chain, err := LoadVerifier(lookup)
+	chain, err := LoadChain(lookup)
 	if err != nil {
 		problems = append(problems, strings.TrimPrefix(err.Error(), "configuration refused: "))
 	}
@@ -118,14 +119,7 @@ func LoadDaemon(lookup Lookup) (Daemon, error) {
 		cfg.StatementKeys = Secret{value: raw}
 	}
 
-	if raw := required(WithholdingKey); raw != "" {
-		address, err := notary.ParseAddress(raw)
-		if err != nil || address.IsZero() {
-			problems = append(problems, WithholdingKey+" must be a non-zero 0x-prefixed 20-byte address")
-		}
-
-		cfg.Withholding = address
-	}
+	cfg.Withholding = address(WithholdingKey, required(WithholdingKey), &problems)
 
 	if raw := required(WithholdingFromKey); raw != "" {
 		block, err := strconv.ParseUint(raw, 10, 64)
@@ -158,7 +152,8 @@ func LoadDaemon(lookup Lookup) (Daemon, error) {
 		cfg.PaymentAddress = raw
 	}
 
-	cfg.Council = councilAddress(required(CouncilAddressKey), &problems)
+	cfg.Council = address(CouncilAddressKey, required(CouncilAddressKey), &problems)
+	cfg.Directory = address(DirectoryAddressKey, required(DirectoryAddressKey), &problems)
 
 	if raw := required(WatchAddressKey); raw != "" {
 		host, port, err := net.SplitHostPort(raw)

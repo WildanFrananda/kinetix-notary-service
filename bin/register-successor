@@ -1,0 +1,98 @@
+#!/usr/bin/env sh
+set -eu
+
+HERE="$(cd "$(dirname "$0")/.." && pwd)"
+NETWORK="${1:-}"
+LEDGER="${2:-}"
+COURT="${3:-}"
+WITHHOLDING="${4:-}"
+MODE="${5:-}"
+USAGE="usage: bin/register-successor <network> <successor ledger> <its court> <its withholding court> [--broadcast]"
+
+case "$MODE" in
+  "" | --broadcast) ;;
+  *)
+    echo "$USAGE" >&2
+    exit 64
+    ;;
+esac
+if [ -z "$NETWORK" ] || [ ! -f "$HERE/deploy/$NETWORK.env" ] || [ -z "$LEDGER" ] || [ -z "$COURT" ] || [ -z "$WITHHOLDING" ]; then
+  echo "$USAGE" >&2
+  exit 64
+fi
+: "${KINETIX_NOTARY_RPC_URL:?set KINETIX_NOTARY_RPC_URL to the network RPC endpoint}"
+KEYSTORES="$(sh "$HERE/bin/keystore-dir")"
+if [ ! -f "$KEYSTORES/notary-admin" ]; then
+  echo "no notary-admin keystore in $KEYSTORES: the directory's admin registers a successor" >&2
+  exit 1
+fi
+
+set -- run --rm --no-deps -e KINETIX_NOTARY_RPC_URL -v "$KEYSTORES:/keystores:ro"
+PASSWORD_ARG=""
+if [ -n "${KINETIX_NOTARY_KEYSTORE_PASSWORD_FILE:-}" ]; then
+  set -- "$@" -v "$KINETIX_NOTARY_KEYSTORE_PASSWORD_FILE:/run/keystore-password:ro"
+  PASSWORD_ARG=--password-file
+fi
+
+docker compose -f "$HERE/toolchain/compose.yaml" build --quiet toolchain >&2
+exec docker compose -f "$HERE/toolchain/compose.yaml" "$@" toolchain sh -c '
+  set -eu
+  network="$1"
+  ledger="$2"
+  court="$3"
+  withholding="$4"
+  mode="$5"
+  password_arg="$6"
+  set -a
+  . "./deploy/$network.env"
+  set +a
+  for key in KINETIX_NOTARY_CHAIN_ID KINETIX_NOTARY_DIRECTORY_ADDRESS KINETIX_NOTARY_DIRECTORY_ADMIN_ADDRESS; do
+    eval "value=\${$key:-}"
+    if [ -z "$value" ]; then
+      echo "$key is empty in deploy/$network.env" >&2
+      exit 78
+    fi
+  done
+  rpc="$KINETIX_NOTARY_RPC_URL"
+  directory="$KINETIX_NOTARY_DIRECTORY_ADDRESS"
+  served="$(cast chain-id --rpc-url "$rpc")"
+  if [ "$served" != "$KINETIX_NOTARY_CHAIN_ID" ]; then
+    echo "the RPC endpoint serves chain $served, deploy/$network.env is for chain $KINETIX_NOTARY_CHAIN_ID" >&2
+    exit 1
+  fi
+  before="$(cast call "$directory" "generationCount()(uint256)" --rpc-url "$rpc" | sed "s/ \[.*\]\$//")"
+
+  if ! refusal="$(cast call "$directory" "registerSuccessor(address,address,address)(uint256)" \
+    "$ledger" "$court" "$withholding" --from "$KINETIX_NOTARY_DIRECTORY_ADMIN_ADDRESS" --rpc-url "$rpc" 2>&1 >/dev/null)"; then
+    selector="$(printf %s "$refusal" | grep -o "custom error 0x[0-9a-f]\{8\}" | head -1 | sed "s/custom error 0x//")"
+    name=""
+    if [ -n "$selector" ]; then
+      name="$(cd contracts && forge inspect LedgerDirectory errors --json 2>/dev/null \
+        | python3 -c "import json, sys; print(next((k for k, v in json.load(sys.stdin).items() if v == sys.argv[1]), \"\"))" "$selector")"
+    fi
+    echo "the directory refuses this successor: ${name:-$refusal}" >&2
+    exit 1
+  fi
+  if [ "$mode" != "--broadcast" ]; then
+    echo "dry run: the directory would register $ledger, judged by $court and $withholding, as generation $before."
+    echo "nothing was sent. Re-run with --broadcast to register it."
+    exit 0
+  fi
+
+  set -- "$directory" "registerSuccessor(address,address,address)" "$ledger" "$court" "$withholding" \
+    --rpc-url "$rpc" --keystore /keystores/notary-admin
+  if [ -n "$password_arg" ]; then
+    set -- "$@" --password-file /run/keystore-password
+  fi
+  cast send "$@"
+  waited=0
+  until [ "$(cast call "$directory" "generationCount()(uint256)" --rpc-url "$rpc" | sed "s/ \[.*\]\$//")" -gt "$before" ]; do
+    if [ "$waited" -ge 60 ]; then
+      echo "the registration was sent, but the directory still holds $before generations at the latest block after 60 s" >&2
+      exit 1
+    fi
+    sleep 2
+    waited=$((waited + 2))
+  done
+  echo "generation $before is $ledger; verifiers now resolve its epochs through $directory"
+' sh "$NETWORK" "$LEDGER" "$COURT" "$WITHHOLDING" "$MODE" "$PASSWORD_ARG"
