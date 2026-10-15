@@ -86,7 +86,9 @@ gathers, and hashes an approval as Go does.
 no database, admits only the `notary` identity on its gRPC port, and refuses to start unless its key is a
 member of the council and the council hashes an approval as Go does.
 
-`deploy/<network>.env` holds only public values and is committed. Keys never are: the deployer and
+`deploy/<network>.env` holds only public values and is committed. `KINETIX_NOTARY_ANCHORER_ROLE_HOLDERS` there
+names who should hold the ledger's anchorer role, and `bin/inspect-ledger` checks the anchorer key and the
+council against it; change it in the same commit as the role changes. Keys never are: the deployer and
 admin keystores live in `KINETIX_NOTARY_KEYSTORE_DIR` (refused when inside a git work tree), the
 anchorer lives in SOPS. Why the split is in PLAN.md §8.
 
@@ -378,8 +380,7 @@ Step 7 (withholding, PLAN.md step 7 and decisions 15–17) is live: the withhold
 notaryd v1.0.0 and gateway v1.1.0, released on 2026-10-14. That release scanned in spans the public RPC
 refuses; v1.0.1 fixed it the same day and is proven in production (PLAN.md 7-7). Step 8 (threshold
 anchoring, decisions 18–21) is being built: the council, payment's snapshot record, `notary-watch` and
-notaryd's council mode are done and green (PLAN.md 8-1 to 8-6), on contracts v1.2.0. The council is
-deployed on Base Sepolia and holds the anchorer role; the release (infra A, payment, infra B, notary
-v1.1.0) and the anchorer key's retirement remain (PLAN.md 8-7). 6b
+notaryd's council mode are live on contracts v1.2.0 and notary v1.1.0: since 2026-10-15 the council
+`0xf6c3…791b` is the ledger's only anchorer, and the anchorer key alone anchors nothing (PLAN.md 8-7). 6b
 (delivery through notification) and steps 9–14 do not exist yet. Contract deploys stay manual, never in
 CI.

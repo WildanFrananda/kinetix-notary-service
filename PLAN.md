@@ -1041,6 +1041,17 @@ caught it.
   runs the metrics gate over every target, so the watch's target, its conformance entry and its
   `bin/prod-deploy` sibling (B) wait until payment is live.
 
+- **Live (2026-10-15).** The first two notary v1.1.0 deploys failed in the deploy pipeline, not in the
+  notary (`kinetix-infrastructure/docs/NOTARY-COUNCIL-DEPLOY.md` step 8). The third started the watch.
+  - The first anchor through the council: `0xe7ea8010…d0dd`, 02:56 UTC, block 48132336, final.
+  - The admin revoked the anchorer key's own role at 05:30 UTC, tx
+    `0xdbb3106c66f1dbd4ed424ec59fb7cf40ef8fc845df56c80e50d68d638b2f4515`, 29,571 gas.
+  - `bin/inspect-council` reads `council anchors true`, `anchorer key anchors false`. `bin/inspect-ledger`
+    now checks both against `KINETIX_NOTARY_ANCHORER_ROLE_HOLDERS`, and a wrong list turns both lines
+    `WRONG`.
+  - The first anchor after the revocation went through the council too: epoch 57, 05:56:46 UTC,
+    `0x22cdbc372e178b298fd8e47e20d96ad8cc1bb874d890cbf254b7c0e51b65279a`; the ledger's next epoch is 58.
+
 #### Step 9 — ledger directory (`LedgerDirectory`)
 
 A ledger succeeds another by sealing it (§6), but today only a config file says which one is current.
