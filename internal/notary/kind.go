@@ -34,6 +34,8 @@ const (
 	KindWrongCouncil
 	KindApprovalRefused
 	KindSnapshotUnknown
+	KindWrongDirectory
+	KindMoved
 )
 
 func (k Kind) String() string {
@@ -98,6 +100,10 @@ func (k Kind) String() string {
 		return "approval_refused"
 	case KindSnapshotUnknown:
 		return "snapshot_unknown"
+	case KindWrongDirectory:
+		return "wrong_directory"
+	case KindMoved:
+		return "moved"
 	default:
 		return "unknown"
 	}

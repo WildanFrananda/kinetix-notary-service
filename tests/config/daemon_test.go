@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/WildanFrananda/kinetix-notary-service/internal/config"
+	"github.com/WildanFrananda/kinetix-notary-service/internal/notary"
 )
 
 const anchorerKey = "0x4c0883a69102937d6231471b5dbb6204fe5129617082792ae468d01a3f362318"
@@ -19,28 +20,29 @@ const statementKeys = "0x5a00000000000000000000000000000000000000000000000000000
 
 func daemonValues() map[string]string {
 	return map[string]string{
-		config.RPCURLKey:          "https://sepolia.base.org",
-		config.ChainIDKey:         "84532",
-		config.LedgerAddressKey:   "0x4e869a55031de3b0d030aebecc66e523686761a2",
-		config.CourtAddressKey:    "0x00000000000000000000000000000000c0c0c0c0",
-		config.StatementKeysKey:   statementKeys,
-		config.WithholdingKey:     "0x00000000000000000000000000000000d0d0d0d0",
-		config.WithholdingFromKey: "48063900",
-		config.LogRangeKey:        "200",
-		config.AnswererKeyKey:     answererKey,
-		config.CouncilAddressKey:  "0x00000000000000000000000000000000c0c0c0c1",
-		config.WatchAddressKey:    "kinetix-notary-watch:50070",
-		config.RPCTimeoutKey:      "10s",
-		config.DatabaseURLKey:     "postgres://notary@kinetix-notary-db:5432/notary",
-		config.AnchorerKeyKey:     anchorerKey,
-		config.PaymentAddressKey:  "kinetix-payment-service:50056",
-		config.PKIDirKey:          "/pki",
-		config.CurrencyKey:        "IDR",
-		config.MaxFeeKey:          "50000000000",
-		config.HTTPPortKey:        "8010",
-		config.JWKSURLKey:         "http://kinetix-identity-service:5000/.well-known/jwks.json",
-		config.JWTIssuerKey:       "https://identity.kinetix.local",
-		config.JWTAudienceKey:     "kinetix",
+		config.RPCURLKey:           "https://sepolia.base.org",
+		config.ChainIDKey:          "84532",
+		config.LedgerAddressKey:    "0x4e869a55031de3b0d030aebecc66e523686761a2",
+		config.CourtAddressKey:     "0x00000000000000000000000000000000c0c0c0c0",
+		config.StatementKeysKey:    statementKeys,
+		config.WithholdingKey:      "0x00000000000000000000000000000000d0d0d0d0",
+		config.WithholdingFromKey:  "48063900",
+		config.LogRangeKey:         "200",
+		config.AnswererKeyKey:      answererKey,
+		config.CouncilAddressKey:   "0x00000000000000000000000000000000c0c0c0c1",
+		config.DirectoryAddressKey: "0x00000000000000000000000000000000d1d1d1d1",
+		config.WatchAddressKey:     "kinetix-notary-watch:50070",
+		config.RPCTimeoutKey:       "10s",
+		config.DatabaseURLKey:      "postgres://notary@kinetix-notary-db:5432/notary",
+		config.AnchorerKeyKey:      anchorerKey,
+		config.PaymentAddressKey:   "kinetix-payment-service:50056",
+		config.PKIDirKey:           "/pki",
+		config.CurrencyKey:         "IDR",
+		config.MaxFeeKey:           "50000000000",
+		config.HTTPPortKey:         "8010",
+		config.JWKSURLKey:          "http://kinetix-identity-service:5000/.well-known/jwks.json",
+		config.JWTIssuerKey:        "https://identity.kinetix.local",
+		config.JWTAudienceKey:      "kinetix",
 	}
 }
 
@@ -56,6 +58,7 @@ func TestADaemonConfigurationLoadsWithTheEstatesDefaults(t *testing.T) {
 
 	require.NoError(t, err)
 	require.Equal(t, uint64(84532), cfg.Chain.Ledger.ChainID)
+	require.Equal(t, notary.Address{16: 0xd1, 17: 0xd1, 18: 0xd1, 19: 0xd1}, cfg.Directory)
 	require.Equal(t, anchorerKey, cfg.AnchorerKey.Reveal())
 	require.Equal(t, []string{"kinetix.local"}, cfg.TrustDomains)
 	require.Equal(t, uint64(50_000_000_000), cfg.MaxFeePerGasWei)
@@ -113,6 +116,7 @@ func TestEveryMissingOrBrokenSettingIsNamedAtOnce(t *testing.T) {
 	delete(values, config.AnswererKeyKey)
 	values[config.CouncilAddressKey] = "0x0000000000000000000000000000000000000000"
 	values[config.WatchAddressKey] = "no-port"
+	values[config.DirectoryAddressKey] = "0xd1"
 
 	_, err := config.LoadDaemon(from(values))
 
@@ -137,6 +141,7 @@ func TestEveryMissingOrBrokenSettingIsNamedAtOnce(t *testing.T) {
 		config.AnswererKeyKey,
 		config.CouncilAddressKey,
 		config.WatchAddressKey,
+		config.DirectoryAddressKey,
 	} {
 		require.ErrorContains(t, err, key)
 	}
@@ -168,6 +173,15 @@ func TestTheLogRangeIsRequiredBecauseItBelongsToTheRPCEndpoint(t *testing.T) {
 	_, err := config.LoadDaemon(from(values))
 
 	require.ErrorContains(t, err, config.LogRangeKey+" is not set")
+}
+
+func TestTheDirectoryIsRequired(t *testing.T) {
+	values := daemonValues()
+	delete(values, config.DirectoryAddressKey)
+
+	_, err := config.LoadDaemon(from(values))
+
+	require.ErrorContains(t, err, config.DirectoryAddressKey+" is not set")
 }
 
 func TestTheWithholdingCourtIsRequired(t *testing.T) {

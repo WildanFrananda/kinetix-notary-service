@@ -10,27 +10,17 @@ import (
 	"github.com/WildanFrananda/kinetix-notary-service/internal/notary"
 )
 
-const mixedCaseLedger = "0x5FbDB2315678afecb367f032d93F642f64180aa3"
-
-func lookup(values map[string]string) config.Lookup {
-	return func(key string) (string, bool) {
-		value, ok := values[key]
-		return value, ok
-	}
-}
-
-func complete() map[string]string {
+func verifierValues() map[string]string {
 	return map[string]string{
-		config.RPCURLKey:        "https://rpc.example.org/v2/secret-api-key",
-		config.ChainIDKey:       "84532",
-		config.LedgerAddressKey: mixedCaseLedger,
-		config.CourtAddressKey:  "0x00000000000000000000000000000000C0C0c0c0",
-		config.RPCTimeoutKey:    "10s",
+		config.RPCURLKey:           "https://rpc.example.org/v2/secret-api-key",
+		config.ChainIDKey:          "84532",
+		config.DirectoryAddressKey: mixedCaseLedger,
+		config.RPCTimeoutKey:       "10s",
 	}
 }
 
-func TestACompleteEnvironmentLoads(t *testing.T) {
-	cfg, err := config.LoadVerifier(lookup(complete()))
+func TestAVerifierNeedsTheDirectoryAndNothingThatNamesALedger(t *testing.T) {
+	cfg, err := config.LoadVerifier(lookup(verifierValues()))
 
 	require.NoError(t, err)
 	address, err := notary.ParseAddress("0x5fbdb2315678afecb367f032d93f642f64180aa3")
@@ -39,67 +29,31 @@ func TestACompleteEnvironmentLoads(t *testing.T) {
 		t,
 		config.Verifier{
 			RPCURL:     "https://rpc.example.org/v2/secret-api-key",
-			Ledger:     notary.LedgerIdentity{ChainID: 84532, Address: address},
-			Court:      notary.Address{16: 0xc0, 17: 0xc0, 18: 0xc0, 19: 0xc0},
+			Directory:  notary.DirectoryIdentity{ChainID: 84532, Address: address},
 			RPCTimeout: 10 * time.Second,
 		},
 		cfg,
 	)
 }
 
-func TestEveryMissingKeyIsNamedAtOnce(t *testing.T) {
+func TestAVerifierNamesEveryMissingKeyAtOnce(t *testing.T) {
 	_, err := config.LoadVerifier(lookup(map[string]string{}))
 
-	require.Error(t, err)
+	for _, key := range []string{config.RPCURLKey, config.ChainIDKey, config.DirectoryAddressKey, config.RPCTimeoutKey} {
+		require.ErrorContains(t, err, key+" is not set")
+	}
 
-	keys := []string{
-		config.RPCURLKey,
-		config.ChainIDKey,
-		config.LedgerAddressKey,
-		config.CourtAddressKey,
-		config.RPCTimeoutKey,
-	}
-	for _, key := range keys {
-		require.Contains(t, err.Error(), key+" is not set")
-	}
+	require.NotContains(t, err.Error(), config.LedgerAddressKey)
+	require.NotContains(t, err.Error(), config.CourtAddressKey)
 }
 
-func TestABlankValueIsMissing(t *testing.T) {
-	values := complete()
-	values[config.ChainIDKey] = "   "
+func TestAVerifierRefusesAZeroOrMalformedDirectory(t *testing.T) {
+	for _, value := range []string{"0x0000000000000000000000000000000000000000", "0xd1"} {
+		values := verifierValues()
+		values[config.DirectoryAddressKey] = value
 
-	_, err := config.LoadVerifier(lookup(values))
+		_, err := config.LoadVerifier(lookup(values))
 
-	require.ErrorContains(t, err, config.ChainIDKey+" is not set")
-}
-
-func TestInvalidValuesAreRefused(t *testing.T) {
-	cases := map[string]string{
-		config.RPCURLKey:        "ftp://rpc.example.org",
-		config.ChainIDKey:       "0",
-		config.LedgerAddressKey: "0x0000000000000000000000000000000000000000",
-		config.CourtAddressKey:  "0xc0",
-		config.RPCTimeoutKey:    "10m",
+		require.ErrorContains(t, err, config.DirectoryAddressKey+" must be a non-zero 0x-prefixed 20-byte address")
 	}
-	for key, value := range cases {
-		t.Run(key, func(t *testing.T) {
-			values := complete()
-			values[key] = value
-
-			_, err := config.LoadVerifier(lookup(values))
-
-			require.ErrorContains(t, err, key)
-		})
-	}
-}
-
-func TestTheRPCURLNeverAppearsInAnError(t *testing.T) {
-	values := complete()
-	values[config.RPCURLKey] = "gopher://rpc.example.org/v2/secret-api-key"
-	values[config.ChainIDKey] = "nope"
-
-	_, err := config.LoadVerifier(lookup(values))
-
-	require.Error(t, err)
-	require.NotContains(t, err.Error(), "secret-api-key")
 }

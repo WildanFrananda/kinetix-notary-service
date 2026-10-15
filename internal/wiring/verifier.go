@@ -14,11 +14,11 @@ func Verifier(lookup config.Lookup) (*dig.Container, error) {
 	providers := []any{
 		func() config.Lookup { return lookup },
 		provideVerifierConfig,
-		provideLedgerSettings,
+		provideVerifierSettings,
 		provideChainClient,
 		provideScheme,
-		provideLedger,
-		provideCourt,
+		provideDirectory,
+		provideGenerationReaders,
 		provideVerifier,
 	}
 	for _, provider := range providers {

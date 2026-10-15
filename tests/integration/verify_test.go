@@ -218,12 +218,12 @@ func TestTheComposedVerifierAnswersFromAProofFile(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "proof.json")
 	require.NoError(t, os.WriteFile(path, doc.Bytes(), 0o600))
 
+	g := withDirectory(t, a)
 	env := map[string]string{
-		config.RPCURLKey:        a.chain.url,
-		config.ChainIDKey:       strconv.FormatUint(a.identity.ChainID, 10),
-		config.LedgerAddressKey: a.identity.Address.Hex(),
-		config.CourtAddressKey:  notary.Address(a.court).Hex(),
-		config.RPCTimeoutKey:    "10s",
+		config.RPCURLKey:           a.chain.url,
+		config.ChainIDKey:          strconv.FormatUint(a.identity.ChainID, 10),
+		config.DirectoryAddressKey: notary.Address(g.directory).Hex(),
+		config.RPCTimeoutKey:       "10s",
 	}
 	container, err := wiring.Verifier(func(key string) (string, bool) {
 		value, ok := env[key]
@@ -234,7 +234,7 @@ func TestTheComposedVerifierAnswersFromAProofFile(t *testing.T) {
 	var out bytes.Buffer
 
 	code := -1
-	err = container.Invoke(func(client *ethclient.Client, scheme notary.Scheme, v *verifying.Verifier) {
+	err = container.Invoke(func(client *ethclient.Client, scheme notary.Scheme, v *verifying.DirectoryVerifier) {
 		defer client.Close()
 
 		code = verifycli.Run(context.Background(), path, scheme.Version(), v, &out)

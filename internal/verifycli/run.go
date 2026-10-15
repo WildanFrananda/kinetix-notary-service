@@ -91,6 +91,10 @@ func failure(kind notary.Kind) (string, int) {
 		return "wrong_ledger", ExitWrongLedger
 	case notary.KindWrongCourt:
 		return "wrong_court", ExitWrongCourt
+	case notary.KindWrongDirectory:
+		return "wrong_directory", ExitWrongDirectory
+	case notary.KindMoved:
+		return "moved", ExitMoved
 	case notary.KindDisagreement:
 		return "disagreement", ExitDisagreement
 	default:

@@ -12,5 +12,6 @@ type Settings struct {
 	Court       notary.Address
 	Withholding notary.Address
 	Council     notary.Address
+	Directory   notary.DirectoryIdentity
 	Timeout     time.Duration
 }

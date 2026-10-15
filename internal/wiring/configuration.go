@@ -16,16 +16,15 @@ func provideVerifierConfig(p verifierConfigParams) (config.Verifier, error) {
 	return config.LoadVerifier(p.Lookup)
 }
 
-type ledgerSettingsParams struct {
+type verifierSettingsParams struct {
 	dig.In
 	Config config.Verifier
 }
 
-func provideLedgerSettings(p ledgerSettingsParams) ethereum.Settings {
+func provideVerifierSettings(p verifierSettingsParams) ethereum.Settings {
 	return ethereum.Settings{
-		RPCURL:  p.Config.RPCURL,
-		Ledger:  p.Config.Ledger,
-		Court:   p.Config.Court,
-		Timeout: p.Config.RPCTimeout,
+		RPCURL:    p.Config.RPCURL,
+		Directory: p.Config.Directory,
+		Timeout:   p.Config.RPCTimeout,
 	}
 }

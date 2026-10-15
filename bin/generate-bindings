@@ -20,6 +20,9 @@ forge inspect IWithholdingCourt abi --json > "$WORK/IWithholdingCourt.abi"
 forge inspect AnchorCouncil abi --json > "$WORK/AnchorCouncil.abi"
 forge inspect AnchorCouncil bytecode > "$WORK/AnchorCouncil.bin"
 forge inspect IAnchorCouncil abi --json > "$WORK/IAnchorCouncil.abi"
+forge inspect LedgerDirectory abi --json > "$WORK/LedgerDirectory.abi"
+forge inspect LedgerDirectory bytecode > "$WORK/LedgerDirectory.bin"
+forge inspect ILedgerDirectory abi --json > "$WORK/ILedgerDirectory.abi"
 
 rm -rf "$GEN"
 mkdir -p \
@@ -30,7 +33,9 @@ mkdir -p \
   "$GEN/withholding" \
   "$GEN/withholdinginterface" \
   "$GEN/council" \
-  "$GEN/councilinterface"
+  "$GEN/councilinterface" \
+  "$GEN/directory" \
+  "$GEN/directoryinterface"
 abigen --v2 \
   --abi "$WORK/LiabilityLedger.abi" \
   --bin "$WORK/LiabilityLedger.bin" \
@@ -75,5 +80,16 @@ abigen --v2 \
   --pkg councilinterface \
   --type IAnchorCouncil \
   --out "$GEN/councilinterface/ianchor_council.go"
+abigen --v2 \
+  --abi "$WORK/LedgerDirectory.abi" \
+  --bin "$WORK/LedgerDirectory.bin" \
+  --pkg directory \
+  --type LedgerDirectory \
+  --out "$GEN/directory/ledger_directory.go"
+abigen --v2 \
+  --abi "$WORK/ILedgerDirectory.abi" \
+  --pkg directoryinterface \
+  --type ILedgerDirectory \
+  --out "$GEN/directoryinterface/iledger_directory.go"
 
 echo "generated $GEN"

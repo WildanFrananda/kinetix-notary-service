@@ -16,7 +16,7 @@ const (
 )
 
 type Watch struct {
-	Chain          Verifier
+	Chain          Chain
 	Council        notary.Address
 	WatchKey       Secret
 	PaymentAddress string
@@ -29,7 +29,7 @@ type Watch struct {
 func LoadWatch(lookup Lookup) (Watch, error) {
 	var problems []string
 
-	chain, err := LoadVerifier(lookup)
+	chain, err := LoadChain(lookup)
 	if err != nil {
 		problems = append(problems, strings.TrimPrefix(err.Error(), "configuration refused: "))
 	}
@@ -59,7 +59,7 @@ func LoadWatch(lookup Lookup) (Watch, error) {
 		return value
 	}
 
-	cfg.Council = councilAddress(required(CouncilAddressKey), &problems)
+	cfg.Council = address(CouncilAddressKey, required(CouncilAddressKey), &problems)
 
 	if raw := required(WatchKeyKey); raw != "" {
 		cfg.WatchKey = Secret{value: raw}
@@ -88,19 +88,6 @@ func LoadWatch(lookup Lookup) (Watch, error) {
 	}
 
 	return cfg, nil
-}
-
-func councilAddress(raw string, problems *[]string) notary.Address {
-	if raw == "" {
-		return notary.Address{}
-	}
-
-	address, err := notary.ParseAddress(raw)
-	if err != nil || address.IsZero() {
-		*problems = append(*problems, CouncilAddressKey+" must be a non-zero 0x-prefixed 20-byte address")
-	}
-
-	return address
 }
 
 func trustDomains(lookup Lookup) []string {

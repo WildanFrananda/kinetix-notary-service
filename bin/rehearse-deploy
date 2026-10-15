@@ -107,7 +107,28 @@ for file in "$HERE"/deploy/*.env; do
       exit 1
     fi
 
+    KINETIX_NOTARY_LEDGER_ADDRESS="$ledger" \
+      KINETIX_NOTARY_COURT_ADDRESS="$court" \
+      KINETIX_NOTARY_WITHHOLDING_COURT_ADDRESS="$withholding" \
+      forge script script/DeployLedgerDirectory.s.sol:DeployLedgerDirectory \
+      --rpc-url "$RPC" \
+      --unlocked \
+      --sender "$SENDER" \
+      --broadcast \
+      --slow > /dev/null
+    directory="$(expect_create2 DeployLedgerDirectory.s.sol "$KINETIX_NOTARY_CHAIN_ID")"
+    deployed_at "$directory"
+
+    generation="$(cast call "$directory" 'current()((uint64,address,address,address,uint64,bytes32,uint16,uint64))' --rpc-url "$RPC")"
+    case "$generation" in
+      *"$ledger, $court, $withholding,"*) ;;
+      *)
+        echo "the rehearsed directory at $directory does not start from the rehearsed ledger and courts: $generation" >&2
+        exit 1
+        ;;
+    esac
+
     kill "$(cat "$WORK/anvil.pid")"
-    echo "$network (chain $KINETIX_NOTARY_CHAIN_ID): ledger $ledger, court $court, withholding court $withholding and council $council, all through the CREATE2 factory"
+    echo "$network (chain $KINETIX_NOTARY_CHAIN_ID): ledger $ledger, court $court, withholding court $withholding, council $council and directory $directory, all through the CREATE2 factory"
   )
 done

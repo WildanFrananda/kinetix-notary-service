@@ -38,7 +38,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 
 	code := verifycli.ExitUnknown
 
-	err = container.Invoke(func(client *ethclient.Client, scheme notary.Scheme, verifier *verifying.Verifier) {
+	err = container.Invoke(func(client *ethclient.Client, scheme notary.Scheme, verifier *verifying.DirectoryVerifier) {
 		defer client.Close()
 
 		code = verifycli.Run(ctx, args[0], scheme.Version(), verifier, stdout)

@@ -137,6 +137,8 @@ func TestEveryFailureHasItsOwnVerdictAndExitCode(t *testing.T) {
 		{notary.KindLedgerUnavailable, "unknown", verifycli.ExitUnknown},
 		{notary.KindWrongLedger, "wrong_ledger", verifycli.ExitWrongLedger},
 		{notary.KindWrongCourt, "wrong_court", verifycli.ExitWrongCourt},
+		{notary.KindWrongDirectory, "wrong_directory", verifycli.ExitWrongDirectory},
+		{notary.KindMoved, "moved", verifycli.ExitMoved},
 		{notary.KindDisagreement, "disagreement", verifycli.ExitDisagreement},
 		{notary.KindUnknown, "unknown", verifycli.ExitUnknown},
 	}

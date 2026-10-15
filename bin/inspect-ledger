@@ -51,8 +51,18 @@ exec docker compose -f "$HERE/toolchain/compose.yaml" run --rm --no-deps -T \
   expect "scheme" "$(call "scheme()(uint16)")" "1"
   expect "default admin" "$(call "defaultAdmin()(address)")" "$KINETIX_NOTARY_ADMIN_ADDRESS"
   expect "admin delay seconds" "$(call "defaultAdminDelay()(uint48)")" "$KINETIX_NOTARY_ADMIN_TRANSFER_DELAY_SECONDS"
+  holders=",$(printf %s "${KINETIX_NOTARY_ANCHORER_ROLE_HOLDERS:?KINETIX_NOTARY_ANCHORER_ROLE_HOLDERS is empty in deploy/$network.env}" | tr A-F a-f),"
+  listed() {
+    case "$holders" in
+      *",$(printf %s "$1" | tr A-F a-f),"*) echo true ;;
+      *) echo false ;;
+    esac
+  }
   role="$(call "ANCHORER_ROLE()(bytes32)")"
-  expect "anchorer holds role" "$(call "hasRole(bytes32,address)(bool)" "$role" "$KINETIX_NOTARY_ANCHORER_ADDRESS")" "true"
+  expect "anchorer holds role" "$(call "hasRole(bytes32,address)(bool)" "$role" "$KINETIX_NOTARY_ANCHORER_ADDRESS")" "$(listed "$KINETIX_NOTARY_ANCHORER_ADDRESS")"
+  if [ -n "${KINETIX_NOTARY_COUNCIL_ADDRESS:-}" ]; then
+    expect "council holds role" "$(call "hasRole(bytes32,address)(bool)" "$role" "$KINETIX_NOTARY_COUNCIL_ADDRESS")" "$(listed "$KINETIX_NOTARY_COUNCIL_ADDRESS")"
+  fi
   expect "genesis epoch" "$(call "genesisEpoch()(uint64)")" "$KINETIX_NOTARY_GENESIS_EPOCH"
   expect "genesis digest" "$(call "genesisDigest()(bytes32)")" "$KINETIX_NOTARY_GENESIS_DIGEST"
   show "next epoch" "$(call "nextEpoch()(uint64)")"

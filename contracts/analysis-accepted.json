@@ -3,6 +3,7 @@
     { "detector": "centralization-risk", "path": "src/LiabilityLedger.sol" },
     { "detector": "unchecked-return", "path": "src/LiabilityLedger.sol" },
     { "detector": "centralization-risk", "path": "src/court/StatementCourt.sol" },
-    { "detector": "centralization-risk", "path": "src/council/AnchorCouncil.sol" }
+    { "detector": "centralization-risk", "path": "src/council/AnchorCouncil.sol" },
+    { "detector": "centralization-risk", "path": "src/directory/LedgerDirectory.sol" }
   ]
 }
