@@ -176,7 +176,8 @@ Package names say what a package provides (`keccak.NewScheme`, `ethereum.NewLedg
   `internal/notary`; `internal/verifying` reaching anything but `internal/notary`; dig imported
   outside `cmd/` and `internal/wiring`; go-ethereum imported outside `internal/ethereum`,
   `internal/contractgen` and `cmd/`. Controlled both ways on 2026-10-11: four planted violations, four
-  reports, exit 1; removed, clean.
+  reports, exit 1; removed, clean. That control ran on the laptop; on GitHub the import rules checked
+  nothing until 2026-10-16 (Traps: "On GitHub the checkout is not the toolchain's").
 - **`bin/ci`** is the single gate, `bin/ci-contracts` and then `bin/ci-go`: `forge fmt --check`,
   `forge build` (forge-lint with `deny = "warnings"`), `forge test` on the CI profile,
   `forge snapshot --check`, the fork suite, `bin/rehearse-deploy` (both deploy scripts on a throwaway
@@ -490,6 +491,17 @@ A failure must never be reported as a definite answer. In this service that mean
   builds both binaries, runs them on the same documents and settings on anvil, and requires the same exit code,
   stdout and stderr for every verdict. A planted rewrite of the document inside the WebAssembly turned it red on
   2026-10-16. Two builds with separate caches gave the same SHA-256.
+- **On GitHub the checkout is not the toolchain's.** The runner owns `/workspace` (uid 1001) and the toolchain runs
+  as root, so git refuses the repository (`dubious ownership`, exit 128), and anything that stamps VCS on a main
+  package fails: `go build` and `go list` both exit 1. Docker Desktop maps ownership, so the laptop never sees it.
+  `go list` then prints nothing at all, internal packages included, and `bin/check-boundaries` piped it into
+  `awk`, so on GitHub the dig, go-ethereum, gRPC and Postgres rules checked an empty list and printed
+  `boundaries hold` from the day CI started. A planted dig import in `internal/ethereum` passed the old script in
+  a copy owned by uid 1001 on 2026-10-16. Every listing is now captured before it is filtered, so a failed
+  `go list` stops the script, and the one listing that includes `cmd/` passes `-buildvcs=false`; the planted
+  import fails the new script, and the new script without that flag exits 1. The browser verifier test builds
+  `notary-verify` with `-buildvcs=false` for the same reason: it was the first `go build` in the suite, and it went
+  red on its first CI run.
 
 ## Not built yet
 

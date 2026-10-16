@@ -44,9 +44,10 @@ func buildVerifiers(t *testing.T) verifiers {
 
 	root := strings.TrimSpace(commandOutput(t, "", "go", "list", "-m", "-f", "{{.Dir}}"))
 	out := t.TempDir()
+	native := filepath.Join(out, "notary-verify")
 
 	commandOutput(t, root, "sh", "bin/build-verifier-wasm", "integration", out)
-	commandOutput(t, root, "go", "build", "-o", filepath.Join(out, "notary-verify"), "./cmd/notary-verify")
+	commandOutput(t, root, "go", "build", "-buildvcs=false", "-o", native, "./cmd/notary-verify")
 
 	sums, err := os.ReadFile(filepath.Join(out, "SHA256SUMS"))
 	require.NoError(t, err)
@@ -54,7 +55,7 @@ func buildVerifiers(t *testing.T) verifiers {
 	require.Contains(t, string(sums), "wasm_exec.js")
 
 	return verifiers{
-		native:   filepath.Join(out, "notary-verify"),
+		native:   native,
 		module:   filepath.Join(out, "notary-verify.wasm"),
 		wasmExec: filepath.Join(out, "wasm_exec.js"),
 		harness:  filepath.Join(root, "tests", "integration", "testdata", "verify-wasm.mjs"),
