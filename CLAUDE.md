@@ -31,10 +31,10 @@ bin/dev go test ./tests/fixtures -update        # regenerate the differential fi
 bin/dev down                                    # stop the chain
 ```
 
-The image built from `Dockerfile` carries four binaries and runs `notaryd` by default:
+The image built from `Dockerfile` carries five binaries and runs `notaryd` by default:
 `notary-migrate` is the one-shot migrator, `notary-watch` is the council's second member (PLAN.md step 8),
-and an account holder verifies with `docker run <image> notary-verify proof.json` (the image used to
-start `notary-verify` itself).
+an account holder verifies with `docker run <image> notary-verify proof.json` (the image used to
+start `notary-verify` itself), and sends a sponsored call with `notary-sponsor` (PLAN.md step 10).
 `bin/generate` runs every generator — abigen, protoc through `bin/sync-contracts` (contracts pinned to a
 tag and its commit), sqlc — and nothing it writes is ever committed.
 
@@ -61,6 +61,10 @@ bin/retire-anchorer base-sepolia <council anchor tx> [--broadcast]   # then revo
 bin/deploy-directory base-sepolia [--broadcast] # the ledger directory, generation 0 = the ledger and its courts
 bin/inspect-directory base-sepolia              # its facts, and that its current generation is deploy/<network>.env's
 bin/register-successor base-sepolia <ledger> <court> <withholding> [--broadcast]   # admin; after a seal
+bin/deploy-paymaster base-sepolia [--broadcast] # the paymaster; refuses unless the EntryPoint and account carry the pinned code hashes
+bin/stake-paymaster base-sepolia                # the admin's addStake up to the file's stake; refuses another key or an unlocking stake
+bin/fund-paymaster base-sepolia 0.1             # the deployer's EntryPoint.depositTo(paymaster); waits for latest to show it
+bin/inspect-paymaster base-sepolia              # its facts, the courts' current signer, the stake, the deposit in operations at the ceiling
 ```
 
 `notary-verify` reads `KINETIX_NOTARY_RPC_URL`, `KINETIX_NOTARY_CHAIN_ID`, `KINETIX_NOTARY_DIRECTORY_ADDRESS`
@@ -88,6 +92,25 @@ start (`wrong_directory`) unless the directory's current generation is its own l
 court on its chain: the proofs it serves are verified through that directory. It refuses to start unless the council anchors its ledger, holds the
 anchorer role there, counts the anchorer key as a member, needs no more than the two approvals notaryd
 gathers, and hashes an approval as Go does.
+
+From step 10 notaryd also needs `KINETIX_NOTARY_PAYMASTER_ADDRESS`, and refuses to start (`not_sponsored`)
+unless that paymaster sponsors its own court and withholding court on its chain and accepts statements from
+the court's current signer. It then reads the deposit every tick into `kinetix_notary_paymaster_deposit_wei`,
+the locked stake into `kinetix_notary_paymaster_stake_wei` (0 from the moment the admin unlocks it), and sets
+`kinetix_notary_paymaster_current` to 0 the moment the signer moves on without a new paymaster. A missing
+stake does not stop notaryd: its own work needs no paymaster, so the stake is an alert, not a refusal.
+
+`notary-sponsor` reads the verifier's four variables, `KINETIX_NOTARY_PAYMASTER_ADDRESS`,
+`KINETIX_NOTARY_BUNDLER_URL`, `KINETIX_NOTARY_HOLDER_KEYSTORE`, `KINETIX_NOTARY_HOLDER_PASSWORD_FILE` and,
+optionally, `KINETIX_NOTARY_RECEIPT_WAIT` (default 3m, at most 30m). It signs as the holder, delegates the
+holder's EOA to the pinned `Simple7702Account` on its first operation, and never sends a call the paymaster
+would refuse: a registration for another withholding court, an epoch held by another generation, or a proof
+whose statement is not attributable to the court's signer is `not_sponsored` (exit 2) before anything is
+signed. Before it signs it also asks the paymaster's `sponsorship` view, the same checks the paymaster runs
+in validation: a call the court would refuse is `call_refused`, one that is not due yet (an unanswered record
+before the answer is overdue) is `not_due`, both exit 3, and neither is sent. A landed operation whose call
+reverted is `reverted` (exit 1), and the paymaster paid for it; since decision 26 was revised that takes a
+race, such as someone proving the same fault between the bundler's check and the bundle.
 
 `notary-watch` reads the verifier's five variables, `KINETIX_NOTARY_COUNCIL_ADDRESS`,
 `KINETIX_NOTARY_WATCH_PRIVATE_KEY`, `KINETIX_NOTARY_PAYMENT_GRPC_ADDR`, `KINETIX_PKI_DIR`,
@@ -126,7 +149,9 @@ as `verify-contracts` and `verify-go`.
 | `internal/ethereum` | the above + go-ethereum + `internal/contractgen` — the only adapter that touches a chain |
 | `internal/payment`, `internal/mesh` | `internal/notary` + gRPC + `internal/protogen` — the only adapters that speak gRPC |
 | `internal/postgres` | `internal/notary` + pgx + goose + `internal/storegen` — the only adapter that touches Postgres |
-| `internal/anchoring`, `internal/proving`, `internal/registering`, `internal/answering`, `internal/approving` | `internal/notary` only, like `internal/verifying` |
+| `internal/anchoring`, `internal/proving`, `internal/registering`, `internal/answering`, `internal/approving`, `internal/sponsoring` | `internal/notary` only, like `internal/verifying` |
+| `internal/bundler` | `internal/notary` + the standard library: the ERC-4337 bundler's JSON-RPC, nothing from go-ethereum |
+| `internal/sponsorcli` | `internal/notary` + `prooffile`; turns a kind into a verdict and an exit code, like `verifycli` |
 | `internal/epochwatch` | `internal/notary` + gRPC + `internal/protogen` + `internal/mesh` — the watch's server and notaryd's client |
 | `internal/wiring` | everything; the composition root, and the only package outside `cmd/` allowed to import dig |
 | `cmd/…` | everything |
@@ -160,7 +185,10 @@ Package names say what a package provides (`keccak.NewScheme`, `ethereum.NewLedg
   external calls are `view` reads of the immutable ledger, compiled to STATICCALL, which cannot re-enter;
   Slither, which tells a STATICCALL apart, reports nothing there); for `AnchorCouncil`, Aderyn
   `centralization-risk` (the admin schedules memberships, behind a 7-day delay, by design); for
-  `LedgerDirectory`, Aderyn `centralization-risk` (only the admin registers a successor, decision 23). An accepted
+  `LedgerDirectory`, Aderyn `centralization-risk` (only the admin registers a successor, decision 23); for
+  `NotaryPaymaster`, Aderyn `centralization-risk` (only the admin withdraws the deposit, the kill switch of
+  decision 26, and only the admin adds to, unlocks or withdraws the stake, because the EntryPoint relocks a
+  stake whenever it grows and anyone else could cancel an unlocking). An accepted
   entry that stops being reported also fails, so the list cannot rot. forge-lint's `reentrancy-events` is off in `foundry.toml`
   for the same reason and with the same backstop: it flags any event after any external call.
 - **Two lint settings are decisions, not silencings.** `wrapcheck` ignores `.RecvMsg(`: the gRPC
@@ -207,7 +235,8 @@ Package names say what a package provides (`keccak.NewScheme`, `ethereum.NewLedg
   wrapping until a successor ledger is written.
 - **Go tests live in `tests/`**, never beside the code; use `bin/test`, because plain
   `go test -cover` reports 0% for every package under `internal/`. Foundry tests live in
-  `contracts/test/`, Foundry's own convention.
+  `contracts/test/`, Foundry's own convention, except the two suites that need their own profile:
+  `contracts/fork/` (a network) and `contracts/rules/` (a tracer).
 - **Hand-written fakes** (`tests/notarytest`), no mocking framework.
 - **Errors carry a `notary.Kind`**, read back with `notary.KindOf`. Only the edge (`verifycli`) turns a
   kind into a verdict and an exit code.
@@ -319,6 +348,12 @@ A failure must never be reported as a definite answer. In this service that mean
 - **The fork test has its own profile** (`[profile.fork]`, `test = "fork"`), so a plain `forge test`
   stays offline; `bin/ci-contracts` runs it with the public RPC and the pinned block from
   `deploy/base-sepolia.env`.
+- **The ERC-7562 test has its own profile too** (`[profile.rules]`, `test = "rules"`, `verbosity = 3`, its
+  own `out/rules` and `cache/rules`). `vm.startDebugTraceRecording` needs a tracer, which forge starts only
+  at `-vvv`; the profile carries the verbosity so `FOUNDRY_PROFILE=rules forge test` is all `bin/ci-contracts`
+  needs. It records every opcode the paymaster's validation runs for each of the four calls and fails on
+  any ERC-7562 bans, and on any storage read of the paymaster or the sender. Controlled on 2026-10-16: a
+  planted `block.timestamp` and a planted role read each turned it red.
 - **`bin/analyze` never accepts a high finding**, only low ones. Aderyn's `reentrancy-state-change` on
   the court was answered by moving the ledger reads into private views, not by an entry.
 - **gosec G115** flags every narrowing integer conversion; `UnixTime` is a sealed type whose
@@ -390,6 +425,48 @@ A failure must never be reported as a definite answer. In this service that mean
   reads the old state. The first `bin/hand-over-anchoring` checked once and reported a successful grant
   as failed on 2026-10-14; both admin scripts now wait up to 60 s for `latest` to show the change.
 
+- **`type(I).interfaceId` leaves out what `I` inherits; the ABI does not.** `INotaryPaymaster is IPaymaster`,
+  so its ABI carries `validatePaymasterUserOp` and `postOp`, and XORing every method in it gave an id the
+  contract does not announce: the adapter called the deployed paymaster "not a notary paymaster". Every unit
+  test passed, because the fake has no interface; the integration test against the deployed contract caught
+  it. The adapter XORs out the methods of the generated `IPaymaster` binding.
+- **A JSON-RPC quantity has no leading zero.** The bundler client sent the authorization's `yParity` as
+  `0x01`; Pimlico's Alto parses anything hex and would have taken it, a geth-strict parser refuses it. The
+  local test bundler decodes with geth's `hexutil` and refused the first sponsored request. `yParity`, `r` and
+  `s` are now quantities (`0x1`), as the execution API specifies.
+- **gosec G101 reads `pass` in a constant's name as a credential.** The constant for
+  `KINETIX_NOTARY_HOLDER_PASSWORD_FILE` is `HolderUnlockFileKey`; the variable keeps its name.
+- **A dependency's compiler warnings fail `deny = "warnings"`.** account-abstraction v0.8.0 warns in its own
+  files; `ignored_warnings_from = ["dependencies/account-abstraction-0.8.0"]` excludes that path and nothing else.
+- **Aderyn's high `contract-locks-ether` fires on any `payable` with no way out.** The paymaster's payable
+  `deposit` was removed; funding goes straight to `EntryPoint.depositTo`, and `withdrawTo` takes it back.
+  The stake cannot go that way, because the EntryPoint stakes its caller, so `addStake` is payable. Aderyn
+  counts neither `entryPoint.addStake{value: …}` nor OpenZeppelin's `Address.sendValue` as a way out, only
+  a native `call`, `send` or `transfer` in the contract itself; Slither calls such a send in an `onlyRole`
+  function `arbitrary-send-eth`, because it does not read OpenZeppelin's role check, and a `call`
+  `low-level-calls`. `withdrawBalance` checks `defaultAdmin()` inline and pays it with a checked `send`,
+  clean in both, and it is also the only way out for ether forced in by a `selfdestruct`. Probed
+  2026-10-16 on copies, eight shapes: only that one passed both.
+
+- **`cast codehash` asks `eth_getProof`, and an anvil fork answers it for an account it has not loaded yet
+  with the empty account's hash** (`0xc5d2…a470`). The first `bin/inspect-paymaster` on a fork reported the
+  canonical EntryPoint `WRONG` until a transaction had touched it. The scripts hash `cast code` instead,
+  which every endpoint answers.
+- **A fork rehearsal writes `contracts/broadcast/<script>/84532/` exactly as a real deploy does**, and only
+  `31337/` and `dry-run/` are ignored. Delete it after a rehearsal, or it records a deploy that never
+  happened on the real chain.
+- **forge's incremental build can keep a test's embedded creation code stale.** A test that deploys with
+  `new NotaryPaymaster(...)` carries the paymaster's creation code. After an edit to the paymaster alone,
+  forge recompiled two files and the tests still ran the old bytecode: a planted `block.timestamp` passed
+  the opcode test until `--force`. A positive control, and any build whose bytecode decides an address,
+  runs from `forge build --force`.
+- **EntryPoint v0.8 takes an operation while `validAfter < now <= validUntil`.** v0.7 accepted `now ==
+  validAfter`; v0.8 does not. The court records a silence only when `blockTime > dueAt`, so the paymaster's
+  `validAfter` is `dueAt` itself, and a request's `validUntil` is the court's `closesAt`, which it still takes
+  at that very second. The rules tests warp to each edge.
+- **abigen v2's `UnpackError` reads `raw[:4]` without a length check.** `revertData` returns revert data only
+  when it has a selector, and the paymaster adapter decodes nothing else.
+
 ## Not built yet
 
 Steps 1–5 are done: contracts v1.0.23, payment v0.1.11, notaryd v0.2.0 anchoring on Base Sepolia, and
@@ -402,7 +479,10 @@ refuses; v1.0.1 fixed it the same day and is proven in production (PLAN.md 7-7).
 anchoring, decisions 18–21) is being built: the council, payment's snapshot record, `notary-watch` and
 notaryd's council mode are live on contracts v1.2.0 and notary v1.1.0: since 2026-10-15 the council
 `0xf6c3…791b` is the ledger's only anchorer, and the anchorer key alone anchors nothing (PLAN.md 8-7). Step 9
-(the ledger directory, decisions 22–25) is built and green (PLAN.md 9-1, 9-2); its deploy on Base Sepolia and
-the release are 9-3. 6b
-(delivery through notification) and steps 9–14 do not exist yet. Contract deploys stay manual, never in
+(the ledger directory, decisions 22–25) is live: the directory `0x6C71…4ac8` and notary v1.2.0, released on
+2026-10-15. Step 10 (the paymaster, decisions 26–30) is built and green in both halves. Decision 26 was
+revised on 2026-10-16: the paymaster is staked and refuses what the court would refuse. `notary-sponsor` and
+the deploy, stake and fund scripts are rehearsed on a fork; it waits on the user's bridge and deploy
+(PLAN.md 10-3). 6b
+(delivery through notification) and steps 11–14 do not exist yet. Contract deploys stay manual, never in
 CI.

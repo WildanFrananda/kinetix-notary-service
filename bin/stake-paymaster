@@ -1,0 +1,120 @@
+#!/usr/bin/env sh
+set -eu
+
+HERE="$(cd "$(dirname "$0")/.." && pwd)"
+NETWORK="${1:-}"
+
+if [ -z "$NETWORK" ] || [ ! -f "$HERE/deploy/$NETWORK.env" ]; then
+  echo "usage: bin/stake-paymaster <network>   (stakes KINETIX_NOTARY_PAYMASTER_STAKE_WEI from deploy/<network>.env)" >&2
+  exit 64
+fi
+: "${KINETIX_NOTARY_RPC_URL:?set KINETIX_NOTARY_RPC_URL to the network RPC endpoint}"
+KEYSTORES="$(sh "$HERE/bin/keystore-dir")"
+if [ ! -f "$KEYSTORES/notary-admin" ]; then
+  echo "no notary-admin keystore in $KEYSTORES: only the paymaster's admin may stake it" >&2
+  exit 1
+fi
+
+set -- run --rm --no-deps -e KINETIX_NOTARY_RPC_URL -v "$KEYSTORES:/keystores:ro"
+PASSWORD_ARG=""
+if [ -n "${KINETIX_NOTARY_KEYSTORE_PASSWORD_FILE:-}" ]; then
+  set -- "$@" -v "$KINETIX_NOTARY_KEYSTORE_PASSWORD_FILE:/run/keystore-password:ro"
+  PASSWORD_ARG=--password-file
+fi
+
+docker compose -f "$HERE/toolchain/compose.yaml" build --quiet toolchain >&2
+exec docker compose -f "$HERE/toolchain/compose.yaml" "$@" toolchain sh -c '
+  set -eu
+  network="$1"
+  password_arg="$2"
+  set -a
+  . "./deploy/$network.env"
+  set +a
+  for key in KINETIX_NOTARY_CHAIN_ID KINETIX_NOTARY_PAYMASTER_ADDRESS KINETIX_NOTARY_ENTRY_POINT_ADDRESS \
+    KINETIX_NOTARY_PAYMASTER_ADMIN_ADDRESS KINETIX_NOTARY_PAYMASTER_STAKE_WEI \
+    KINETIX_NOTARY_PAYMASTER_UNSTAKE_DELAY_SECONDS; do
+    eval "value=\${$key:-}"
+    if [ -z "$value" ]; then
+      echo "$key is empty in deploy/$network.env" >&2
+      exit 78
+    fi
+  done
+  rpc="$KINETIX_NOTARY_RPC_URL"
+  paymaster="$KINETIX_NOTARY_PAYMASTER_ADDRESS"
+  entry_point="$KINETIX_NOTARY_ENTRY_POINT_ADDRESS"
+  bare() {
+    sed "s/ \[.*\]\$//"
+  }
+  int_at_least() {
+    python3 -c "import sys; sys.exit(0 if int(sys.argv[1]) >= int(sys.argv[2]) else 1)" "$1" "$2"
+  }
+  info() {
+    cast call "$entry_point" "getDepositInfo(address)(uint256,bool,uint112,uint32,uint48)" "$paymaster" \
+      --rpc-url "$rpc" | sed -n "$1p" | bare
+  }
+  served="$(cast chain-id --rpc-url "$rpc")"
+  if [ "$served" != "$KINETIX_NOTARY_CHAIN_ID" ]; then
+    echo "the RPC endpoint serves chain $served, deploy/$network.env is for chain $KINETIX_NOTARY_CHAIN_ID" >&2
+    exit 1
+  fi
+  if [ "$(cast code "$paymaster" --rpc-url "$rpc")" = "0x" ]; then
+    echo "there is no paymaster at $paymaster: run bin/deploy-paymaster $network --broadcast first" >&2
+    exit 1
+  fi
+  pays_through="$(cast call "$paymaster" "entryPoint()(address)" --rpc-url "$rpc")"
+  if [ "$pays_through" != "$(cast to-check-sum-address "$entry_point")" ]; then
+    echo "the paymaster at $paymaster pays through $pays_through, deploy/$network.env pins $entry_point" >&2
+    exit 1
+  fi
+  delay="$(cast call "$paymaster" "unstakeDelay()(uint32)" --rpc-url "$rpc" | bare)"
+  if [ "$delay" != "$KINETIX_NOTARY_PAYMASTER_UNSTAKE_DELAY_SECONDS" ]; then
+    echo "the paymaster locks its stake for $delay s, deploy/$network.env pins $KINETIX_NOTARY_PAYMASTER_UNSTAKE_DELAY_SECONDS" >&2
+    exit 1
+  fi
+  admin="$(cast wallet address --keystore /keystores/notary-admin ${password_arg:+--password-file /run/keystore-password})"
+  holds_role="$(cast call "$paymaster" "defaultAdmin()(address)" --rpc-url "$rpc")"
+  if [ "$admin" != "$holds_role" ] || [ "$admin" != "$(cast to-check-sum-address "$KINETIX_NOTARY_PAYMASTER_ADMIN_ADDRESS")" ]; then
+    echo "the notary-admin keystore is $admin; the paymaster answers to $holds_role and the file names $KINETIX_NOTARY_PAYMASTER_ADMIN_ADDRESS" >&2
+    exit 1
+  fi
+  if [ "$(info 5)" != "0" ]; then
+    echo "the stake is unlocking until $(info 5); adding to it now would lock it again. Withdraw it first, or wait." >&2
+    exit 1
+  fi
+  before="$(info 3)"
+  target="$KINETIX_NOTARY_PAYMASTER_STAKE_WEI"
+  if int_at_least "$before" "$target" && [ "$(info 2)" = "true" ]; then
+    echo "already staked: $(cast from-wei "$before") ETH, at least the $(cast from-wei "$target") ETH deploy/$network.env asks for"
+    exit 0
+  fi
+  wei="$(python3 -c "import sys; print(max(int(sys.argv[2]) - int(sys.argv[1]), 0))" "$before" "$target")"
+  balance="$(cast balance "$admin" --rpc-url "$rpc")"
+  reserve="$(cast to-wei 0.0005 ether)"
+  if ! python3 -c "import sys; sys.exit(0 if int(sys.argv[1]) >= int(sys.argv[2]) + int(sys.argv[3]) else 1)" \
+    "$balance" "$wei" "$reserve"; then
+    echo "the admin holds $(cast from-wei "$balance") ETH; staking $(cast from-wei "$wei") would leave less than 0.0005 for its own gas" >&2
+    exit 1
+  fi
+  echo "from      $admin ($(cast from-wei "$balance") ETH)"
+  echo "to        the stake of $paymaster in the EntryPoint $entry_point ($(cast from-wei "$before") ETH)"
+  echo "amount    $(cast from-wei "$wei") ETH on chain $KINETIX_NOTARY_CHAIN_ID, locked for $delay s once unlocked"
+  set -- "$paymaster" "addStake()" --value "$wei" --rpc-url "$rpc" --keystore /keystores/notary-admin
+  if [ -n "$password_arg" ]; then
+    set -- "$@" --password-file /run/keystore-password
+  fi
+  cast send "$@" > /dev/null
+  waited=0
+  while :; do
+    now="$(info 3)"
+    if int_at_least "$now" "$target" && [ "$(info 2)" = "true" ]; then
+      echo "staked; the paymaster now holds $(cast from-wei "$now") ETH of stake at the EntryPoint"
+      exit 0
+    fi
+    if [ "$waited" -ge 60 ]; then
+      echo "sent, but after 60 s latest still shows a stake of $(cast from-wei "$now") ETH; run bin/inspect-paymaster $network" >&2
+      exit 1
+    fi
+    sleep 5
+    waited=$((waited + 5))
+  done
+' sh "$NETWORK" "$PASSWORD_ARG"

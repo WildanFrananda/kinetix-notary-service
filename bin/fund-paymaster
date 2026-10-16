@@ -1,0 +1,99 @@
+#!/usr/bin/env sh
+set -eu
+
+HERE="$(cd "$(dirname "$0")/.." && pwd)"
+NETWORK="${1:-}"
+AMOUNT="${2:-}"
+
+if [ -z "$NETWORK" ] || [ ! -f "$HERE/deploy/$NETWORK.env" ]; then
+  echo "usage: bin/fund-paymaster <network> <ether>   (reads deploy/<network>.env)" >&2
+  exit 64
+fi
+case "$AMOUNT" in
+  "" | *[!0-9.]* | *.*.* | .* | *.)
+    echo "usage: bin/fund-paymaster <network> <ether>   (a decimal amount such as 0.002)" >&2
+    exit 64
+    ;;
+esac
+: "${KINETIX_NOTARY_RPC_URL:?set KINETIX_NOTARY_RPC_URL to the network RPC endpoint}"
+KEYSTORES="$(sh "$HERE/bin/keystore-dir")"
+if [ ! -f "$KEYSTORES/notary-deployer" ]; then
+  echo "no notary-deployer keystore in $KEYSTORES" >&2
+  exit 1
+fi
+
+set -- run --rm --no-deps -e KINETIX_NOTARY_RPC_URL -v "$KEYSTORES:/keystores:ro"
+PASSWORD_ARG=""
+if [ -n "${KINETIX_NOTARY_KEYSTORE_PASSWORD_FILE:-}" ]; then
+  set -- "$@" -v "$KINETIX_NOTARY_KEYSTORE_PASSWORD_FILE:/run/keystore-password:ro"
+  PASSWORD_ARG=--password-file
+fi
+
+docker compose -f "$HERE/toolchain/compose.yaml" build --quiet toolchain >&2
+exec docker compose -f "$HERE/toolchain/compose.yaml" "$@" toolchain sh -c '
+  set -eu
+  network="$1"
+  amount="$2"
+  password_arg="$3"
+  set -a
+  . "./deploy/$network.env"
+  set +a
+  for key in KINETIX_NOTARY_CHAIN_ID KINETIX_NOTARY_PAYMASTER_ADDRESS KINETIX_NOTARY_ENTRY_POINT_ADDRESS; do
+    eval "value=\${$key:-}"
+    if [ -z "$value" ]; then
+      echo "$key is empty in deploy/$network.env" >&2
+      exit 78
+    fi
+  done
+  rpc="$KINETIX_NOTARY_RPC_URL"
+  paymaster="$KINETIX_NOTARY_PAYMASTER_ADDRESS"
+  entry_point="$KINETIX_NOTARY_ENTRY_POINT_ADDRESS"
+  served="$(cast chain-id --rpc-url "$rpc")"
+  if [ "$served" != "$KINETIX_NOTARY_CHAIN_ID" ]; then
+    echo "the RPC endpoint serves chain $served, deploy/$network.env is for chain $KINETIX_NOTARY_CHAIN_ID" >&2
+    exit 1
+  fi
+  if [ "$(cast code "$paymaster" --rpc-url "$rpc")" = "0x" ]; then
+    echo "there is no paymaster at $paymaster: run bin/deploy-paymaster $network --broadcast first" >&2
+    exit 1
+  fi
+  pays_through="$(cast call "$paymaster" "entryPoint()(address)" --rpc-url "$rpc")"
+  if [ "$pays_through" != "$(cast to-check-sum-address "$entry_point")" ]; then
+    echo "the paymaster at $paymaster pays through $pays_through, deploy/$network.env pins $entry_point" >&2
+    exit 1
+  fi
+  deployer="$(cast wallet address --keystore /keystores/notary-deployer ${password_arg:+--password-file /run/keystore-password})"
+  wei="$(cast to-wei "$amount" ether)"
+  balance="$(cast balance "$deployer" --rpc-url "$rpc")"
+  reserve="$(cast to-wei 0.0005 ether)"
+  if ! python3 -c "import sys; sys.exit(0 if int(sys.argv[1]) >= int(sys.argv[2]) + int(sys.argv[3]) else 1)" \
+    "$balance" "$wei" "$reserve"; then
+    echo "the deployer holds $(cast from-wei "$balance") ETH; depositing $amount would leave less than 0.0005 for its own gas" >&2
+    exit 1
+  fi
+  before="$(cast call "$entry_point" "balanceOf(address)(uint256)" "$paymaster" --rpc-url "$rpc" | sed "s/ \[.*\]\$//")"
+  echo "from      $deployer ($(cast from-wei "$balance") ETH)"
+  echo "to        the deposit of $paymaster in the EntryPoint $entry_point ($(cast from-wei "$before") ETH)"
+  echo "amount    $amount ETH on chain $KINETIX_NOTARY_CHAIN_ID"
+  set -- "$entry_point" "depositTo(address)" "$paymaster" --value "$wei" --rpc-url "$rpc" \
+    --keystore /keystores/notary-deployer
+  if [ -n "$password_arg" ]; then
+    set -- "$@" --password-file /run/keystore-password
+  fi
+  cast send "$@" > /dev/null
+  expected="$(python3 -c "import sys; print(int(sys.argv[1]) + int(sys.argv[2]))" "$before" "$wei")"
+  waited=0
+  while :; do
+    now="$(cast call "$entry_point" "balanceOf(address)(uint256)" "$paymaster" --rpc-url "$rpc" | sed "s/ \[.*\]\$//")"
+    if python3 -c "import sys; sys.exit(0 if int(sys.argv[1]) >= int(sys.argv[2]) else 1)" "$now" "$expected"; then
+      echo "deposited; the paymaster now holds $(cast from-wei "$now") ETH at the EntryPoint"
+      exit 0
+    fi
+    if [ "$waited" -ge 60 ]; then
+      echo "sent, but after 60 s latest still shows a deposit of $(cast from-wei "$now") ETH; run bin/inspect-paymaster $network" >&2
+      exit 1
+    fi
+    sleep 5
+    waited=$((waited + 5))
+  done
+' sh "$NETWORK" "$AMOUNT" "$PASSWORD_ARG"

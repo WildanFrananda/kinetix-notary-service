@@ -128,7 +128,39 @@ for file in "$HERE"/deploy/*.env; do
         ;;
     esac
 
+    for pinned in "$KINETIX_NOTARY_ENTRY_POINT_ADDRESS:EntryPoint" "$KINETIX_NOTARY_7702_ACCOUNT_ADDRESS:Simple7702Account"; do
+      cast rpc anvil_setCode "${pinned%%:*}" "$(forge inspect "${pinned#*:}" deployedBytecode)" --rpc-url "$RPC" > /dev/null
+    done
+
+    KINETIX_NOTARY_COURT_ADDRESS="$court" \
+      KINETIX_NOTARY_WITHHOLDING_COURT_ADDRESS="$withholding" \
+      forge script script/DeployNotaryPaymaster.s.sol:DeployNotaryPaymaster \
+      --rpc-url "$RPC" \
+      --unlocked \
+      --sender "$SENDER" \
+      --broadcast \
+      --slow > /dev/null
+    paymaster="$(expect_create2 DeployNotaryPaymaster.s.sol "$KINETIX_NOTARY_CHAIN_ID")"
+    deployed_at "$paymaster"
+
+    if [ "$(cast call "$paymaster" 'withholding()(address)' --rpc-url "$RPC")" != "$withholding" ]; then
+      echo "the rehearsed paymaster at $paymaster does not sponsor the rehearsed withholding court $withholding" >&2
+      exit 1
+    fi
+
+    admin="$KINETIX_NOTARY_PAYMASTER_ADMIN_ADDRESS"
+    cast rpc anvil_setBalance "$admin" "$(cast to-hex "$(python3 -c "import sys; print(int(sys.argv[1]) * 2)" "$KINETIX_NOTARY_PAYMASTER_STAKE_WEI")")" \
+      --rpc-url "$RPC" > /dev/null
+    cast send "$paymaster" 'addStake()' --value "$KINETIX_NOTARY_PAYMASTER_STAKE_WEI" --from "$admin" --unlocked \
+      --rpc-url "$RPC" > /dev/null
+    stake="$(cast call "$KINETIX_NOTARY_ENTRY_POINT_ADDRESS" 'getDepositInfo(address)(uint256,bool,uint112,uint32,uint48)' \
+      "$paymaster" --rpc-url "$RPC" | sed 's/ \[.*\]$//' | sed -n 2,4p | paste -sd' ' -)"
+    if [ "$stake" != "true $KINETIX_NOTARY_PAYMASTER_STAKE_WEI $KINETIX_NOTARY_PAYMASTER_UNSTAKE_DELAY_SECONDS" ]; then
+      echo "the admin staked the rehearsed paymaster and the EntryPoint shows (staked, stake, delay) $stake" >&2
+      exit 1
+    fi
+
     kill "$(cat "$WORK/anvil.pid")"
-    echo "$network (chain $KINETIX_NOTARY_CHAIN_ID): ledger $ledger, court $court, withholding court $withholding, council $council and directory $directory, all through the CREATE2 factory"
+    echo "$network (chain $KINETIX_NOTARY_CHAIN_ID): ledger $ledger, court $court, withholding court $withholding, council $council, directory $directory and paymaster $paymaster, all through the CREATE2 factory; the paymaster staked by its admin"
   )
 done

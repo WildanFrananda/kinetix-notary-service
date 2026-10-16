@@ -27,6 +27,7 @@ func Daemon(lookup config.Lookup, build metrics.Build, log *slog.Logger) (*dig.C
 		provideCourt,
 		provideDirectory,
 		provideDirectoryCheck,
+		provideSponsorshipWatcher,
 		provideStatementSigner,
 		provideAnchorChain,
 		provideCouncil,

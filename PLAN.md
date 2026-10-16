@@ -57,6 +57,11 @@ timestamped record that no single party controls.
 | 23 | Who registers a successor, and when it counts (2026-10-15) | **The admin only.** A successor on the same chain counts at once, because the directory checks it on chain: the current ledger is sealed, and the successor starts exactly at its sealed head and next epoch. A successor on another chain is proposed with what cannot be checked here (its chain id, addresses and scheme), takes its genesis from the sealed predecessor, and counts after **7 days**; the admin may cancel it until then, and anyone may activate it after. Once a generation lives on another chain, this directory takes no more: the next is registered in a directory on that chain. |
 | 24 | How the off-chain side uses it (2026-10-15) | `notary-verify` is configured with **the directory alone**, beside the RPC URL, chain id and timeout. It resolves the generation that holds the claim's epoch and verifies against that ledger and court; its ledger and court variables go. An epoch whose generation lives on another chain gets a verdict of its own, never "not found". notaryd keeps its explicit addresses and refuses to start unless the directory's current generation is its ledger and courts. |
 | 25 | Deploying it (2026-10-15) | Like every contract beside the ledger: the ledger's admin key, a 3-day admin transfer delay, the CREATE2 factory with a salt, Sourcify. Generation 0 is the v1 ledger with the live court and withholding court, registered by the constructor under the same checks. |
+| 26 | Stake for the paymaster (2026-10-15, revised 2026-10-16) | **1 ETH, locked for one day once unlocked.** First ruled unstaked: ERC-7562 lets an unstaked paymaster read only the operation, the sender's code and its own bytecode, so a registered holder could still make it pay for calls the court refuses, about 0.0000006 ETH each, and the 1 ETH the bundlers ask for was more than a faucet gives. Revised once the user had 5 Ethereum Sepolia ETH to bridge: staked, the paymaster reads the courts and the ledger and sponsors only a call the court would take, at a time it would take it (`validAfter`, `validUntil`). It still writes no storage, so no per-holder counter is needed. The stake is the bundlers' guarantee, never spent and never slashed; only the admin adds to, unlocks or withdraws it, and the constructor refuses an unstake delay under one day. `notary-sponsor` asks the same checks through the paymaster's `sponsorship` view before it signs, so a refused or early call is reported and never sent. |
+| 27 | What it sponsors (2026-10-15) | **A holder's calls only:** `requestStatement` and `recordUnanswered` on the withholding court, and `proveBadProof` and `proveEquivocation` on the statement court. The council's anchor stays the anchorer key's to pay. |
+| 28 | EntryPoint and account (2026-10-15) | **EntryPoint v0.8 with EIP-7702.** The holder's own key delegates to the audited `Simple7702Account` of v0.8, so the holder stays `msg.sender`, which the immutable withholding court requires. The public bundlers of Candide and Pimlico serve v0.8 on Base Sepolia without an API key. |
+| 29 | Who builds the operation (2026-10-15) | **A Go CLI in this repository, in the same image.** The holder runs it locally with their own key and a bundler URL. The browser verifier (step 11) will use the same paymaster. |
+| 30 | The deposit (2026-10-16) | **0.1 ETH**, bridged from Ethereum Sepolia with the stake: 1,000 operations at the 0.0001 ETH ceiling, about 13,000 at the fees seen on 2026-10-15. The 0.0005 ETH warning stays. |
 
 ## 3. What the proof does and does not prove
 
@@ -1102,6 +1107,12 @@ their configuration shrinks to one address that never changes.
 | 9-2 | `notary-verify` reads the directory alone, resolves the generation holding each epoch and verifies through that ledger and court. It reports `moved` (exit 9) for an epoch held on another chain and `wrong_directory` (exit 8) for anything that is not a directory. notaryd's `DirectoryCheck` refuses to start unless the current generation is its own ledger and courts. On anvil: epoch 0 in a sealed ledger and epoch 1 in its registered successor both verify through the directory, a statement signed for the successor's court is attributable, and a proof naming the wrong generation is `wrong_ledger`. A successor that does not continue the sealed head is refused with `GenesisMismatch`. `bin/ci-go` exits 0, golangci 0, coverage 85.9% |
 | 9-3 | `bin/deploy-directory`, `bin/inspect-directory` and `bin/register-successor`, rehearsed on a fork of Base Sepolia at block 48148939. The production directory lands at `0x6C71162b46620Aa835681ADCDC4DB4ab9bB84ac8` for 2,760,697 gas. The rehearsal caught two faults in the scripts: tuple output cut by commas, and refusals printed as bare selectors. The lab script deploys the lab directory at `0x57C3DF1081c5B42D6104fd160df9BEeBcd573C6c`; it was run twice on a throwaway chain, and the second run changed nothing. Compose names both directories; the rendered models differ from the last commit by that one variable alone. `kinetix-infrastructure/docs/NOTARY-DIRECTORY-DEPLOY.md` is the sequence |
 
+**Live, 2026-10-15.** The user deployed the directory at `0x6C71162b46620Aa835681ADCDC4DB4ab9bB84ac8`, where the
+rehearsal said, and released notary v1.2.0 at 14:54 UTC. Its notaryd passed the directory check at start
+and anchored epoch 66 through the council at 14:59 UTC. The withholding check's proof of epoch 41 verifies
+`included` and `attributable` through the directory alone; the ledger's address given as the directory
+is `wrong_directory`.
+
 Building it split `config.Verifier`: the daemon and the watch read `config.Chain` (ledger, court) and
 `notary-verify` reads `config.Verifier` (directory). The address, chain id, URL and timeout parsing is
 shared.
@@ -1113,6 +1124,105 @@ paymaster sponsors user operations whose calls go only to the court's request an
 the council's submit, with a per-sender rate limit and a budget whose runway is monitored like the
 anchorer's (§7). The EntryPoint version is pinned and its presence on the network checked before
 deploy, the way the CREATE2 factory was.
+
+**Ruled 2026-10-15 (decisions 26–29), which narrow the paragraph above:** no council submit, and no
+per-sender rate limit, because an unstaked paymaster may keep no state.
+
+**Revised 2026-10-16 (decisions 26 and 30):** the paymaster is staked with 1 ETH and funded with 0.1 ETH.
+The rate limit stays out: a staked paymaster may read the courts, so instead of counting a holder's calls
+it refuses every call the court would refuse, which leaves a holder nothing to waste the deposit on.
+
+The contract, `src/paymaster/NotaryPaymaster.sol` (MIT), built on the interfaces of eth-infinitism's
+`account-abstraction` v0.8.0 (a Soldeer git dependency pinned to commit `4cbc0607…`). Its validation reads
+the operation, the sender's code, its own immutables and, since 2026-10-16, the storage of the two courts
+and the ledger. It writes nothing and returns no context:
+- the caller is the EntryPoint, and the operation's `maxCost` is at most the ceiling;
+- the sender is an EOA delegated to the pinned `Simple7702Account`, checked by its code hash;
+- the call is that account's single `execute(target, 0, data)`, to one of the two courts:
+  - `requestStatement` and `recordUnanswered` need the registration's holder to be the sender and the
+    registration to be signed by the court's statement signer. `recordUnanswered` carries no signature,
+    so the holder puts it in `paymasterData`;
+  - `proveBadProof` and `proveEquivocation` need every statement signed by that signer.
+- the court would take the call, checked against the court's own state (2026-10-16):
+  - a request needs an anchored epoch no earlier than the registration, no request of the registration
+    still open, and none already made for that epoch; it is valid until the court's window closes;
+  - an unanswered record needs an open request, and is valid only after its answer is due;
+  - a bad proof must not hold against the anchored root, two statements must contradict each other, and
+    neither fault may be proven already;
+  - every epoch must be the signer's.
+- `sponsorship(sender, callData, paymasterData)` runs the same checks as a view and returns the window,
+  so `notary-sponsor` asks before it signs.
+- The admin alone stakes it (`addStake`, with the unstake delay fixed at deploy), unlocks the stake and
+  withdraws it, and takes back with `withdrawBalance` any ether forced into the paymaster itself.
+- The signer and both EIP-712 domains are read from the courts once, at deploy, and the constructor
+  refuses courts whose own digests differ from its. A signer rotation therefore means a new paymaster.
+- Funding goes straight to `EntryPoint.depositTo(paymaster)`. The admin, the ledger's admin key, may
+  `withdrawTo` at any moment, which is the kill switch.
+
+Production pins the EntryPoint `0x4337084D…f108` (code hash `0xa06a…029c`) and `Simple7702Account`
+`0x4Cd241E8…66c9` (code hash `0x82c1…3ec4`), and caps an operation at 0.0001 ETH. Pimlico's fast price
+on 2026-10-15 was 0.0077 gwei, so a million-gas operation costs at most 0.0000077 ETH.
+
+**Work order:**
+- **10-1** the contract: unit, fuzz and invariant suites, deploy script and rehearsal, and a fork test on
+  the canonical EntryPoint and account.
+- **10-2** Go:
+  - the user-operation hash, with a differential fixture against `EntryPoint.getUserOpHash`;
+  - the EntryPoint, paymaster and bundler adapters, and EIP-7702 authorizations;
+  - `notary-sponsor` (`request`, `unanswered`, `prove`, `equivocation`);
+  - notaryd's paymaster check and deposit gauge.
+- **10-3** the estate: `bin/deploy-paymaster`, `bin/inspect-paymaster`, `bin/fund-paymaster`,
+  `bin/stake-paymaster` (2026-10-16), the alerts, the deploy document. Then the deploy, and one sponsored
+  request on Base Sepolia through a public bundler.
+
+**10-1, 2026-10-15: built and green.**
+
+| Part | Proof |
+|---|---|
+| 10-1 | 20 unit, 4 fuzz and 3 invariants over 16 384 calls, run through a real `EntryPoint.handleOps` with the official v0.8 EntryPoint and `Simple7702Account`:<br>• a holder holding no ether requests a statement, records a silence, and proves a bad proof and an equivocation;<br>• nothing else is sponsored: another target, another call, value, a batch, another delegate, another holder, a forged registration or statement, or a cost over the ceiling;<br>• the deposit moves only for sponsored operations and the admin, and the holder never pays.<br>On a fork of Base Sepolia, the canonical contracts carry exactly the pinned code hashes, and a holder's first delegated operation, with the `0x7702` marker, is sponsored. Six planted mutations each turned suites red. Slither 0; Aderyn's high `contract-locks-ether` was answered by removing the paymaster's payable `deposit`, and its literals were named. The pinned dependency's own compiler warnings are excluded by path only (`ignored_warnings_from`) |
+
+**10-2, 2026-10-15: built and green.** `bin/ci-go` exits 0: golangci 0 issues, every layout tool clean,
+85.9% of statements covered, the integration suite on anvil and Postgres with nothing skipped.
+
+| Part | Proof |
+|---|---|
+| hash | `keccak.OperationHash` is the EntryPoint v0.8 EIP-712 hash, the 7702 marker included; `operation-v1.json` is re-hashed by the real `EntryPoint.getUserOpHash` in `DifferentialOperation.t.sol`. Swapping Go's verification and call gas turned Foundry red, and restoring it brought the fixture back byte for byte |
+| adapters | `ethereum.Paymaster` reads every fact of the deployed paymaster and calls the ledger, the account and an empty address `not_sponsored`; `bundler.Client` speaks ERC-7769 with the standard library only, and a planted go-ethereum import fails `bin/check-boundaries` (exit 1) |
+| `notary-sponsor` | end to end on anvil through a test bundler that sends `handleOps`: a holder with no ether requests a statement for epoch 0; the request is open, the holder still holds 0, their code is the delegation and the deposit paid. An early `unanswered` lands and reverts (exit 1), the paymaster paying. A registration the notary never signed is refused (exit 2) and costs the deposit nothing |
+| notaryd | refuses a paymaster for another notary's courts (`not_sponsored`), and serves `kinetix_notary_paymaster_deposit_wei 1e+18` and `kinetix_notary_paymaster_current 1` beside a real anchor |
+
+Two faults the unit suites could not see, both caught by the integration suite against deployed code: the
+paymaster's interface id XORed the methods it inherits from `IPaymaster`, and the authorization's `yParity`
+went out as `0x01`, not the quantity `0x1` (CLAUDE.md, traps).
+
+**The staked revision, 2026-10-16: built, green and rehearsed; waiting on the user's bridge and deploy.**
+
+| Part | Proof |
+|---|---|
+| contract | 20 unit, 12 court-rule, 6 stake, 7 fuzz and 4 invariants, through a real `EntryPoint.handleOps`. Each court rule is refused exactly as the court refuses it, and the court is asked the same call in a snapshot to prove it would refuse. The equivalence fuzz drives requests, records, answers and waits for 8 steps, and bad proofs and equivocations with tampered fields, and asserts the paymaster sponsors exactly what the court takes and that every sponsored call succeeds. A request is sponsored at `closesAt` and refused a second later, a record refused at `dueAt` and sponsored a second later. |
+| ERC-7562 | `rules/`, its own profile with a tracer: for each of the four calls, validation runs none of the banned opcodes, `GAS` only before a call, and reads no storage of the paymaster or the sender |
+| controls | a planted `block.timestamp` turned the opcode test red, a planted role read the storage test, and a dropped `AlreadyRequested` check both the equivalence fuzz and the invariants |
+| analysis | Slither 0, Aderyn nothing new. The payable `addStake` first drew Aderyn's high `contract-locks-ether`, which `withdrawBalance` answers (CLAUDE.md, traps) |
+| Go | `bin/ci-go` exits 0: golangci 0 issues, 85.7% covered, nothing skipped. On anvil: the early `unanswered` is now `not_due` (exit 3) and costs nothing, and lands once the answer is overdue; an unanswered record without a request and a second request are `call_refused` (exit 3) and cost nothing; the adapter names the court's refusal for an unanchored epoch, an epoch before the registration, a sound proof, a forged registration and another holder's. notaryd serves `kinetix_notary_paymaster_stake_wei 1e+18` |
+| fork | at block 48176348 the deploy lands at **`0xD38824A16EaB632dD09aa36D3Bcf245097480aeb`**; inspect fails on the missing stake and deposit and passes once both are there; `bin/stake-paymaster` refuses a keystore that is not the admin, stakes, says so again without sending, and refuses an unlocking stake |
+| estate | the lab paymaster `0xD8C9EE907c5822e5c6b80A30a4Ff633F9ff1dEA5`, funded and staked by `scripts/lab/notary-ledger.sh` (rehearsed twice, the second run changing nothing); production's address in `compose.prod.yaml`; the alert `kinetix-notary-paymaster-unstaked`; `bin/rehearse-deploy` stakes the rehearsed paymaster as its admin |
+
+The unstaked paymaster below was never deployed, and its address will never hold anything.
+
+**10-3, 2026-10-15: written and rehearsed; waiting on the user's deploy.** Superseded by the staked
+revision above.
+- `bin/deploy-paymaster`, `bin/fund-paymaster` and `bin/inspect-paymaster`, rehearsed on a fork of Base
+  Sepolia at block 48156690: the deploy refuses a wrong EntryPoint code hash, lands at
+  **`0xDf8A57D9Ff2a04ec2F2c603f1fE8f7FEf0001B3a`**, the inspection fails on an empty deposit and passes
+  after `fund-paymaster … 0.002`, and a second deploy is refused.
+- Code hashes are computed from `cast code`, never `cast codehash`: the latter asks `eth_getProof`, and the
+  fork answered it with the empty account's hash for accounts it had not loaded yet.
+- infra: the lab paymaster `0x0bdaE93FE03499758683B5921438883117Bbc1eA` from `scripts/lab/notary-ledger.sh`
+  (rehearsed twice on a throwaway chain), production's address in `compose.prod.yaml`, the alerts
+  `kinetix-notary-paymaster-deposit` and `kinetix-notary-paymaster-stale`, and
+  `docs/NOTARY-PAYMASTER-DEPLOY.md`.
+- Left for the user: deploy, fund, inspect, commit infra, release notary. Then one real sponsored request
+  through a public bundler, from the withholding check's customer, who holds no ETH.
 
 ### Step 11 — verification without Kinetix
 

@@ -18,7 +18,7 @@ if [ -n "$offenders" ]; then
   failed=1
 fi
 
-for usecase in verifying anchoring proving watching registering answering approving; do
+for usecase in verifying anchoring proving watching registering answering approving sponsoring; do
   if ! go list "$MODULE/internal/$usecase" >/dev/null 2>&1; then
     continue
   fi
@@ -35,6 +35,19 @@ for usecase in verifying anchoring proving watching registering answering approv
     failed=1
   fi
 done
+
+offenders="$(
+  go list -deps "$MODULE/internal/bundler" \
+    | grep "^$MODULE/" \
+    | grep -v -e "^$MODULE/internal/bundler$" -e "^$MODULE/internal/notary$" \
+    || true
+)"
+offenders="$offenders$(external_deps "$MODULE/internal/bundler")"
+if [ -n "$offenders" ]; then
+  echo "internal/bundler speaks JSON-RPC with the standard library and may import only internal/notary, but it reaches:"
+  echo "$offenders" | sed 's/^/  /'
+  failed=1
+fi
 
 imports() {
   go list -f '{{.ImportPath}}{{range .Imports}} {{.}}{{end}}' ./cmd/... ./internal/... \
@@ -86,4 +99,4 @@ fi
 if [ "$failed" -ne 0 ]; then
   exit 1
 fi
-echo "boundaries hold: notary is pure, the use cases see only notary, dig, go-ethereum, gRPC and Postgres stay at the edge"
+echo "boundaries hold: notary is pure, the use cases see only notary, the bundler only the standard library, dig, go-ethereum, gRPC and Postgres stay at the edge"

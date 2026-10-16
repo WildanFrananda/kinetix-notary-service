@@ -42,6 +42,7 @@ import (
 	paymentv1 "github.com/WildanFrananda/kinetix-notary-service/internal/protogen/payment/v1"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/proving"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/registering"
+	"github.com/WildanFrananda/kinetix-notary-service/internal/sponsoring"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/verifycli"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/verifying"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/wiring"
@@ -57,6 +58,7 @@ type estate struct {
 	court       notary.Address
 	withholding notary.Address
 	directory   notary.Address
+	paymaster   notary.Address
 	council     notary.Address
 	watch       *approving.Approver
 	watchHTTP   http.Handler
@@ -78,6 +80,7 @@ type running struct {
 	Verifier  *verifying.Verifier
 	Prover    *proving.Prover
 	Directory *proving.DirectoryCheck
+	Sponsors  *sponsoring.Watcher
 	Registrar *registering.Registrar
 	Answerer  *answering.Answerer
 }
@@ -105,6 +108,7 @@ func newEstate(t *testing.T) *estate {
 	e.directory = notary.Address(
 		c.deployDirectory(t, common.Address(e.ledger.Address), common.Address(e.court), common.Address(e.withholding)),
 	)
+	e.paymaster = notary.Address(c.sponsorship(t, common.Address(e.court), common.Address(e.withholding)).paymaster)
 	answererKey, _ := c.funded(t)
 	e.dbURL = schema(t, base)
 	pool, err := pgxpool.New(ctx, e.dbURL)
@@ -133,6 +137,7 @@ func newEstate(t *testing.T) *estate {
 		config.AnswererKeyKey:      "0x" + hex.EncodeToString(crypto.FromECDSA(answererKey)),
 		config.CouncilAddressKey:   e.council.Hex(),
 		config.DirectoryAddressKey: e.directory.Hex(),
+		config.PaymasterAddressKey: e.paymaster.Hex(),
 		config.WatchAddressKey:     watchAddress,
 		config.RPCTimeoutKey:       "10s",
 		config.DatabaseURLKey:      e.dbURL,
@@ -374,6 +379,8 @@ func TestTheDaemonAnchorsPaymentsSnapshotAndEveryAccountVerifiesOnChain(t *testi
 	ctx := context.Background()
 
 	require.NoError(t, r.Directory.Check(ctx))
+	require.NoError(t, r.Sponsors.Check(ctx))
+	r.Sponsors.Look(ctx)
 
 	e.tickUntil(t, r, 0, "mined")
 	e.chain.finalize(t)
@@ -414,6 +421,9 @@ func TestTheDaemonAnchorsPaymentsSnapshotAndEveryAccountVerifiesOnChain(t *testi
 		`kinetix_grpc_client_calls_total{grpc_code="OK",grpc_method="/notary.v1.EpochWatchService/ApproveEpoch",peer="notary-watch"} 1`,
 	)
 	require.Contains(t, body, "kinetix_notary_anchorer_balance_wei")
+	require.Contains(t, body, "kinetix_notary_paymaster_deposit_wei 1e+18")
+	require.Contains(t, body, "kinetix_notary_paymaster_stake_wei 1e+18")
+	require.Contains(t, body, "kinetix_notary_paymaster_current 1")
 	require.Contains(t, body, "kinetix_http_requests_total")
 	require.NotContains(t, body, "principal-")
 
@@ -450,6 +460,27 @@ func TestTheDaemonRefusesADirectoryWhoseCurrentLedgerIsNotItsOwn(t *testing.T) {
 
 	require.Equal(t, notary.KindWrongDirectory, notary.KindOf(err), "%v", err)
 	require.ErrorContains(t, err, e.ledger.Address.Hex())
+}
+
+func TestTheDaemonRefusesAPaymasterThatSponsorsAnotherNotarysCourts(t *testing.T) {
+	e := newEstate(t)
+	c := e.chain
+	other := c.deploy(t)
+	_, signer := notarytest.StatementKey(t, "other-signer")
+	otherCourt := c.deployCourt(t, other, signer)
+	otherWithholding := c.deployWithholding(t, otherCourt)
+	otherPaymaster := c.sponsorship(t, otherCourt, otherWithholding).paymaster
+	e.values[config.PaymasterAddressKey] = notary.Address(otherPaymaster).Hex()
+	r := e.start(t)
+	ctx := context.Background()
+
+	err := r.Sponsors.Check(ctx)
+
+	require.Equal(t, notary.KindNotSponsored, notary.KindOf(err), "%v", err)
+	require.ErrorContains(t, err, e.withholding.Hex())
+
+	r.Sponsors.Look(ctx)
+	require.Contains(t, e.metric(t, r), "kinetix_notary_paymaster_current 0")
 }
 
 func TestAnEpochTheWatchCannotMatchToPaymentsRecordIsAbandoned(t *testing.T) {

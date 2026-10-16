@@ -10,8 +10,10 @@ echo "== contracts"
   forge soldeer install
   forge fmt --check
   forge fmt --check fork
+  forge fmt --check rules
   forge build --sizes
   FOUNDRY_PROFILE=ci forge test
+  FOUNDRY_PROFILE=rules forge test
   forge snapshot --check --match-contract LiabilityLedgerTest
 )
 
@@ -19,7 +21,6 @@ echo "== fork of Base Sepolia"
 (
   . ./deploy/base-sepolia.env
   KINETIX_NOTARY_FORK_RPC_URL="$KINETIX_NOTARY_PUBLIC_RPC_URL"
-  KINETIX_NOTARY_FORK_BLOCK="$KINETIX_NOTARY_FORK_BLOCK"
   KINETIX_NOTARY_FORK_LEDGER="$KINETIX_NOTARY_LEDGER_ADDRESS"
   KINETIX_NOTARY_FORK_COURT="$KINETIX_NOTARY_COURT_ADDRESS"
   KINETIX_NOTARY_FORK_ANCHORER="$KINETIX_NOTARY_ANCHORER_ADDRESS"

@@ -31,6 +31,7 @@ func daemonValues() map[string]string {
 		config.AnswererKeyKey:      answererKey,
 		config.CouncilAddressKey:   "0x00000000000000000000000000000000c0c0c0c1",
 		config.DirectoryAddressKey: "0x00000000000000000000000000000000d1d1d1d1",
+		config.PaymasterAddressKey: "0x00000000000000000000000000000000fafafafa",
 		config.WatchAddressKey:     "kinetix-notary-watch:50070",
 		config.RPCTimeoutKey:       "10s",
 		config.DatabaseURLKey:      "postgres://notary@kinetix-notary-db:5432/notary",
@@ -59,6 +60,7 @@ func TestADaemonConfigurationLoadsWithTheEstatesDefaults(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, uint64(84532), cfg.Chain.Ledger.ChainID)
 	require.Equal(t, notary.Address{16: 0xd1, 17: 0xd1, 18: 0xd1, 19: 0xd1}, cfg.Directory)
+	require.Equal(t, notary.Address{16: 0xfa, 17: 0xfa, 18: 0xfa, 19: 0xfa}, cfg.Paymaster)
 	require.Equal(t, anchorerKey, cfg.AnchorerKey.Reveal())
 	require.Equal(t, []string{"kinetix.local"}, cfg.TrustDomains)
 	require.Equal(t, uint64(50_000_000_000), cfg.MaxFeePerGasWei)
@@ -117,6 +119,7 @@ func TestEveryMissingOrBrokenSettingIsNamedAtOnce(t *testing.T) {
 	values[config.CouncilAddressKey] = "0x0000000000000000000000000000000000000000"
 	values[config.WatchAddressKey] = "no-port"
 	values[config.DirectoryAddressKey] = "0xd1"
+	delete(values, config.PaymasterAddressKey)
 
 	_, err := config.LoadDaemon(from(values))
 
@@ -142,6 +145,7 @@ func TestEveryMissingOrBrokenSettingIsNamedAtOnce(t *testing.T) {
 		config.CouncilAddressKey,
 		config.WatchAddressKey,
 		config.DirectoryAddressKey,
+		config.PaymasterAddressKey,
 	} {
 		require.ErrorContains(t, err, key)
 	}

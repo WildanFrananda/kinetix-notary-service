@@ -24,6 +24,7 @@ import (
 	"github.com/WildanFrananda/kinetix-notary-service/internal/payment"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/proving"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/registering"
+	"github.com/WildanFrananda/kinetix-notary-service/internal/sponsoring"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/watching"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/wiring"
 )
@@ -43,6 +44,7 @@ type daemon struct {
 	Runner    *anchoring.Runner
 	Prover    *proving.Prover
 	Directory *proving.DirectoryCheck
+	Sponsors  *sponsoring.Watcher
 	Registrar *registering.Registrar
 	Answerer  *answering.Answerer
 	Answers   notary.AnswerChain
@@ -112,6 +114,10 @@ func serve(ctx context.Context, log *slog.Logger, d daemon) error {
 		return err
 	}
 
+	if err := d.Sponsors.Check(ctx); err != nil {
+		return err
+	}
+
 	if err := d.Registrar.CheckWithholding(ctx); err != nil {
 		return err
 	}
@@ -141,6 +147,8 @@ func serve(ctx context.Context, log *slog.Logger, d daemon) error {
 		d.Config.Withholding.Hex(),
 		"directory",
 		d.Config.Directory.Hex(),
+		"paymaster",
+		d.Config.Paymaster.Hex(),
 		"answerer",
 		d.Answers.Answerer().Hex(),
 		"log_range",
@@ -184,6 +192,13 @@ func serve(ctx context.Context, log *slog.Logger, d daemon) error {
 		close(answered)
 	}()
 
+	sponsored := make(chan struct{})
+
+	go func() {
+		d.Sponsors.Run(ctx)
+		close(sponsored)
+	}()
+
 	var failure error
 
 	select {
@@ -204,6 +219,7 @@ func serve(ctx context.Context, log *slog.Logger, d daemon) error {
 	<-ran
 	<-watched
 	<-answered
+	<-sponsored
 	log.Info("notaryd stopped cleanly")
 
 	return failure
