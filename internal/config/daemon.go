@@ -50,6 +50,7 @@ type Daemon struct {
 	AnswererKey     Secret
 	Council         notary.Address
 	Directory       notary.Address
+	Paymaster       notary.Address
 	WatchAddress    string
 	PaymentAddress  string
 	PKIDir          string
@@ -154,6 +155,7 @@ func LoadDaemon(lookup Lookup) (Daemon, error) {
 
 	cfg.Council = address(CouncilAddressKey, required(CouncilAddressKey), &problems)
 	cfg.Directory = address(DirectoryAddressKey, required(DirectoryAddressKey), &problems)
+	cfg.Paymaster = address(PaymasterAddressKey, required(PaymasterAddressKey), &problems)
 
 	if raw := required(WatchAddressKey); raw != "" {
 		host, port, err := net.SplitHostPort(raw)

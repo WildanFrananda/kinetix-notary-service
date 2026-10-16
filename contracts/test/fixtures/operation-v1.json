@@ -1,0 +1,73 @@
+{
+  "name": "ERC4337",
+  "version": "1",
+  "chainId": "84532",
+  "entryPoint": "0xb6dac86d7a34467eb0be93152ba58baca507c766",
+  "operationCount": 4,
+  "operations": [
+    {
+      "sender": "0x315c18dc250266bc55892f48d87a72b0313fbe14",
+      "nonce": "0",
+      "delegate": "0x0000000000000000000000000000000000000000",
+      "callData": "0x",
+      "verificationGasLimit": "0",
+      "callGasLimit": "0",
+      "preVerificationGas": "0",
+      "maxPriorityFeePerGas": "0",
+      "maxFeePerGas": "0",
+      "paymaster": "0x0000000000000000000000000000000000000000",
+      "paymasterVerificationGasLimit": "0",
+      "paymasterPostOpGasLimit": "0",
+      "paymasterData": "0x",
+      "hash": "0x11f64175b566280b5101ba63e23099e8405e5529ccc80d59ed6f18e3956398d5"
+    },
+    {
+      "sender": "0x20465a099499cae369b03ff6ec43ed17efa27a62",
+      "nonce": "7",
+      "delegate": "0x2c9900bf8223c4624cd3f2829f45e33062ce5973",
+      "callData": "0x5857032d8887eb7855b9922d7f20476dcd02b3724359c791c9ef9fbe9449a6971b5b93b72e83748e128118ea2cb1ffe6d5f0692e748a8c93f646f5c5959a4e5a8051aab483489932496e9f5ce5030bb9839a7a248fd441752befc3b1cd85c6940f1c4ec813e9721336106a4fd5b1d5b3a7c70321447821cdbe3d582b489770d6b0d418191fafeaf137657673f5c050745f30a6029e160656ebff19892f20c6e4ddf67dace223036fbb700d577f8367c00436e345ed374e1222bbe6206d550ca90bdf265b44eb8e40ab75b10c366f03b75c8099deb9d281068429cf49b0fb00b40eebf13e5f4c4af1b528eec5348753b3e615a501d641217ffd2d4cf5065a04fc1eeef12848b4216b08c2838a5f953bdc10124f71f819755a722cd01537cef8496d30f5a58c3e9c97a948af8c",
+      "verificationGasLimit": "150000",
+      "callGasLimit": "300000",
+      "preVerificationGas": "90000",
+      "maxPriorityFeePerGas": "1100000",
+      "maxFeePerGas": "7700000",
+      "paymaster": "0x6b76b05ddfb2f46f8e3c0a55fd84abc1e0d0738b",
+      "paymasterVerificationGasLimit": "100000",
+      "paymasterPostOpGasLimit": "0",
+      "paymasterData": "0x",
+      "hash": "0x9e1e2c6cad0b6e56a3749dc58a5c31a314d639de4994ea16676e896c5b75cc59"
+    },
+    {
+      "sender": "0x590bb1fcb31891d7580563b2d9015a13951fa077",
+      "nonce": "1099511627776",
+      "delegate": "0x0000000000000000000000000000000000000000",
+      "callData": "0x5857032d8887eb7855b9922d7f20476dcd02b3724359c791c9ef9fbe9449a6971b5b93b72e83748e128118ea2cb1ffe6d5f0692e748a8c93f646f5c5959a4e5a80",
+      "verificationGasLimit": "2",
+      "callGasLimit": "1",
+      "preVerificationGas": "3",
+      "maxPriorityFeePerGas": "5",
+      "maxFeePerGas": "4",
+      "paymaster": "0x6b76b05ddfb2f46f8e3c0a55fd84abc1e0d0738b",
+      "paymasterVerificationGasLimit": "6",
+      "paymasterPostOpGasLimit": "7",
+      "paymasterData": "0xc98bd8e1827fda8d7e1d7d83dde2f4ac5f2973c7fae1ab1b4993dd5d589973b7b8443a4fcc113da5697f18063070728bca36926ff17a84f7ef8090f835b1987c0f",
+      "hash": "0xbcf1fd89eb7f7435ab7a7d3d9a8d08ba5de7b0933e4fa332801eed38b3a85dd9"
+    },
+    {
+      "sender": "0x0af5e30effbd4801bf914006241a573afa3a0fe6",
+      "nonce": "18446744073709551615",
+      "delegate": "0x2c9900bf8223c4624cd3f2829f45e33062ce5973",
+      "callData": "0x5857032d",
+      "verificationGasLimit": "18446744073709551615",
+      "callGasLimit": "18446744073709551615",
+      "preVerificationGas": "18446744073709551615",
+      "maxPriorityFeePerGas": "18446744073709551615",
+      "maxFeePerGas": "18446744073709551615",
+      "paymaster": "0x6b76b05ddfb2f46f8e3c0a55fd84abc1e0d0738b",
+      "paymasterVerificationGasLimit": "18446744073709551615",
+      "paymasterPostOpGasLimit": "18446744073709551615",
+      "paymasterData": "0xc9",
+      "hash": "0xc4db6465eb07502cb1b30fca843cda64c5fe4ffb14208685d33211ad16cfb0e7"
+    }
+  ]
+}

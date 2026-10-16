@@ -23,6 +23,14 @@ forge inspect IAnchorCouncil abi --json > "$WORK/IAnchorCouncil.abi"
 forge inspect LedgerDirectory abi --json > "$WORK/LedgerDirectory.abi"
 forge inspect LedgerDirectory bytecode > "$WORK/LedgerDirectory.bin"
 forge inspect ILedgerDirectory abi --json > "$WORK/ILedgerDirectory.abi"
+forge inspect NotaryPaymaster abi --json > "$WORK/NotaryPaymaster.abi"
+forge inspect NotaryPaymaster bytecode > "$WORK/NotaryPaymaster.bin"
+forge inspect INotaryPaymaster abi --json > "$WORK/INotaryPaymaster.abi"
+forge inspect IPaymaster abi --json > "$WORK/IPaymaster.abi"
+forge inspect EntryPoint abi --json > "$WORK/EntryPoint.abi"
+forge inspect EntryPoint bytecode > "$WORK/EntryPoint.bin"
+forge inspect Simple7702Account abi --json > "$WORK/Simple7702Account.abi"
+forge inspect Simple7702Account bytecode > "$WORK/Simple7702Account.bin"
 
 rm -rf "$GEN"
 mkdir -p \
@@ -35,7 +43,12 @@ mkdir -p \
   "$GEN/council" \
   "$GEN/councilinterface" \
   "$GEN/directory" \
-  "$GEN/directoryinterface"
+  "$GEN/directoryinterface" \
+  "$GEN/paymaster" \
+  "$GEN/paymasterinterface" \
+  "$GEN/paymasterbase" \
+  "$GEN/entrypoint" \
+  "$GEN/account7702"
 abigen --v2 \
   --abi "$WORK/LiabilityLedger.abi" \
   --bin "$WORK/LiabilityLedger.bin" \
@@ -91,5 +104,33 @@ abigen --v2 \
   --pkg directoryinterface \
   --type ILedgerDirectory \
   --out "$GEN/directoryinterface/iledger_directory.go"
+abigen --v2 \
+  --abi "$WORK/NotaryPaymaster.abi" \
+  --bin "$WORK/NotaryPaymaster.bin" \
+  --pkg paymaster \
+  --type NotaryPaymaster \
+  --out "$GEN/paymaster/notary_paymaster.go"
+abigen --v2 \
+  --abi "$WORK/INotaryPaymaster.abi" \
+  --pkg paymasterinterface \
+  --type INotaryPaymaster \
+  --out "$GEN/paymasterinterface/inotary_paymaster.go"
+abigen --v2 \
+  --abi "$WORK/IPaymaster.abi" \
+  --pkg paymasterbase \
+  --type IPaymaster \
+  --out "$GEN/paymasterbase/ipaymaster.go"
+abigen --v2 \
+  --abi "$WORK/EntryPoint.abi" \
+  --bin "$WORK/EntryPoint.bin" \
+  --pkg entrypoint \
+  --type EntryPoint \
+  --out "$GEN/entrypoint/entry_point.go"
+abigen --v2 \
+  --abi "$WORK/Simple7702Account.abi" \
+  --bin "$WORK/Simple7702Account.bin" \
+  --pkg account7702 \
+  --type Simple7702Account \
+  --out "$GEN/account7702/simple_7702_account.go"
 
 echo "generated $GEN"

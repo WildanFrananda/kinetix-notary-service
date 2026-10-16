@@ -13,6 +13,7 @@ import (
 	"github.com/WildanFrananda/kinetix-notary-service/internal/anchoring"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/answering"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/notary"
+	"github.com/WildanFrananda/kinetix-notary-service/internal/sponsoring"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/watching"
 )
 
@@ -44,12 +45,16 @@ type Metrics struct {
 	unanswerable prometheus.Gauge
 	answerer     prometheus.Gauge
 	passes       *prometheus.CounterVec
+	deposit      prometheus.Gauge
+	stake        prometheus.Gauge
+	current      prometheus.Gauge
 }
 
 var (
-	_ anchoring.Observer = (*Metrics)(nil)
-	_ watching.Observer  = (*Metrics)(nil)
-	_ answering.Observer = (*Metrics)(nil)
+	_ anchoring.Observer  = (*Metrics)(nil)
+	_ watching.Observer   = (*Metrics)(nil)
+	_ answering.Observer  = (*Metrics)(nil)
+	_ sponsoring.Observer = (*Metrics)(nil)
 )
 
 func New(build Build) *Metrics {
@@ -130,6 +135,18 @@ func New(build Build) *Metrics {
 			},
 			[]string{"outcome"},
 		),
+		deposit: prometheus.NewGauge(prometheus.GaugeOpts{
+			Name: "kinetix_notary_paymaster_deposit_wei",
+			Help: "The paymaster's deposit in the EntryPoint, which pays holders' sponsored calls; NaN until it is read.",
+		}),
+		stake: prometheus.NewGauge(prometheus.GaugeOpts{
+			Name: "kinetix_notary_paymaster_stake_wei",
+			Help: "The paymaster's locked stake in the EntryPoint, 0 once it is unlocked; NaN until it is read.",
+		}),
+		current: prometheus.NewGauge(prometheus.GaugeOpts{
+			Name: "kinetix_notary_paymaster_current",
+			Help: "1 while the paymaster sponsors this notary's courts and their current signer, 0 when it does not.",
+		}),
 	}
 	m.register(factory)
 
@@ -148,6 +165,9 @@ func New(build Build) *Metrics {
 		m.unanswerable,
 		m.answerer,
 		m.passes,
+		m.deposit,
+		m.stake,
+		m.current,
 	} {
 		factory(c)
 	}
@@ -156,6 +176,9 @@ func New(build Build) *Metrics {
 	m.faults.Set(math.NaN())
 	m.silences.Set(math.NaN())
 	m.answerer.Set(math.NaN())
+	m.deposit.Set(math.NaN())
+	m.stake.Set(math.NaN())
+	m.current.Set(math.NaN())
 	m.passes.WithLabelValues(passServed)
 	m.passes.WithLabelValues(passFailed)
 
@@ -218,6 +241,33 @@ func (m *Metrics) OpenRequests(count int) {
 
 func (m *Metrics) Unanswerable(count int) {
 	m.unanswerable.Set(float64(count))
+}
+
+func (m *Metrics) PaymasterDeposit(wei *big.Int) {
+	if wei == nil {
+		return
+	}
+
+	value, _ := new(big.Float).SetInt(wei).Float64()
+	m.deposit.Set(value)
+}
+
+func (m *Metrics) PaymasterStake(wei *big.Int) {
+	if wei == nil {
+		return
+	}
+
+	value, _ := new(big.Float).SetInt(wei).Float64()
+	m.stake.Set(value)
+}
+
+func (m *Metrics) PaymasterCurrent(current bool) {
+	if current {
+		m.current.Set(1)
+		return
+	}
+
+	m.current.Set(0)
 }
 
 func (m *Metrics) AnswererBalance(wei *big.Int) {

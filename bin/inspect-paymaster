@@ -1,0 +1,112 @@
+#!/usr/bin/env sh
+set -eu
+
+HERE="$(cd "$(dirname "$0")/.." && pwd)"
+NETWORK="${1:-}"
+
+if [ -z "$NETWORK" ] || [ ! -f "$HERE/deploy/$NETWORK.env" ]; then
+  echo "usage: bin/inspect-paymaster <network>   (reads deploy/<network>.env)" >&2
+  exit 64
+fi
+: "${KINETIX_NOTARY_RPC_URL:?set KINETIX_NOTARY_RPC_URL to the network RPC endpoint}"
+
+docker compose -f "$HERE/toolchain/compose.yaml" build --quiet toolchain >&2
+exec docker compose -f "$HERE/toolchain/compose.yaml" run --rm --no-deps -T \
+  -e KINETIX_NOTARY_RPC_URL toolchain sh -c '
+  set -eu
+  network="$1"
+  set -a
+  . "./deploy/$network.env"
+  set +a
+  paymaster="${KINETIX_NOTARY_PAYMASTER_ADDRESS:-}"
+  if [ -z "$paymaster" ]; then
+    echo "KINETIX_NOTARY_PAYMASTER_ADDRESS is empty in deploy/$network.env" >&2
+    exit 78
+  fi
+  rpc="$KINETIX_NOTARY_RPC_URL"
+  failed=0
+  lower() {
+    printf %s "$1" | tr A-F a-f
+  }
+  expect() {
+    if [ "$(lower "$2")" = "$(lower "$3")" ]; then
+      printf "  ok    %-24s %s\n" "$1" "$2"
+    else
+      printf "  WRONG %-24s %s (expected %s)\n" "$1" "$2" "$3"
+      failed=1
+    fi
+  }
+  show() {
+    printf "        %-24s %s\n" "$1" "$2"
+  }
+  call() {
+    cast call "$@" --rpc-url "$rpc" | sed "s/ \[.*\]\$//"
+  }
+  codehash() {
+    cast keccak "$(cast code "$1" --rpc-url "$rpc")"
+  }
+  at_least() {
+    python3 -c "import sys; sys.exit(0 if int(sys.argv[1]) >= int(sys.argv[2]) else 1)" "$1" "$2"
+  }
+
+  echo "notary paymaster $paymaster on deploy/$network.env"
+  expect "chain id" "$(cast chain-id --rpc-url "$rpc")" "$KINETIX_NOTARY_CHAIN_ID"
+  code="$(cast code "$paymaster" --rpc-url "$rpc")"
+  if [ "$code" = "0x" ]; then
+    echo "  WRONG no contract at $paymaster"
+    exit 1
+  fi
+  show "code bytes" "$(( (${#code} - 2) / 2 ))"
+  expect "admin" "$(call "$paymaster" "defaultAdmin()(address)")" "$KINETIX_NOTARY_PAYMASTER_ADMIN_ADDRESS"
+  expect "admin transfer delay" "$(call "$paymaster" "defaultAdminDelay()(uint48)")" \
+    "$KINETIX_NOTARY_PAYMASTER_ADMIN_TRANSFER_DELAY_SECONDS"
+  entry_point="$(call "$paymaster" "entryPoint()(address)")"
+  expect "entry point" "$entry_point" "$KINETIX_NOTARY_ENTRY_POINT_ADDRESS"
+  expect "entry point code hash" "$(codehash "$entry_point")" "$KINETIX_NOTARY_ENTRY_POINT_CODEHASH"
+  account="$(call "$paymaster" "account()(address)")"
+  expect "7702 account" "$account" "$KINETIX_NOTARY_7702_ACCOUNT_ADDRESS"
+  expect "7702 account code hash" "$(codehash "$account")" "$KINETIX_NOTARY_7702_ACCOUNT_CODEHASH"
+  court="$(call "$paymaster" "court()(address)")"
+  expect "court" "$court" "$KINETIX_NOTARY_COURT_ADDRESS"
+  expect "withholding court" "$(call "$paymaster" "withholding()(address)")" "$KINETIX_NOTARY_WITHHOLDING_COURT_ADDRESS"
+  expect "statement signer" "$(call "$paymaster" "statementSigner()(address)")" \
+    "$(call "$court" "signerOf(uint64)(address)" 18446744073709551615)"
+  expect "unstake delay (s)" "$(call "$paymaster" "unstakeDelay()(uint32)")" \
+    "$KINETIX_NOTARY_PAYMASTER_UNSTAKE_DELAY_SECONDS"
+  ceiling="$(call "$paymaster" "maxCostPerOperation()(uint256)")"
+  expect "cost ceiling (wei)" "$ceiling" "$KINETIX_NOTARY_PAYMASTER_MAX_COST_WEI"
+  deposit="$(call "$entry_point" "balanceOf(address)(uint256)" "$paymaster")"
+  if at_least "$deposit" "$ceiling"; then
+    expect "deposit (wei)" "$deposit" "$deposit"
+    show "operations at the ceiling" "$(python3 -c "import sys; print(int(sys.argv[1]) // int(sys.argv[2]))" "$deposit" "$ceiling")"
+  else
+    printf "  WRONG %-24s %s (less than one operation at the ceiling: bin/fund-paymaster %s <ether>)\n" \
+      "deposit (wei)" "$deposit" "$network"
+    failed=1
+  fi
+  info="$(call "$entry_point" "getDepositInfo(address)(uint256,bool,uint112,uint32,uint48)" "$paymaster")"
+  staked="$(printf "%s\n" "$info" | sed -n 2p)"
+  stake="$(printf "%s\n" "$info" | sed -n 3p | sed "s/ \[.*\]\$//")"
+  expect "staked" "$staked" "true"
+  if at_least "$stake" "$KINETIX_NOTARY_PAYMASTER_STAKE_WEI"; then
+    expect "stake (wei)" "$stake" "$stake"
+  else
+    printf "  WRONG %-24s %s (less than %s: bin/stake-paymaster %s)\n" \
+      "stake (wei)" "$stake" "$KINETIX_NOTARY_PAYMASTER_STAKE_WEI" "$network"
+    failed=1
+  fi
+  expect "stake unstake delay (s)" "$(printf "%s\n" "$info" | sed -n 4p | sed "s/ \[.*\]\$//")" \
+    "$KINETIX_NOTARY_PAYMASTER_UNSTAKE_DELAY_SECONDS"
+  expect "stake withdraw time" "$(printf "%s\n" "$info" | sed -n 5p | sed "s/ \[.*\]\$//")" "0"
+  if [ "${KINETIX_NOTARY_VERIFY_SOURCE:-}" = "true" ] && [ "${KINETIX_NOTARY_VERIFIER:-}" = "sourcify" ]; then
+    verdict="$(curl -fsS --max-time 30 "https://sourcify.dev/server/v2/contract/$KINETIX_NOTARY_CHAIN_ID/$paymaster" \
+      | python3 -c "import json, sys; print(json.load(sys.stdin).get(\"runtimeMatch\") or \"none\")" 2>/dev/null \
+      || echo "unreachable")"
+    case "$verdict" in
+      match | exact_match) expect "source on sourcify" "$verdict" "$verdict" ;;
+      unreachable) printf "  ?     %-24s %s\n" "source on sourcify" "sourcify could not be asked" ; failed=1 ;;
+      *) expect "source on sourcify" "$verdict" "match" ;;
+    esac
+  fi
+  exit "$failed"
+' sh "$NETWORK"

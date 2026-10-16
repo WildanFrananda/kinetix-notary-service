@@ -28,7 +28,8 @@ RUN --mount=type=cache,target=/root/.cache/go-build \
     && go build -trimpath -ldflags="-s -w -X main.version=${VERSION}" -o /out/notaryd ./cmd/notaryd \
     && go build -trimpath -ldflags="-s -w" -o /out/notary-migrate ./cmd/notary-migrate \
     && go build -trimpath -ldflags="-s -w" -o /out/notary-verify ./cmd/notary-verify \
-    && go build -trimpath -ldflags="-s -w -X main.version=${VERSION}" -o /out/notary-watch ./cmd/notary-watch
+    && go build -trimpath -ldflags="-s -w -X main.version=${VERSION}" -o /out/notary-watch ./cmd/notary-watch \
+    && go build -trimpath -ldflags="-s -w" -o /out/notary-sponsor ./cmd/notary-sponsor
 
 FROM debian:bookworm-slim@sha256:7c7b2c966bc9ee8cedfeef67e0e279108992c77681fa595db4a9d65c06ccc587 AS final
 
@@ -39,7 +40,7 @@ RUN apt-get update \
     && groupadd --system --gid 10001 notary \
     && useradd --system --uid 10001 --gid 10001 --no-create-home notary
 
-COPY --from=build /out/notaryd /out/notary-migrate /out/notary-verify /out/notary-watch /usr/local/bin/
+COPY --from=build /out/notaryd /out/notary-migrate /out/notary-verify /out/notary-watch /out/notary-sponsor /usr/local/bin/
 
 USER notary
 
