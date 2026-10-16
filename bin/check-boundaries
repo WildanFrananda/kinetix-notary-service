@@ -5,13 +5,22 @@ HERE="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$HERE"
 
 MODULE="$(go list -m)"
+PACKAGES="$(go list -buildvcs=false -f '{{.ImportPath}}{{range .Imports}} {{.}}{{end}}' ./cmd/... ./internal/...)"
 failed=0
 
-external_deps() {
-  go list -deps "$1" | grep -v "^$MODULE" | awk -F/ '$1 ~ /\./' || true
+external() {
+  printf '%s\n' "$1" | grep -v "^$MODULE" | awk -F/ '$1 ~ /\./' || true
 }
 
-offenders="$(external_deps "$MODULE/internal/notary")"
+beyond_notary() {
+  printf '%s\n' "$1" \
+    | grep "^$MODULE/" \
+    | grep -v -e "^$MODULE/internal/$2$" -e "^$MODULE/internal/notary$" \
+    || true
+}
+
+deps="$(go list -deps "$MODULE/internal/notary")"
+offenders="$(external "$deps")"
 if [ -n "$offenders" ]; then
   echo "internal/notary must import only the standard library, but it reaches:"
   echo "$offenders" | sed 's/^/  /'
@@ -19,16 +28,11 @@ if [ -n "$offenders" ]; then
 fi
 
 for usecase in verifying anchoring proving watching registering answering approving sponsoring; do
-  if ! go list "$MODULE/internal/$usecase" >/dev/null 2>&1; then
-    continue
-  fi
+  deps="$(go list -deps "$MODULE/internal/$usecase")"
   offenders="$(
-    go list -deps "$MODULE/internal/$usecase" \
-      | grep "^$MODULE/" \
-      | grep -v -e "^$MODULE/internal/$usecase$" -e "^$MODULE/internal/notary$" \
-      || true
+    beyond_notary "$deps" "$usecase"
+    external "$deps"
   )"
-  offenders="$offenders$(external_deps "$MODULE/internal/$usecase")"
   if [ -n "$offenders" ]; then
     echo "internal/$usecase may import only internal/notary and the standard library, but it reaches:"
     echo "$offenders" | sed 's/^/  /'
@@ -36,13 +40,11 @@ for usecase in verifying anchoring proving watching registering answering approv
   fi
 done
 
+deps="$(go list -deps "$MODULE/internal/bundler")"
 offenders="$(
-  go list -deps "$MODULE/internal/bundler" \
-    | grep "^$MODULE/" \
-    | grep -v -e "^$MODULE/internal/bundler$" -e "^$MODULE/internal/notary$" \
-    || true
+  beyond_notary "$deps" bundler
+  external "$deps"
 )"
-offenders="$offenders$(external_deps "$MODULE/internal/bundler")"
 if [ -n "$offenders" ]; then
   echo "internal/bundler speaks JSON-RPC with the standard library and may import only internal/notary, but it reaches:"
   echo "$offenders" | sed 's/^/  /'
@@ -50,7 +52,7 @@ if [ -n "$offenders" ]; then
 fi
 
 imports() {
-  go list -f '{{.ImportPath}}{{range .Imports}} {{.}}{{end}}' ./cmd/... ./internal/... \
+  printf '%s\n' "$PACKAGES" \
     | awk -v dep="$1" '{ for (i = 2; i <= NF; i++) if (index($i, dep) == 1) { print $1; break } }'
 }
 

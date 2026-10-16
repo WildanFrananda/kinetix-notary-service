@@ -80,3 +80,85 @@ jobs:
             echo "$IMAGE@$digest"
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
+
+  cli:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Name the image
+        run: echo "IMAGE=ghcr.io/$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')/kinetix-notary-cli" >> "$GITHUB_ENV"
+
+      - uses: docker/setup-buildx-action@v4
+
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build amd64 for the scan
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: cli/Dockerfile
+          platforms: linux/amd64
+          load: true
+          push: false
+          tags: ${{ env.IMAGE }}:${{ github.sha }}-amd64
+          cache-from: type=gha,scope=cli
+          cache-to: type=gha,mode=max,scope=cli
+          provenance: false
+
+      - name: Build arm64 for the scan, cross-compiled, never emulated
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: cli/Dockerfile
+          platforms: linux/arm64
+          load: true
+          push: false
+          tags: ${{ env.IMAGE }}:${{ github.sha }}-arm64
+          cache-from: type=gha,scope=cli
+          provenance: false
+
+      - name: Scan amd64
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: ${{ env.IMAGE }}:${{ github.sha }}-amd64
+          severity: CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+          format: table
+
+      - name: Scan arm64
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: ${{ env.IMAGE }}:${{ github.sha }}-arm64
+          severity: CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+          format: table
+
+      - name: Push both platforms under one tag
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: cli/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ env.IMAGE }}:${{ github.sha }}
+          cache-from: type=gha,scope=cli
+          provenance: false
+
+      - name: Name what was pushed
+        run: |
+          digest="$(docker buildx imagetools inspect "$IMAGE:${{ github.sha }}" --format '{{ .Manifest.Digest }}')"
+          {
+            echo "### Pushed"
+            echo ""
+            echo '```'
+            echo "$IMAGE:${{ github.sha }}"
+            echo "$IMAGE@$digest"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

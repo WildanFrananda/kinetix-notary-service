@@ -20,7 +20,11 @@ func Run(ctx context.Context, path string, scheme uint16, verifier ClaimVerifier
 	}
 	defer func() { _ = file.Close() }()
 
-	claims, err := prooffile.DecodeAll(file, scheme)
+	return RunDocument(ctx, file, scheme, verifier, stdout)
+}
+
+func RunDocument(ctx context.Context, document io.Reader, scheme uint16, verifier ClaimVerifier, stdout io.Writer) int {
+	claims, err := prooffile.DecodeAll(document, scheme)
 	if err != nil {
 		return emit(stdout, report{Verdict: "malformed_proof", Reason: err.Error()}, ExitMalformedProof)
 	}
