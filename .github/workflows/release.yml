@@ -5,7 +5,7 @@ on:
     tags: ["v*.*.*"]
 
 permissions:
-  contents: read
+  contents: write
   packages: write
 
 jobs:
@@ -66,3 +66,66 @@ jobs:
             --arg digest "${{ steps.image.outputs.digest }}" \
             '{event_type: "deploy", client_payload: {service: $service, tag: $tag, digest: $digest}}' \
           | gh api "repos/${{ github.repository_owner }}/kinetix-infrastructure/dispatches" --input -
+
+  cli:
+    needs: promote
+    runs-on: ubuntu-latest
+    steps:
+      - name: Name the image
+        run: echo "IMAGE=ghcr.io/$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')/kinetix-notary-cli" >> "$GITHUB_ENV"
+
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Point the release tag at the CLI image this commit produced
+        run: |
+          if ! digest="$(docker buildx imagetools inspect "$IMAGE:$GITHUB_SHA" --format '{{ .Manifest.Digest }}' 2>/dev/null)"; then
+            echo "no CLI image for $GITHUB_SHA — the merge build must be green before a tag can be released"
+            exit 1
+          fi
+          docker buildx imagetools create --tag "$IMAGE:${{ github.ref_name }}" "$IMAGE@$digest"
+          echo "$IMAGE:${{ github.ref_name }} = $IMAGE@$digest" >> "$GITHUB_STEP_SUMMARY"
+
+  verifier:
+    needs: promote
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: docker/setup-buildx-action@v4
+
+      - name: The toolchain image the laptop runs, layers from the Actions cache
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: toolchain/Dockerfile
+          load: true
+          tags: kinetix-notary-toolchain:local
+          cache-from: type=gha,scope=toolchain
+          provenance: false
+
+      - name: Build the browser verifier from the tag
+        run: |
+          docker compose -f toolchain/compose.yaml run --rm --no-deps -T toolchain sh -c '
+            set -eu
+            (cd contracts && forge soldeer install)
+            sh bin/generate
+            sh bin/build-verifier-wasm "$1" dist/verifier
+          ' sh "${{ github.ref_name }}"
+
+      - name: Attach it to the GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cat dist/verifier/SHA256SUMS >> "$GITHUB_STEP_SUMMARY"
+          if gh release view "${{ github.ref_name }}" >/dev/null 2>&1; then
+            gh release upload "${{ github.ref_name }}" dist/verifier/notary-verify.wasm dist/verifier/wasm_exec.js dist/verifier/SHA256SUMS --clobber
+          else
+            gh release create "${{ github.ref_name }}" dist/verifier/notary-verify.wasm dist/verifier/wasm_exec.js dist/verifier/SHA256SUMS \
+              --verify-tag \
+              --title "${{ github.ref_name }}" \
+              --notes "notary-verify.wasm is cmd/notary-verify-wasm at this tag, built by bin/build-verifier-wasm; SHA256SUMS lists it and the wasm_exec.js of the Go that built it."
+          fi

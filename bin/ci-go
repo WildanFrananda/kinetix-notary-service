@@ -28,4 +28,6 @@ sh bin/check-boundaries
 go run ./tools/arglayout ./cmd ./internal ./tests ./tools
 golangci-lint fmt --diff ./...
 golangci-lint run ./...
+GOOS=js GOARCH=wasm go vet ./cmd/notary-verify-wasm
+GOOS=js GOARCH=wasm golangci-lint run ./cmd/notary-verify-wasm
 sh bin/test

@@ -35,6 +35,15 @@ The image built from `Dockerfile` carries five binaries and runs `notaryd` by de
 `notary-migrate` is the one-shot migrator, `notary-watch` is the council's second member (PLAN.md step 8),
 an account holder verifies with `docker run <image> notary-verify proof.json` (the image used to
 start `notary-verify` itself), and sends a sponsored call with `notary-sponsor` (PLAN.md step 10).
+`cli/Dockerfile` builds the auditors' image, `ghcr.io/wildanfrananda/kinetix-notary-cli` (decision 33): `notary-verify`
+and `notary-sponsor` only, on distroless static, for amd64 and arm64 by cross-compiling in a build stage pinned to
+`$BUILDPLATFORM`, never by emulation. `cmd/notary-verify-wasm` is the verifier for the browser (decision 31,
+`GOOS=js GOARCH=wasm`): it sets `kinetixNotaryVerify(document, settings)`, a promise of `{exit, stdout, stderr}`
+exactly as `notary-verify` would print and exit, where `settings` holds the four `KINETIX_NOTARY_*` variables the CLI
+reads. `bin/build-verifier-wasm <version> <dir>` builds it reproducibly (`-trimpath`, `-buildvcs=false`, the version
+in `main.version`) beside the `wasm_exec.js` of the same Go and a `SHA256SUMS`. The release workflow attaches all three
+to the GitHub release, and `kinetix-docs` pins that release and its hashes (decision 35), so any change to the Go code
+the verifier links changes the file the docs must pin.
 `bin/generate` runs every generator — abigen, protoc through `bin/sync-contracts` (contracts pinned to a
 tag and its commit), sqlc — and nothing it writes is ever committed.
 
@@ -65,6 +74,7 @@ bin/deploy-paymaster base-sepolia [--broadcast] # the paymaster; refuses unless 
 bin/stake-paymaster base-sepolia                # the admin's addStake up to the file's stake; refuses another key or an unlocking stake
 bin/fund-paymaster base-sepolia 0.1             # the deployer's EntryPoint.depositTo(paymaster); waits for latest to show it
 bin/inspect-paymaster base-sepolia              # its facts, the courts' current signer, the stake, the deposit in operations at the ceiling
+bin/dev bin/build-verifier-wasm v1.4.0 dist/verifier   # the browser verifier, reproducible, with wasm_exec.js and SHA256SUMS
 ```
 
 `notary-verify` reads `KINETIX_NOTARY_RPC_URL`, `KINETIX_NOTARY_CHAIN_ID`, `KINETIX_NOTARY_DIRECTORY_ADDRESS`
@@ -467,6 +477,20 @@ A failure must never be reported as a definite answer. In this service that mean
 - **abigen v2's `UnpackError` reads `raw[:4]` without a length check.** `revertData` returns revert data only
   when it has a selector, and the paymaster adapter decodes nothing else.
 
+- **A file named `*_wasm_test.go` is a `GOARCH=wasm` file.** Go reads the `_wasm` suffix as a build constraint,
+  so the first browser-verifier test, `verify_wasm_test.go`, compiled into nothing and `go test -run` reported
+  `no tests to run`. It is `browser_verifier_test.go`. The same goes for `_js`, `_linux` and every other OS or
+  architecture suffix.
+- **Go turns `fetch` off under Node.** `net/http` on `js/wasm` uses the Fetch API unless `process.argv0` starts
+  with `node` (go.dev/issue/57613), and then falls back to a network stack that cannot dial. The integration test
+  runs the WebAssembly under Bun, whose `argv0` is `bun`, through the same `wasm_exec.js` a browser loads; Bun is a
+  toolchain component for that reason. `net/http` also skips `fetch` for any `Transport` with a `Dial` or
+  `DialContext` set, so the RPC client in the verifier must keep the default transport.
+- **The browser verifier is checked against the CLI, not against itself.** `tests/integration/browser_verifier_test.go`
+  builds both binaries, runs them on the same documents and settings on anvil, and requires the same exit code,
+  stdout and stderr for every verdict. A planted rewrite of the document inside the WebAssembly turned it red on
+  2026-10-16. Two builds with separate caches gave the same SHA-256.
+
 ## Not built yet
 
 Steps 1–5 are done: contracts v1.0.23, payment v0.1.11, notaryd v0.2.0 anchoring on Base Sepolia, and
@@ -482,7 +506,10 @@ notaryd's council mode are live on contracts v1.2.0 and notary v1.1.0: since 202
 (the ledger directory, decisions 22–25) is live: the directory `0x6C71…4ac8` and notary v1.2.0, released on
 2026-10-15. Step 10 (the paymaster, decisions 26–30) is built and green in both halves. Decision 26 was
 revised on 2026-10-16: the paymaster is staked and refuses what the court would refuse. `notary-sponsor` and
-the deploy, stake and fund scripts are rehearsed on a fork; it waits on the user's bridge and deploy
-(PLAN.md 10-3). 6b
-(delivery through notification) and steps 11–14 do not exist yet. Contract deploys stay manual, never in
+the deploy, stake and fund scripts are rehearsed on a fork. Step 10 is live: the paymaster `0xD388…0aeb`,
+staked with 1 ETH and funded with 0.1 ETH, and notary v1.3.0, released on 2026-10-16. A holder with no ETH
+had a statement request sponsored through Pimlico's public bundler, and notaryd answered it (PLAN.md step 10).
+Step 11 (decisions 31–35) is built and green, uncommitted: the browser verifier, the CLI image and their release
+jobs here, and the Verify section in `kinetix-docs`; it waits on the user's v1.4.0 release (PLAN.md step 11). 6b
+(delivery through notification) and steps 12–14 do not exist yet. Contract deploys stay manual, never in
 CI.

@@ -42,7 +42,7 @@ verify-go:
         POSTGRES_HOST_AUTH_METHOD: trust
   script:
     - apt-get update -qq && apt-get install -y -qq --no-install-recommends unzip
-    - sh bin/install-toolchain /usr/local/bin foundry abigen protobuf sqlc lint
+    - sh bin/install-toolchain /usr/local/bin foundry abigen protobuf sqlc lint bun
     - anvil --host 127.0.0.1 --port 8545 --chain-id 31337 > anvil.log 2>&1 &
     - |
       for i in $(seq 1 30); do

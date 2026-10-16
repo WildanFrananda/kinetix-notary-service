@@ -9,7 +9,7 @@ RUN apt-get update \
 
 COPY bin/install-toolchain /opt/toolchain/bin/install-toolchain
 COPY toolchain/slither-requirements.txt /opt/toolchain/toolchain/slither-requirements.txt
-RUN sh /opt/toolchain/bin/install-toolchain /usr/local/bin foundry abigen protobuf sqlc lint analysis \
+RUN sh /opt/toolchain/bin/install-toolchain /usr/local/bin foundry abigen protobuf sqlc lint analysis bun \
     && go clean -cache -modcache
 
 WORKDIR /workspace
