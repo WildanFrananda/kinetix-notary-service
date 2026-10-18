@@ -1,0 +1,102 @@
+#!/usr/bin/env sh
+set -eu
+
+HERE="$(cd "$(dirname "$0")/.." && pwd)"
+NETWORK="${1:-}"
+MODE="${2:-}"
+
+case "$MODE" in
+  "" | --broadcast) ;;
+  *)
+    echo "usage: bin/deploy-evidence-registry <network> [--broadcast]" >&2
+    exit 64
+    ;;
+esac
+if [ -z "$NETWORK" ] || [ ! -f "$HERE/deploy/$NETWORK.env" ]; then
+  echo "usage: bin/deploy-evidence-registry <network> [--broadcast]   (reads deploy/<network>.env)" >&2
+  exit 64
+fi
+: "${KINETIX_NOTARY_RPC_URL:?set KINETIX_NOTARY_RPC_URL to the network RPC endpoint}"
+KEYSTORES="$(sh "$HERE/bin/keystore-dir")"
+if [ ! -f "$KEYSTORES/notary-deployer" ]; then
+  echo "no notary-deployer keystore in $KEYSTORES: run bin/new-keystore notary-deployer" >&2
+  exit 1
+fi
+
+set -- run --rm --no-deps -e KINETIX_NOTARY_RPC_URL -v "$KEYSTORES:/keystores:ro"
+PASSWORD_ARG=""
+if [ -n "${KINETIX_NOTARY_KEYSTORE_PASSWORD_FILE:-}" ]; then
+  set -- "$@" -v "$KINETIX_NOTARY_KEYSTORE_PASSWORD_FILE:/run/keystore-password:ro"
+  PASSWORD_ARG=--password-file
+fi
+
+docker compose -f "$HERE/toolchain/compose.yaml" build --quiet toolchain >&2
+exec docker compose -f "$HERE/toolchain/compose.yaml" "$@" toolchain sh -c '
+  set -eu
+  network="$1"
+  mode="$2"
+  password_arg="$3"
+  set -a
+  . "./deploy/$network.env"
+  set +a
+  for key in KINETIX_NOTARY_CHAIN_ID KINETIX_NOTARY_VERIFY_SOURCE KINETIX_NOTARY_EVIDENCE_ADMIN_ADDRESS \
+    KINETIX_NOTARY_EVIDENCE_ADMIN_TRANSFER_DELAY_SECONDS KINETIX_NOTARY_EVIDENCE_ANCHORER_ADDRESS \
+    KINETIX_NOTARY_EVIDENCE_DEPLOY_SALT; do
+    eval "value=\${$key:-}"
+    if [ -z "$value" ]; then
+      echo "$key is empty in deploy/$network.env" >&2
+      exit 78
+    fi
+  done
+  served="$(cast chain-id --rpc-url "$KINETIX_NOTARY_RPC_URL")"
+  if [ "$served" != "$KINETIX_NOTARY_CHAIN_ID" ]; then
+    echo "the RPC endpoint serves chain $served, deploy/$network.env is for chain $KINETIX_NOTARY_CHAIN_ID" >&2
+    exit 1
+  fi
+  if [ -n "${KINETIX_NOTARY_EVIDENCE_PREDECESSOR_ADDRESS:-}" ] \
+    && [ "$(cast call "$KINETIX_NOTARY_EVIDENCE_PREDECESSOR_ADDRESS" "isSealed()(bool)" --rpc-url "$KINETIX_NOTARY_RPC_URL")" != "true" ]; then
+    echo "the predecessor registry at $KINETIX_NOTARY_EVIDENCE_PREDECESSOR_ADDRESS is not sealed" >&2
+    exit 1
+  fi
+  if [ -n "${KINETIX_NOTARY_EVIDENCE_REGISTRY_ADDRESS:-}" ] \
+    && [ "$(cast code "$KINETIX_NOTARY_EVIDENCE_REGISTRY_ADDRESS" --rpc-url "$KINETIX_NOTARY_RPC_URL")" != "0x" ]; then
+    echo "deploy/$network.env already names a deployed evidence registry at $KINETIX_NOTARY_EVIDENCE_REGISTRY_ADDRESS" >&2
+    exit 1
+  fi
+
+  cd contracts
+  forge soldeer install >/dev/null
+  set -- script/DeployEvidenceRegistry.s.sol:DeployEvidenceRegistry \
+    --rpc-url "$KINETIX_NOTARY_RPC_URL" --keystore /keystores/notary-deployer
+  if [ -n "$password_arg" ]; then
+    set -- "$@" --password-file /run/keystore-password
+  fi
+  if [ "$mode" = "--broadcast" ]; then
+    set -- "$@" --broadcast --slow
+    case "$KINETIX_NOTARY_VERIFY_SOURCE" in
+      true)
+        if [ -z "${KINETIX_NOTARY_VERIFIER:-}" ]; then
+          echo "KINETIX_NOTARY_VERIFY_SOURCE is true but KINETIX_NOTARY_VERIFIER is empty" >&2
+          exit 78
+        fi
+        set -- "$@" --verify --verifier "$KINETIX_NOTARY_VERIFIER"
+        if [ -n "${KINETIX_NOTARY_VERIFIER_URL:-}" ]; then
+          set -- "$@" --verifier-url "$KINETIX_NOTARY_VERIFIER_URL"
+        fi
+        ;;
+      false) ;;
+      *)
+        echo "KINETIX_NOTARY_VERIFY_SOURCE must be true or false" >&2
+        exit 78
+        ;;
+    esac
+  fi
+  forge script "$@"
+  if [ "$mode" != "--broadcast" ]; then
+    echo
+    echo "dry run only: nothing was sent. Re-run with --broadcast to deploy."
+  else
+    echo
+    echo "forge reports verification optimistically; bin/inspect-evidence-registry checks it against the verifier itself."
+  fi
+' sh "$NETWORK" "$MODE" "$PASSWORD_ARG"

@@ -5,6 +5,7 @@
     { "detector": "centralization-risk", "path": "src/court/StatementCourt.sol" },
     { "detector": "centralization-risk", "path": "src/council/AnchorCouncil.sol" },
     { "detector": "centralization-risk", "path": "src/directory/LedgerDirectory.sol" },
-    { "detector": "centralization-risk", "path": "src/paymaster/NotaryPaymaster.sol" }
+    { "detector": "centralization-risk", "path": "src/paymaster/NotaryPaymaster.sol" },
+    { "detector": "centralization-risk", "path": "src/evidence/EvidenceRegistry.sol" }
   ]
 }

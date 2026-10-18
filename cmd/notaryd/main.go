@@ -19,6 +19,8 @@ import (
 	"github.com/WildanFrananda/kinetix-notary-service/internal/answering"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/config"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/epochwatch"
+	"github.com/WildanFrananda/kinetix-notary-service/internal/evidencing"
+	"github.com/WildanFrananda/kinetix-notary-service/internal/feeds"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/metrics"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/notary"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/payment"
@@ -49,6 +51,12 @@ type daemon struct {
 	Answerer  *answering.Answerer
 	Answers   notary.AnswerChain
 	Watcher   *watching.Watcher
+	Evidence  *evidencing.Runner
+	Registry  *evidencing.RegistryCheck
+	Evidences notary.EvidenceChain
+	Lifecycle *feeds.LifecycleFeed
+	Delivery  *feeds.DeliveryFeed
+	Reviews   *feeds.ReviewFeed
 	Handler   http.Handler
 }
 
@@ -85,6 +93,9 @@ func start(ctx context.Context, log *slog.Logger) error {
 		defer d.Pool.Close()
 		defer func() { _ = d.Payment.Close() }()
 		defer func() { _ = d.Watch.Close() }()
+		defer func() { _ = d.Lifecycle.Close() }()
+		defer func() { _ = d.Delivery.Close() }()
+		defer func() { _ = d.Reviews.Close() }()
 
 		return serve(ctx, log, d)
 	})
@@ -126,6 +137,10 @@ func serve(ctx context.Context, log *slog.Logger, d daemon) error {
 		return err
 	}
 
+	if err := d.Registry.Check(ctx); err != nil {
+		return err
+	}
+
 	log.InfoContext(
 		ctx,
 		"notaryd starting",
@@ -157,6 +172,18 @@ func serve(ctx context.Context, log *slog.Logger, d daemon) error {
 		d.Config.Currency,
 		"epoch_interval",
 		d.Config.EpochInterval.String(),
+		"evidence_registry",
+		d.Config.Registry.Hex(),
+		"evidence_anchorer",
+		d.Evidences.Anchorer().Hex(),
+		"evidence_batch_interval",
+		d.Config.EvidenceBatch.String(),
+		"order",
+		d.Config.OrderAddress,
+		"matching",
+		d.Config.MatchingAddress,
+		"review",
+		d.Config.ReviewAddress,
 	)
 
 	ctx, cancel := context.WithCancel(ctx)
@@ -192,6 +219,13 @@ func serve(ctx context.Context, log *slog.Logger, d daemon) error {
 		close(answered)
 	}()
 
+	evidenced := make(chan struct{})
+
+	go func() {
+		d.Evidence.Run(ctx)
+		close(evidenced)
+	}()
+
 	sponsored := make(chan struct{})
 
 	go func() {
@@ -220,6 +254,7 @@ func serve(ctx context.Context, log *slog.Logger, d daemon) error {
 	<-watched
 	<-answered
 	<-sponsored
+	<-evidenced
 	log.Info("notaryd stopped cleanly")
 
 	return failure

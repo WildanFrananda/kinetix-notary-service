@@ -31,6 +31,9 @@ forge inspect EntryPoint abi --json > "$WORK/EntryPoint.abi"
 forge inspect EntryPoint bytecode > "$WORK/EntryPoint.bin"
 forge inspect Simple7702Account abi --json > "$WORK/Simple7702Account.abi"
 forge inspect Simple7702Account bytecode > "$WORK/Simple7702Account.bin"
+forge inspect EvidenceRegistry abi --json > "$WORK/EvidenceRegistry.abi"
+forge inspect EvidenceRegistry bytecode > "$WORK/EvidenceRegistry.bin"
+forge inspect IEvidenceRegistry abi --json > "$WORK/IEvidenceRegistry.abi"
 
 rm -rf "$GEN"
 mkdir -p \
@@ -48,7 +51,9 @@ mkdir -p \
   "$GEN/paymasterinterface" \
   "$GEN/paymasterbase" \
   "$GEN/entrypoint" \
-  "$GEN/account7702"
+  "$GEN/account7702" \
+  "$GEN/evidence" \
+  "$GEN/evidenceinterface"
 abigen --v2 \
   --abi "$WORK/LiabilityLedger.abi" \
   --bin "$WORK/LiabilityLedger.bin" \
@@ -132,5 +137,16 @@ abigen --v2 \
   --pkg account7702 \
   --type Simple7702Account \
   --out "$GEN/account7702/simple_7702_account.go"
+abigen --v2 \
+  --abi "$WORK/EvidenceRegistry.abi" \
+  --bin "$WORK/EvidenceRegistry.bin" \
+  --pkg evidence \
+  --type EvidenceRegistry \
+  --out "$GEN/evidence/evidence_registry.go"
+abigen --v2 \
+  --abi "$WORK/IEvidenceRegistry.abi" \
+  --pkg evidenceinterface \
+  --type IEvidenceRegistry \
+  --out "$GEN/evidenceinterface/ievidence_registry.go"
 
 echo "generated $GEN"

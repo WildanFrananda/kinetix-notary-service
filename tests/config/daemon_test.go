@@ -15,6 +15,8 @@ const anchorerKey = "0x4c0883a69102937d6231471b5dbb6204fe5129617082792ae468d01a3
 
 const answererKey = "0x6c0883a69102937d6231471b5dbb6204fe5129617082792ae468d01a3f362318"
 
+const evidenceKey = "0x7c0883a69102937d6231471b5dbb6204fe5129617082792ae468d01a3f362318"
+
 const statementKeys = "0x5a00000000000000000000000000000000000000000000000000000000000001," +
 	"0x0000000000000000000000000000000000000000000000000000000000000002"
 
@@ -44,6 +46,11 @@ func daemonValues() map[string]string {
 		config.JWKSURLKey:          "http://kinetix-identity-service:5000/.well-known/jwks.json",
 		config.JWTIssuerKey:        "https://identity.kinetix.local",
 		config.JWTAudienceKey:      "kinetix",
+		config.OrderAddressKey:     "kinetix-order-service:50055",
+		config.MatchingAddressKey:  "kinetix-matching-service:50053",
+		config.ReviewAddressKey:    "kinetix-review-grpc:50060",
+		config.EvidenceRegistryKey: "0x00000000000000000000000000000000e0e0e0e0",
+		config.EvidenceKeyKey:      evidenceKey,
 	}
 }
 
@@ -74,6 +81,13 @@ func TestADaemonConfigurationLoadsWithTheEstatesDefaults(t *testing.T) {
 	require.Equal(t, answererKey, cfg.AnswererKey.Reveal())
 	require.Equal(t, "0x00000000000000000000000000000000c0c0c0c1", cfg.Council.Hex())
 	require.Equal(t, "kinetix-notary-watch:50070", cfg.WatchAddress)
+	require.Equal(t, "kinetix-order-service:50055", cfg.OrderAddress)
+	require.Equal(t, "kinetix-matching-service:50053", cfg.MatchingAddress)
+	require.Equal(t, "kinetix-review-grpc:50060", cfg.ReviewAddress)
+	require.Equal(t, "0x00000000000000000000000000000000e0e0e0e0", cfg.Registry.Hex())
+	require.Equal(t, evidenceKey, cfg.EvidenceKey.Reveal())
+	require.Equal(t, 24*time.Hour, cfg.EvidenceBatch)
+	require.Equal(t, 30*time.Second, cfg.FeedTimeout)
 }
 
 func TestSecretsNeverPrint(t *testing.T) {
@@ -87,10 +101,12 @@ func TestSecretsNeverPrint(t *testing.T) {
 		cfg.AnchorerKey.String(),
 		cfg.StatementKeys.String(),
 		cfg.AnswererKey.String(),
+		cfg.EvidenceKey.String(),
 	}
 	for _, rendered := range renderings {
 		require.NotContains(t, rendered, anchorerKey[2:])
 		require.NotContains(t, rendered, answererKey[2:])
+		require.NotContains(t, rendered, evidenceKey[2:])
 		require.NotContains(t, rendered, statementKeys[2:20])
 		require.NotContains(t, rendered, "kinetix-notary-db")
 	}
@@ -120,6 +136,13 @@ func TestEveryMissingOrBrokenSettingIsNamedAtOnce(t *testing.T) {
 	values[config.WatchAddressKey] = "no-port"
 	values[config.DirectoryAddressKey] = "0xd1"
 	delete(values, config.PaymasterAddressKey)
+	values[config.OrderAddressKey] = "no-port"
+	delete(values, config.MatchingAddressKey)
+	values[config.ReviewAddressKey] = ":50060"
+	values[config.EvidenceRegistryKey] = "0x0000000000000000000000000000000000000000"
+	delete(values, config.EvidenceKeyKey)
+	values[config.EvidenceBatchKey] = "30s"
+	values[config.FeedTimeoutKey] = "1h"
 
 	_, err := config.LoadDaemon(from(values))
 
@@ -146,9 +169,30 @@ func TestEveryMissingOrBrokenSettingIsNamedAtOnce(t *testing.T) {
 		config.WatchAddressKey,
 		config.DirectoryAddressKey,
 		config.PaymasterAddressKey,
+		config.OrderAddressKey,
+		config.MatchingAddressKey,
+		config.ReviewAddressKey,
+		config.EvidenceRegistryKey,
+		config.EvidenceKeyKey,
+		config.EvidenceBatchKey,
+		config.FeedTimeoutKey,
 	} {
 		require.ErrorContains(t, err, key)
 	}
+}
+
+func TestTheEvidenceBatchIntervalIsADay(t *testing.T) {
+	values := daemonValues()
+	values[config.EvidenceBatchKey] = "6h"
+
+	cfg, err := config.LoadDaemon(from(values))
+
+	require.NoError(t, err)
+	require.Equal(t, 6*time.Hour, cfg.EvidenceBatch)
+
+	values[config.EvidenceBatchKey] = "200h"
+	_, err = config.LoadDaemon(from(values))
+	require.ErrorContains(t, err, config.EvidenceBatchKey)
 }
 
 func TestATrustDomainListAllowsACutover(t *testing.T) {

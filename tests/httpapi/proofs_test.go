@@ -54,6 +54,8 @@ func router(a *auth, i *issuer) http.Handler {
 		func(*http.Request) error { return nil },
 		httpapi.NewProofHandler(a, i, keccak.NewScheme(), slog.New(slog.NewTextHandler(io.Discard, nil))),
 		httpapi.NewRegistrationHandler(a, &registrant{}, slog.New(slog.NewTextHandler(io.Discard, nil))),
+		httpapi.NewOrderEvidenceHandler(a, &evidenceIssuer{}, slog.New(slog.NewTextHandler(io.Discard, nil))),
+		httpapi.NewReviewEvidenceHandler(a, &evidenceIssuer{}, slog.New(slog.NewTextHandler(io.Discard, nil))),
 	)
 }
 

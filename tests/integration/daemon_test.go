@@ -34,6 +34,7 @@ import (
 	"github.com/WildanFrananda/kinetix-notary-service/internal/answering"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/approving"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/config"
+	"github.com/WildanFrananda/kinetix-notary-service/internal/evidencing"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/keccak"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/metrics"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/notary"
@@ -67,6 +68,8 @@ type estate struct {
 	pool        *pgxpool.Pool
 	payment     *notarytest.LiabilityServer
 	identity    *notarytest.Identity
+	registry    notary.RegistryIdentity
+	evidence    *notarytest.EvidenceServers
 	values      map[string]string
 	omit        string
 	mu          sync.Mutex
@@ -75,6 +78,8 @@ type estate struct {
 
 type running struct {
 	dig.In
+	Evidencer *evidencing.Evidencer
+	Registry  *evidencing.RegistryCheck
 	Anchorer  *anchoring.Anchorer
 	Handler   http.Handler
 	Verifier  *verifying.Verifier
@@ -125,6 +130,18 @@ func newEstate(t *testing.T) *estate {
 	e.payment = &notarytest.LiabilityServer{Script: e.snapshot}
 	address := notarytest.ServeLiabilities(t, pki.Issue(t, "kinetix.local", "payment"), e.payment)
 	watchAddress := e.serveWatch(t, pki, address, watchKey)
+	evidenceKey, evidenceAnchorer := c.funded(t)
+	e.registry = notary.RegistryIdentity{
+		ChainID: e.ledger.ChainID,
+		Address: notary.Address(c.deployEvidenceRegistry(t, evidenceAnchorer)),
+	}
+	e.evidence = &notarytest.EvidenceServers{}
+	feeds := map[string]string{}
+
+	for _, service := range []string{"order", "matching", "review"} {
+		feeds[service] = notarytest.ServeMesh(t, pki.Issue(t, "kinetix.local", service), e.registerFeeds)
+	}
+
 	e.values = map[string]string{
 		config.RPCURLKey:           c.url,
 		config.ChainIDKey:          strconv.FormatUint(e.ledger.ChainID, 10),
@@ -150,6 +167,11 @@ func newEstate(t *testing.T) *estate {
 		config.JWKSURLKey:          e.identity.URL,
 		config.JWTIssuerKey:        notarytest.IdentityIssuer,
 		config.JWTAudienceKey:      notarytest.IdentityAudience,
+		config.OrderAddressKey:     feeds["order"],
+		config.MatchingAddressKey:  feeds["matching"],
+		config.ReviewAddressKey:    feeds["review"],
+		config.EvidenceRegistryKey: e.registry.Address.Hex(),
+		config.EvidenceKeyKey:      "0x" + hex.EncodeToString(crypto.FromECDSA(evidenceKey)),
 	}
 
 	return e

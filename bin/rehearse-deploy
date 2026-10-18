@@ -160,7 +160,33 @@ for file in "$HERE"/deploy/*.env; do
       exit 1
     fi
 
+    evidence_anchorer="${KINETIX_NOTARY_EVIDENCE_ANCHORER_ADDRESS:-}"
+    if [ -z "$evidence_anchorer" ]; then
+      evidence_anchorer="$SENDER"
+      echo "deploy/$network.env names no evidence anchorer yet (bin/new-evidence-anchorer-key); rehearsing with $SENDER" >&2
+    fi
+    KINETIX_NOTARY_EVIDENCE_ANCHORER_ADDRESS="$evidence_anchorer" \
+      forge script script/DeployEvidenceRegistry.s.sol:DeployEvidenceRegistry \
+      --rpc-url "$RPC" \
+      --unlocked \
+      --sender "$SENDER" \
+      --broadcast \
+      --slow > /dev/null
+    registry="$(expect_create2 DeployEvidenceRegistry.s.sol "$KINETIX_NOTARY_CHAIN_ID")"
+    deployed_at "$registry"
+
+    if [ "$(cast call "$registry" 'streams()(uint8[])' --rpc-url "$RPC")" != "[1, 2, 3]" ]; then
+      echo "the rehearsed evidence registry at $registry does not carry the three streams" >&2
+      exit 1
+    fi
+
+    role="$(cast call "$registry" 'ANCHORER_ROLE()(bytes32)' --rpc-url "$RPC")"
+    if [ "$(cast call "$registry" 'hasRole(bytes32,address)(bool)' "$role" "$evidence_anchorer" --rpc-url "$RPC")" != "true" ]; then
+      echo "the rehearsed evidence registry at $registry did not grant $evidence_anchorer its anchorer role" >&2
+      exit 1
+    fi
+
     kill "$(cat "$WORK/anvil.pid")"
-    echo "$network (chain $KINETIX_NOTARY_CHAIN_ID): ledger $ledger, court $court, withholding court $withholding, council $council, directory $directory and paymaster $paymaster, all through the CREATE2 factory; the paymaster staked by its admin"
+    echo "$network (chain $KINETIX_NOTARY_CHAIN_ID): ledger $ledger, court $court, withholding court $withholding, council $council, directory $directory, paymaster $paymaster and evidence registry $registry, all through the CREATE2 factory; the paymaster staked by its admin"
   )
 done

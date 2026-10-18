@@ -57,3 +57,24 @@ func TestAVerifierRefusesAZeroOrMalformedDirectory(t *testing.T) {
 		require.ErrorContains(t, err, config.DirectoryAddressKey+" must be a non-zero 0x-prefixed 20-byte address")
 	}
 }
+
+func TestAnEvidenceVerifierNeedsTheRegistryAndNotTheDirectory(t *testing.T) {
+	values := map[string]string{
+		config.RPCURLKey:           "https://rpc.example.org",
+		config.ChainIDKey:          "84532",
+		config.EvidenceRegistryKey: mixedCaseLedger,
+		config.RPCTimeoutKey:       "10s",
+	}
+
+	cfg, err := config.LoadEvidenceVerifier(lookup(values))
+	require.NoError(t, err)
+	require.Equal(t, uint64(84532), cfg.Registry.ChainID)
+	require.Equal(t, "0x5fbdb2315678afecb367f032d93f642f64180aa3", cfg.Registry.Address.Hex())
+
+	_, err = config.LoadEvidenceVerifier(lookup(map[string]string{}))
+	for _, key := range []string{config.RPCURLKey, config.ChainIDKey, config.EvidenceRegistryKey, config.RPCTimeoutKey} {
+		require.ErrorContains(t, err, key+" is not set")
+	}
+
+	require.NotContains(t, err.Error(), config.DirectoryAddressKey)
+}

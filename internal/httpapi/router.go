@@ -14,11 +14,15 @@ func NewRouter(
 	ready Check,
 	proofs *ProofHandler,
 	registrations *RegistrationHandler,
+	orderEvidence *EvidenceHandler,
+	reviewEvidence *EvidenceHandler,
 ) http.Handler {
 	mux := http.NewServeMux()
 
 	mux.Handle("GET "+ProofsRoute, instrument(ProofsRoute, proofs))
 	mux.Handle("POST "+RegistrationsRoute, instrument(RegistrationsRoute, registrations))
+	mux.Handle("GET "+OrderEvidenceRoute, instrument(OrderEvidenceRoute, orderEvidence))
+	mux.Handle("GET "+ReviewEvidenceRoute, instrument(ReviewEvidenceRoute, reviewEvidence))
 	operational(mux, instrument, metrics, ready)
 
 	return mux

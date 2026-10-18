@@ -67,6 +67,13 @@ timestamped record that no single party controls.
 | 33 | The CLI image (2026-10-16) | **`ghcr.io/wildanfrananda/kinetix-notary-cli`**, separate from the service image. It is multi-arch (amd64 and arm64), so an auditor's Apple Silicon machine runs it natively. It holds `notary-verify` and `notary-sponsor` only, and is tagged with the notary's own release tags. This settles the open question in §11. Making the package public is the user's step. |
 | 34 | Where the page lives (2026-10-16) | **A new section, Verify, on the public docs site** (`kinetix-docs`), for account holders and auditors. It holds two pages: the how-to with the verifier, and an explanation of what the proof proves and what it does not (§3). The notary's own service page stays deferred. |
 | 35 | How the page gets the verifier (2026-10-16) | **Each notary release attaches `notary-verify.wasm`, the matching `wasm_exec.js`, and `SHA256SUMS` to its GitHub release.** The build is reproducible: `-trimpath`, `-buildvcs=false`, the pinned Go. The docs pin a release and its SHA-256, and refuse to build on a mismatch. The page states the version and the hash, so anyone can rebuild the file from the tag and compare. The RPC endpoint defaults to `https://sepolia.base.org`, and the visitor may replace it. The chain id and the directory come from `deploy/base-sepolia.env` and are shown on the page. |
+| 36 | Step 12's scope (2026-10-16) | **All three evidence streams in one step**: order lifecycle, proof of delivery, reviews, each built in its owner and anchored by one registry. Chosen over POD first (the recommendation): nothing goes live until all three are coherent, so the step is long. |
+| 37 | Where order's evidence comes from (2026-10-16) | **An append-only lifecycle log in order**, written in the same transaction as each change it records (status changes and the return lifecycle, with the actor), served by a new feed whose cursor cannot skip a transaction that commits late. `OrdersChangedSince` returns current state only, and returns never touch `updated_at`, so it cannot carry transitions. |
+| 38 | Where the delivery photo's hash comes from (2026-10-16) | **The courier app hashes the bytes before upload, and storage refuses any other bytes**: the presigned PUT signs the SHA-256 and may write the object once. Matching records the photo's and the signature's hashes at `delivered`, which is terminal. A new app release is part of the step. |
+| 39 | Reviews in step 12 (2026-10-16) | **Now**, chosen over deferring (the recommendation): review gets the estate's first PHP gRPC server, a `review.v1` contract and a feed. The app only creates reviews today; the log is what shows a review was not changed or removed in the database. |
+| 40 | MinIO (2026-10-16) | **Built from source by our CI and published to GHCR.** quay.io now refuses `minio/minio` and `minio/mc`, Docker Hub has no such tag, and upstream is archived. The build takes the last upstream release, `RELEASE.2025-10-15T17-29-55Z`, reproducibly. No security fixes will follow; replacing MinIO is later work, owned by infrastructure. **2026-10-17:** the user chose to replace it after step 12 is released, by a lab spike of SeaweedFS, RustFS and VersityGW against decision 38's seven cases (infra `docs/OBJECT-STORAGE.md` §8). |
+| 41 | Who anchors evidence (2026-10-17) | **A seventh key, the evidence anchorer**, in the SOPS store like the anchorer, funded by the deployer like the answerer. It holds the registry's anchorer role and nothing else. Chosen over the existing anchorer key, which judges its own epochs by its nonce (decision 16, `anchoring/anchorer.go`), and over the council, whose watch would have to read all three feeds. |
+| 42 | How often evidence is anchored (2026-10-17) | **Daily, per stream, only when the stream has new records**: at most three transactions a day. Chosen over hourly (the recommendation): a proof is available the day after the event, and gas is a twenty-fourth. |
 
 ## 3. What the proof does and does not prove
 
@@ -1261,31 +1268,324 @@ Decisions 31–35 (2026-10-16). Work order:
   - The docs pin that release.
   - A production proof is verified in a real browser against Base Sepolia.
 
-**11-1 to 11-3, 2026-10-16: built and green, uncommitted; waiting on the user's v1.4.0.**
+**Step 11 done, 2026-10-16: released as v1.4.0 (`7d292fa`) and live in production; the docs commit is the user's.**
 
 | Part | Proof |
 |---|---|
 | WebAssembly | `notary-verify.wasm` for `v1.4.0`: 44,203,656 bytes, SHA-256 `289ae0c0…1d04`; two builds with separate caches gave identical bytes. `browser_verifier_test.go` runs the CLI binary and the WebAssembly under Bun on the same documents on anvil and requires identical exit, stdout and stderr: attributable inclusion, a statement another key signed, a provably false statement, a bundle, never anchored, not final, a ledger named as the directory, a malformed document, a missing timeout; an endpoint that does not answer is `unknown` in both. A planted rewrite inside the WebAssembly turned the bundle case red. `bin/ci-go` exits 0: 0 lint issues, the `js/wasm` package linted on its own, 85.7%, nothing skipped |
-| CLI image | `cli/Dockerfile` built here for arm64 and amd64 without emulation: each holds static `notary-verify` and `notary-sponsor` for its own architecture, user 65532. The arm64 image ran the docs' command on the production proof of epoch 41 from `/dev/stdin`: `included`, attributable, 0 faults, exit 0. The `cli` job of Build and push and the `cli` and `verifier` jobs of Release have not run yet: their first run is the user's merge and tag |
+| CLI image | `cli/Dockerfile` built here for arm64 and amd64 without emulation: each holds static `notary-verify` and `notary-sponsor` for its own architecture, user 65532. The arm64 image ran the docs' command on the production proof of epoch 41 from `/dev/stdin`: `included`, attributable, 0 faults, exit 0. The `cli` job of Build and push and the `cli` and `verifier` jobs of Release all passed on their first run (`7d292fa`). `kinetix-notary-cli:v1.4.0` is pulled anonymously, an index of linux/amd64 and linux/arm64, and the published image ran the docs' command on the epoch 41 proof: `included`, attributable, 0 faults, exit 0 |
 | docs | the Verify section in `kinetix-docs`, two pages in English and Indonesian, and the island that loads the pinned WebAssembly. 103 tests, `astro check` and svelte-check clean, translations current, no leaks, build and links valid. In headless Chromium against Base Sepolia, the epoch 41 proof was `included` in 8.1 s and the same proof with its amount changed was `rejected`; at 390 px nothing overflowed |
-
-Left for 11-4:
-- the user commits and merges, tags exactly `v1.4.0`, and makes `kinetix-notary-cli` public if GHCR made it
-  private;
-- I check that the release's `SHA256SUMS` matches the pin, turn the docs' mentions of the WebAssembly code
-  into permalinks of the release commit, and the user commits `kinetix-docs`.
+| release | `v1.4.0` at `7d292fa`. The `SHA256SUMS` CI built on amd64 lists exactly the pin built on the laptop on arm64, and a fresh clone of the tag running the docs' own command printed the same two hashes. Deploy run 10:01 UTC recreated notaryd and notary-watch at the tag's linux/amd64 digest `ce2c06ff…`, healthy, every observability gate passed, both name `7d292fa` |
+| CI | the first PR run went red in Gate go: the browser test was the suite's first `go build`, and git refused the runner-owned checkout. The same cause had emptied `bin/check-boundaries`' import rules on GitHub since CI began (CLAUDE.md, Traps). Fixed before the merge; the merged run has no `error obtaining VCS status` line |
+| docs pin | `kinetix-docs` pins `v1.4.0`, downloads it from the release and checks the bytes; every notary permalink moved to `7d292fa` (the linked files are unchanged since `1beede1`), and the entry point, `RunDocument`, `bin/build-verifier-wasm` and the release job are linked. All docs gates green against the downloaded release |
 
 ### Step 12 — phase 2: evidence anchoring
 
-`EvidenceRegistry`, batched Merkle roots of:
+Decisions 36–40 (2026-10-16). Three evidence streams, each built in the service that owns the records and
+anchored by one registry here. Nothing goes live until all three are coherent.
 
-- **order lifecycle transitions**, from order's existing `OrdersChangedSince` feed;
-- **proof of delivery**: the fulfillment contract carries only `pod_photo_url` today, and a URL's
-  content can be replaced. A `pod_content_sha256` must be computed where the photo is captured and
-  stored (courier app and matching), then anchored, so a return dispute can show the delivery
-  evidence existed at time T and is unchanged;
-- **review integrity**: review content hashes, so a review cannot be quietly edited or removed.
-  review serves no gRPC today; it needs a server and a `ChangedSince` first.
+What the survey found on 2026-10-16, before anything was designed:
+
+- **Order** keeps no history. `OrdersChangedSince` returns each order's current row; two transitions
+  between polls collapse into one, and the return lifecycle never touches `orders.updated_at`, so it is
+  invisible in the feed. `SHIPPED` and `REFUNDED` are never assigned anywhere. No actor is recorded.
+- **Any feed keyed on a value written before commit can skip a row for ever.** Reproduced on Postgres 16:
+  a transaction that writes first and commits later lands behind a cursor that already moved past it.
+  `OrdersChangedSince` keys on `updated_at` set by the application before commit, so search's order
+  read model is exposed to the same loss. A cursor on `(tx xid8, seq)` that serves only
+  `tx < pg_snapshot_xmin(pg_current_snapshot())` returned both rows in the same reproduction, in order.
+- **Proof of delivery** has no hash anywhere. The app PUTs the picker's bytes to a presigned MinIO URL that
+  can be replayed for 600 s; the bucket is versioned but has no object lock. The signature is a PNG data
+  URI in matching's database. `delivered` is terminal. Only the backoffice reads POD.
+- **MinIO at the pinned `RELEASE.2025-09-07T16-13-09Z`** (built from source, because quay.io now refuses
+  the image) enforces what decision 38 needs: a presigned PUT that signs `x-amz-checksum-sha256` and
+  `if-none-match: *` accepts the right bytes, answers a replay `412`, other bytes `400
+  XAmzContentChecksumMismatch`, and a request without either header fails its signature; `HEAD` with
+  `x-amz-checksum-mode: ENABLED` returns the stored SHA-256. Upstream is archived (decision 40).
+- **Review** only ever creates reviews (no edit, hide or delete route), serves no gRPC, has no contract,
+  and no PHP gRPC server exists in the estate. RoadRunner's gRPC plugin hands PHP only `:peer.address`
+  and `:peer.auth-type`, never the client certificate, but it runs named Go interceptors
+  (`grpc.interceptors`), so the SPIFFE allow list per RPC becomes a Go interceptor compiled into
+  review's own RoadRunner binary. Review's HTTP side stays FrankenPHP.
+
+The design:
+
+- **Every owner writes an append-only evidence log in the same transaction as the change it records**,
+  with `seq` (identity) and `tx xid8 default pg_current_xact_id()`, and serves it through a feed whose
+  cursor is `(tx, seq)` and which returns only rows below the snapshot's `xmin`. Order logs status
+  changes and the return lifecycle with the actor; matching logs a delivery (photo SHA-256, signature
+  SHA-256, `delivered_at`, driver); review logs each review and driver rating as written.
+- **Commitments, not content.** A leaf is a domain-separated keccak of the record and a salt the notary
+  generates and keeps, as for liabilities: nothing on chain names a buyer, an order or a review's text,
+  a guess of a low-entropy field cannot be confirmed, and erasing a record's salt erases what its anchor
+  can say about it.
+- **`EvidenceRegistry`**: immutable, MIT, one contract with a hash-chained sequence of batches per stream
+  (order lifecycle, delivery, review), so an outage of one owner stalls only its own stream.
+  `anchor(stream, header)` accepts exactly the stream's next batch, as the ledger accepts the next epoch
+  (identical re-send `BatchAlreadyAnchored`, different `BatchConflict`); `verifyInclusion` is a view that
+  reverts `UnknownBatch` for a batch that does not exist; `seal` hands every stream's head to a
+  successor. The anchorer role is held by the existing anchorer key. The registry is its own trust root,
+  configured like the directory.
+- **Proofs** come from the notary's proof API to the parties of the record only (buyer, merchant, driver,
+  author), with their access token, and `notary-verify` checks them against the registry. For a delivery
+  the proof carries the photo's SHA-256, so anyone holding the photo can show it existed unchanged when
+  the batch was anchored.
+- **The courier app hashes before upload.** `pod_upload` carries the SHA-256; matching records it and
+  signs it into the presigned PUT with `if-none-match: *`; at `delivered` matching compares `HEAD`'s
+  checksum with the recorded one and hashes the signature itself. Matching refuses a `pod_upload`
+  without a hash, so the app release reaches couriers before matching's.
+
+Work order:
+
+- **12-1 contracts**: `order.v1` lifecycle feed, a delivery-evidence feed served by matching, a new
+  `review.v1` package with its feed. Additive only. The user publishes the version.
+- **12-2 infrastructure**: `kinetix-minio` and `kinetix-minio-mc` built by CI from upstream
+  `RELEASE.2025-10-15T17-29-55Z` and published to GHCR, re-checked against the four behaviours above;
+  the three feeds granted to `notary` per RPC; review's gRPC service, its handshake rows, scrape and
+  alerts.
+- **12-3 order**: the lifecycle log, written at every transition and return step, with the actor; the
+  feed; tests including a late commit.
+- **12-4 matching and the courier app**: hash, checksum-locked write-once upload, `HEAD` check, the
+  delivery log and its feed.
+- **12-5 review**: RoadRunner gRPC with the SPIFFE interceptor, the log and its feed.
+- **12-6 notary**: `EvidenceRegistry` (Foundry tests, Slither, Aderyn, rehearsed deploy), the three feed
+  readers, salts, batching and anchoring, the proof API, `notary-verify` for evidence.
+- **12-7 docs**: the Verify section gains evidence.
+- **12-8 the user**, in this order, because each step's gates run against what is already live:
+  1. publish contracts, and move every pin to the new tag, the notary's `bin/sync-contracts` included;
+     then run the whole lab on the new images before anything is released: every image fetches its
+     contracts inside the build from the pinned tag (the notary's even excludes a local `.contracts`), so
+     no image of step 12 can be built before the publish, and the lab is the one place the real owners'
+     feeds, `review-grpc`, the handshake matrix and the metrics conformance meet notaryd;
+  2. release order (old infrastructure is fine);
+  3. ship the courier app to couriers: the new matching refuses an upload without the photo's hash, and the new
+     app works against the old matching;
+  4. release matching, still on the old infrastructure: its new allow list parser and reflection rule must be
+     live before the narrowed list is;
+  5. land infrastructure's step 12 and deploy review straight after it, with no other deploy between: from that
+     commit `metrics_conformance.sh` expects `kinetix-review-grpc`, which only review's deploy starts, and
+     `trace_test.sh` asks matching for reflection as order under the narrowed list;
+  6. deploy the evidence registry and release the notary, by `kinetix-infrastructure/docs/NOTARY-EVIDENCE-DEPLOY.md`:
+     fund the evidence anchorer, deploy and inspect the registry, name it in `compose.prod.yaml`, commit
+     infrastructure, then tag the notary.
+  The evidence anchorer key goes into the prod store before step 5 (`bin/new-evidence-anchorer-key prod`):
+  infrastructure's tree names it with `:?`, so a store without it stops every render. The MinIO images are
+  independent of all of this and can go first (Waiting on the user).
+
+**12-6 design (2026-10-17).** Evidence scheme v1, keccak over packed big-endian bytes like §4, with tags of
+its own so no evidence hash can be read as a liabilities one:
+
+| Item | Preimage | Bytes |
+|---|---|---|
+| record digest | `0x20 ‖ stream:u8 ‖ fields`, each string or byte field prefixed by its length as `u32` | — |
+| leaf | `0x10 ‖ stream:u8 ‖ salt:bytes32 ‖ recordDigest:bytes32` | 66 |
+| node | `0x11 ‖ left ‖ right` | 65 |
+| empty (padding) | `0x12` | 1 |
+| batch digest | `0x13 ‖ scheme:u16 ‖ stream:u8 ‖ number:u64 ‖ previousDigest ‖ root ‖ leafCount:u64 ‖ throughTransaction:u64 ‖ throughSequence:u64 ‖ closedAt:u64` | 108 |
+
+Streams are `1` order lifecycle, `2` delivery, `3` review. Depth is canonical and padded as in §4. A batch
+binds the feed position it reads through, so consecutive batches show the log was read without a gap. The record
+digest is computed off chain (the Go builder and the verifier); the contract computes the leaf from the salt and
+the record digest, binding the stream, and checks the path.
+
+`EvidenceRegistry` (MIT, immutable): per stream a hash-chained sequence of batches. `anchor(header)`, anchorer
+role only, accepts exactly the stream's next batch — previous digest equal to the head, at least one leaf, a close
+time after the previous one and not in the future, a feed position after the previous one; an identical re-send
+reverts `BatchAlreadyAnchored`, a different one `BatchConflict`. `verifyInclusion(stream, number, salt,
+recordDigest, index, siblings)` is a view that returns false for a bad proof and reverts `UnknownBatch` for a batch
+that does not exist. `seal(expectedHeads)`, admin only, stops every stream and emits each head for a successor,
+whose constructor takes per-stream genesis values. ERC-165, `AccessControlDefaultAdminRules`, CREATE2 factory,
+Sourcify, as every contract here.
+
+Off chain: one gRPC reader per feed (order, matching, review-grpc) over the mesh; a collector that pulls each feed
+from its stored cursor, draws a salt per record and stores record, salt and leaf in one transaction with the
+cursor; a daily closer that builds each stream's tree, records the batch and sends the anchor with the evidence
+anchorer key, replacing a stuck transaction at the same nonce as the liabilities anchorer does; a proof API that
+gives a record's proof only to its parties (a lifecycle event to its buyer, merchant and actor; a delivery to its
+courier and to the order's buyer and merchant, read from the order stream; a review to its author, the reviewed
+merchant or courier); and `notary-verify` for the evidence document, against the registry configured beside the
+directory.
+
+Work order for 12-6: (a) the contract, its tests, analysis and rehearsed deploy; (b) the Go scheme and the
+differential fixture; (c) the three readers and the store; (d) collector and closer with the evidence anchorer;
+(e) the proof API; (f) the verifier and the browser verifier.
+
+**12-1, 2026-10-16: written and green in `kinetix-contracts`, uncommitted and unpublished.** `common.v1.LogCursor`
+(`transaction_id`, `sequence`); `order.v1.OrderLifecycleService/LifecycleEventsSince` in a new
+`order/v1/lifecycle.proto` (event kind, from and to status, return number and status, actor kind and
+principal, buyer, merchant, `occurred_at`); `fulfillment.v1.DeliveryEvidenceService/DeliveriesSince` in a new
+`fulfillment/v1/delivery_evidence.proto` (order number, driver, photo and signature SHA-256 as bytes,
+`delivered_at`); a new `review.v1.ReviewEvidenceService/ReviewsSince` (review id, product or driver, order id,
+subject, author, merchant, rating, comment SHA-256, `created_at`). New services in new files, so nothing
+existing changes: `buf lint` with moneylint, `buf format` and `tools/breaking-gate` against `main` all pass
+(buf v1.74.0, the version CI installs), and a planted lint fault and a planted field rename each turned their
+gate red. The services build against a local copy first; the user publishes the version once all three
+owners have run against it, and every pin then moves to that tag.
+
+**12-3, 2026-10-16: built and green in `kinetix-order-service`, uncommitted.** `order_lifecycle_events` with
+`LifecycleLog` at every transition and return step (checkout placed and paid by the buyer, cancellation by the
+system, packed by the merchant, delivered by the driver, completed by the system or the admin who did it,
+return opened and goods received by the merchant, resolved by the system, rejected by the admin); deferred
+constraint triggers refuse a status committed without its event; the log refuses update, delete and truncate;
+the migration writes a `BASELINE` event for every existing order and return; `LifecycleEventsSince` serves
+`(xid8, sequence)` below the snapshot's `xmin`. The contract gained `LIFECYCLE_EVENT_KIND_BASELINE`. 380 tests
+on a fresh Postgres, 0 skipped; a planted feed without the `xmin` filter, a planted delivery that skips the log
+and a planted trigger that never fires each turned their test red. The admin completion and rejection endpoints
+now refuse a token that names no principal.
+Found on the way: neither CI ran `dotnet test` at all, the ten Postgres tests failed on a fresh database
+(concurrent migrations), and GitLab's order jobs never run `bin/sync-contracts`. Both CIs now run the suite
+against Postgres, with a test that fails when `CI` is set and the database is not.
+
+**12-4, 2026-10-16: built and green in `kinetix-matching-service` and `kinetix-courier-mobile`, uncommitted.** The
+app reads the photo, hashes it and sends `pod_upload` with `photo_sha256`; matching refuses one without it, names
+the object `pod/<job>/<sha256>.jpg` and signs the PUT over `x-amz-checksum-sha256` and `if-none-match: *`, and
+hands the app those headers to send. At `delivered` matching reads the stored checksum (`HEAD` with checksum mode)
+and accepts only the hash in the name; the signature must be a PNG `data:` URI and matching hashes the decoded
+PNG. `delivery_evidence` (photo and signature SHA-256, courier principal, `delivered_at`, one row per job, append
+only) is inserted before the status in the same transaction, and a trigger refuses a job marked delivered without
+it; `DeliveriesSince` serves it on `(xid8, sequence)` below the snapshot's `xmin`. No backfill: earlier photos were
+never hashed when taken. matching's allow list now takes `peer@Service/Method`, and reflection lists every service
+(it had left out `FleetRegistryService`). Matching 390 tests including nine against MinIO `RELEASE.2025-09-07` built
+from source, credo and format clean, and Dialyzer adds only the unknown `GRPC.Server.Stream.t` every server there already
+reports; the app 105 tests and `flutter analyze` clean. Planted
+faults each turned their test red: a feed without the `xmin` filter, a delivery that skips the evidence, a trigger
+that never fires, an upload address that stops signing the checksum (MinIO enforces the headers even unsigned, so
+only the signature stops a client dropping them), and in the app a dropped header, a wrong hash and a replay read as
+a failure. Matching's presign and the app's uploader were also run against each other on that MinIO: the photo was
+stored under its hash, a replay answered as already stored, other bytes were refused `400`.
+Found on the way: `flutter analyze`, which the app's CI runs, failed since the POD commit (the integration test's fake
+repository lacked `attachPodPhoto`); `Dockerfile.test` generated three of matching's six packages. Both fixed. Owed to
+12-2: `notary@fulfillment.v1.DeliveryEvidenceService/DeliveriesSince`, and `order` is still a bare entry on matching's
+list, so it reaches every service there, the evidence feed included. Matching's build needs the published contracts:
+`bin/generate-proto` stops while the pin (v1.0.15) has no `delivery_evidence.proto`.
+
+**12-5, 2026-10-16: built and green in `kinetix-review-service`, uncommitted.** `review_evidence` (review id, product
+or driver, order, subject, author, merchant, rating, comment SHA-256, `created_at`) is written by Postgres itself: a
+trigger on each review table inserts the row in the statement that inserts the review, so the log says exactly what
+the row says and no code path can skip it; triggers refuse update, delete and truncate on the log; the migration
+wrote every existing review in creation order. `ReviewsSince` serves it on `(xid8, sequence)` below the snapshot's
+`xmin`. The feed runs in `review-grpc`, a second process from the same image: our own RoadRunner v2025.1.15 built in
+`rr/` from its plugins plus `kinetix_metrics` (its own `/metrics`: `kinetix_grpc_server_calls_total` seeded per method,
+the scrapes it serves, `kinetix_build_info`) and `kinetix_peers` (SPIFFE id from the verified chain, allow list per RPC, refuses to start without one), and the
+PHP worker `grpc-worker.php`. The suite moved from SQLite to Postgres in both CIs, and a Go job gates `rr/`. Review
+127 tests on Postgres, also inside the CI runtime image (0 skipped); Go tests and `govulncheck` clean after bumping
+grpc 1.79.2 to 1.84.0, otel to 1.46.0 and x/net to 0.60.0 (seven reachable advisories; x/net's fix is the only one,
+eight days old). Planted faults each turned their test red: a feed without the `xmin` filter, a review table whose
+trigger fires on update instead of insert, a log that admits `UPDATE`, a comment hashed in another encoding. End to
+end on the built image with a throwaway mesh CA: the granted notary read both reviews and a page of one, a cursor
+past every row was `InvalidArgument`, search was `PermissionDenied`, a caller with no certificate never completed
+the handshake, the metrics counted each, and with the TLS block set to stop verifying client certificates the
+granted notary itself was `Unauthenticated` — the interceptor fails closed. An empty allow list stops the process.
+Found on the way: `spiral/roadrunner-grpc` 3.8.0 requires the vulnerable `spiral/roadrunner ^3.0` (held at 3.6.0);
+`spiral/goridge` declares `ext-sockets`, which the pipes relay never touches (ignored at install, documented); and
+review's lock carried three advisories, one a ReDoS reachable through `Cache-Control` — laravel/framework 13.34.0,
+symfony/http-foundation 8.1.8, league/commonmark 2.10.3, `composer audit` clean. Owed to 12-2: the `review-grpc`
+service (port 50060, metrics 2112, `./pki/review`, `APP_VERSION`), `notary@review.v1.ReviewEvidenceService/ReviewsSince`,
+handshake rows using the contract's proto (no reflection), scrape and alerts. Review's image build needs the published
+contracts: the pin (v1.1.0) has no `review.proto`.
+
+**12-2, 2026-10-17: written and checked in `kinetix-infrastructure`, uncommitted.** `minio/Dockerfile` builds
+`kinetix-minio` (MinIO `RELEASE.2025-10-15T17-29-55Z`, commit `9e49d5e7`, with mc for the healthcheck) and
+`kinetix-minio-mc` (`RELEASE.2025-08-13T08-35-41Z`, `7394ce0d`) from upstream source, versions stamped as
+upstream's release build does, cross-compiled for amd64 and arm64; `.github/workflows/minio-image.yml` builds each
+architecture, scans it, pushes it, joins the manifest list and commits the digests to `deploy/{prod,dev}/minio.env`,
+which render appends. Re-checked on the images built here: the spike's seven cases unchanged (right bytes `200`,
+replay `412`, other bytes `400 XAmzContentChecksumMismatch`, a missing header `400 AccessDenied`, `HEAD` returns the
+stored checksum), compose's provisioning script runs unchanged through the mc image, and matching's storage and
+mesh tests pass against it (43). `kinetix-review-grpc` is in both compose files (50060, metrics 2112, review's leaf,
+which already names `kinetix-review-grpc`), a companion of review in `bin/prod-deploy`, scraped as
+`service=kinetix-review-service, process=grpc` like warehouse's gRPC process, and in `metrics_conformance.sh`; the
+generic down alert covers it. For that, review's metrics plugin became `kinetix_metrics`, its own `/metrics` with
+the estate's HTTP families (RoadRunner's metrics plugin could not count its own scrapes); the e2e on the rebuilt
+image passed again. Allow lists: `notary@order.v1.OrderLifecycleService/LifecycleEventsSince` on order;
+on matching, `order` narrowed from bare to its two services and `notary@fulfillment.v1.DeliveryEvidenceService` —
+service entries, because matching v1.0.0 parses no method entry; matching now lets a listed peer use reflection,
+which the probes need. `handshake_matrix.sh` asserts the three grants and the narrowing, and probes `review-grpc`
+with the contract's proto. compose-check renders both environments (48 and 37 services), `promtool check config`,
+shellcheck and the bats suite pass (observability's five fail only on the Mac's BSD `touch`, 12/12 on Debian). Not
+run: the full lab stack, so the handshake matrix and conformance have not run against a live `review-grpc` in compose.
+Later the same day the workflow's first run failed its scan: the archived releases compile in `grpc` v1.71/v1.72
+(CVE-2026-33186) and, in minio, `amqp091-go` v1.10 (CVE-2026-77405, -77408, -77411), all CRITICAL with a fix that
+no upstream release will carry. I had not scanned the local build before the first run. `minio/Dockerfile`
+now raises them to the first fixed versions (grpc v1.79.3, amqp091-go v1.13.0) with `go get` before compiling,
+and stops unless the module graph then holds exactly those. Both local images then scan clean under CI's policy,
+and the behaviour checks are unchanged: the seven cases, the provisioning script, matching's 43.
+
+**12-6, 2026-10-17: built and green in this repository, uncommitted; lab and production wiring written in
+`kinetix-infrastructure`.** (a) `contracts/src/evidence/`: `EvidenceRegistry`, its structs and its two libraries
+(`EvidenceTree`, `BatchChain`), and `DeployEvidenceRegistry.s.sol`, which deploys through the CREATE2 factory and
+gives a successor a sealed predecessor's heads as its genesis. Tests: 23 unit, 2 fuzz, 7 deploy, 5 differential
+against `test/fixtures/evidence-v1.json`, 5 invariants. `bin/ci-contracts` passes (329 tests on the CI profile,
+fork 18, Slither nothing, Aderyn only `centralization-risk`, accepted as for every contract here), and
+`bin/rehearse-deploy` deploys the registry on anvil with each network's chain id and checks its streams and its
+anchorer. Controls: without the head check two tests went red, without the feed-position check two, and Go's
+leaf tag changed to `0x14` turned four differential tests red. Operations: `bin/new-evidence-anchorer-key`,
+`bin/fund-evidence-anchorer`, `bin/deploy-evidence-registry` (dry run by default) and
+`bin/inspect-evidence-registry`, which also checks the liabilities anchorer lacks the role. (b) the evidence
+types in `internal/notary` and the scheme in `internal/keccak`, checked against known answers computed
+independently in Python. (c) `internal/feeds`, one reader per owner over the mesh (each dials only the service
+it names), which refuses a record the notary cannot commit to: no position, a missing field, an unspecified
+kind, a hash that is not 32 bytes, a NUL, a field over 64 KiB, a time outside the epoch; migration
+`00005_evidence.sql` (a cursor per stream, a leaf table, one typed table per stream keeping time as seconds and
+nanoseconds, batches and attempts, one batch in flight across all streams). (d) `internal/evidencing`: the
+collector checks every page follows the log before anything is kept, and keeps a page with the cursor in one
+fenced transaction; the closer builds a stream's batch when its last one closed a day ago, or at once when a
+full batch is waiting, closes it at the chain's latest block time, and anchors it with the evidence key
+through the shared `transactor` (nonce, fees, re-signing at the same nonce, broadcast, receipts), which
+`Writer` now uses too. Evidence metrics: `kinetix_notary_evidence_{feed_up,collected_total,pending_records,
+last_finalized_batch,last_finalized_closed_at_seconds,anchorer_balance_wei,anchor_cost_wei,runway_seconds,
+fee_ceiling_hits_total}` and `kinetix_notary_abandoned_evidence_batches`. (e) `/api/v1/proofs/evidence/orders/{order}`
+and `/reviews/{review}`, through Kong's existing `/api/v1/proofs` route: a record's proof goes to its parties only,
+a stranger gets 404, a record whose batch is not final is counted as pending, and a record the database changed
+since it was kept is refused, never proven. (f) `prooffile` evidence documents, `verifying.EvidenceVerifier`,
+`verifycli.RunEvidence`, and both `notary-verify` and the browser verifier route an evidence document to the
+registry. Verified: `bin/ci-go` passes (84.9%); the integration suite on anvil and Postgres serves the three
+feeds over mTLS, anchors every stream and has the buyer's proofs verify `included` on chain, a copy with the
+courier changed `rejected`; the browser verifier answered exactly as the CLI in eight evidence cases. Two
+faults found and fixed while testing: a built batch whose send failed let the next stream try a second one,
+and a missing registry setting exited `unknown` rather than `ExitConfig`. Controls, each compiling and each
+red: the cursor's compare-and-set removed, the delivery party rule widened, the page check skipped, the header
+digest check skipped, the hash length check loosened, a kept entry's recheck skipped, and a planted `feeds`
+import in `evidencing` (the boundary check). Infrastructure: `compose.yaml` gives notaryd the three feeds, the
+lab registry `0x529cBEB0d9c329a1430671d7805c04442926462B` and the evidence key; `scripts/lab/notary-ledger.sh`
+deploys the registry with anvil's fifth account as the anchorer (rehearsed twice on a throwaway chain: all seven
+contracts at their constants, the second run changed nothing); four Grafana alerts (`evidence-abandoned`,
+`-feed-down`, `-runway`, `-stalled`, expressions checked by promtool); `docs/NOTARY-EVIDENCE-DEPLOY.md` is the
+production runbook. The protos are generated from the local contracts copy: `bin/sync-contracts` still pins
+v1.2.0, so CI goes green only once the contracts are published and the pin moves (12-8 step 1).
+
+**12-8 step 1, 2026-10-17: contracts v1.3.0 published (`edc6c26`, all four registries) and every pin moved;
+the whole path proven in the lab.** order, matching, review and the notary now pin v1.3.0 in `bin/sync-contracts`
+(uncommitted), and each passes against the published tag: the notary's `bin/ci-go` (84.9%), matching 392,
+order 380, review 127 (one skipped where the host has no `ext-grpc`, as before). Review's `generated/` from the
+tag is byte-identical to the one generated from the local copy. The lab ran on images built from those trees:
+- `kinetix-notary-ledger` deployed the evidence registry at its constant;
+- notaryd's registry check passed, and all three feeds answered over the real mesh and allow lists;
+- one record per stream was written in the owners' lab databases (review's through its own trigger) for an
+  order whose buyer is a throwaway account registered with the lab identity;
+- notaryd collected them, anchored one batch per stream in turn, and each was final about five minutes later;
+- with that buyer's real token the proof API gave 2 proofs for the order (its event and its delivery) and 1 for
+  the review, 401 without a token and 404 for an order they are not in;
+- the lab image's `notary-verify` answered `included` for all three against the lab registry, the delivery
+  proof's photo hash equals the SHA-256 of the photo's bytes, and the same file with the courier changed answered
+  `rejected` (exit 1).
+The handshake matrix passed every step-12 row (notary to the three feeds served, `search` and `order` refused on
+them, `review-grpc`'s three cases) and metrics conformance every `review-grpc` check. Its other failures were
+services not started for this run, and two things in the lab that predate step 12: its identity image is from
+2026-10-09, before identity's per-RPC allow list (6 rows), and a lab-built notary names no version. The lab chain
+also came up empty while the lab database still remembers epoch 0, so liabilities anchoring in the lab stops on
+`ledger_diverged` until both are reset (docs/NOTARY-LAB.md, "Resetting"). Next: step 2, the order release.
+
+**12-8 steps 2–6, 2026-10-17 and 18.** Order v1.1.0 and matching v1.1.0 were released green. Review v1.1.0
+failed its deploy and was rolled back: FrankenPHP segfaulted on ext-grpc state its threads shared (review
+`CLAUDE.md`, "ext-grpc is built once per process, under a lock"). Review v1.1.1 went live at 16:11 UTC on
+infrastructure `c43c86a`, the infrastructure of step 12, with `kinetix-review-grpc` healthy. On 2026-10-18 the
+evidence anchorer was funded with 0.001 ETH and the `EvidenceRegistry` was deployed at
+`0xbF1F15F40cA8Dd63c070d223243febf6731EF480`, block 48260906. `bin/inspect-evidence-registry` passed every
+line: interface, scheme 1, streams `[1, 2, 3]`, the admin and its delay, the evidence anchorer holding the role
+and the liabilities anchorer not, unsealed, and Sourcify `match`. The address is in
+`deploy/base-sepolia.env` and infrastructure's `compose.prod.yaml`. Left: commit this tree, commit
+infrastructure, then tag v1.5.0.
 
 ### Step 13 — scheme v2: zero-knowledge proof of liabilities
 

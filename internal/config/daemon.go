@@ -32,11 +32,19 @@ const (
 	JWKSURLKey         = "IDENTITY_JWKS_URL"
 	JWTIssuerKey       = "JWT_ISSUER"
 	JWTAudienceKey     = "JWT_AUDIENCE"
+	OrderAddressKey    = "KINETIX_NOTARY_ORDER_GRPC_ADDR"
+	MatchingAddressKey = "KINETIX_NOTARY_MATCHING_GRPC_ADDR"
+	ReviewAddressKey   = "KINETIX_NOTARY_REVIEW_GRPC_ADDR"
+	EvidenceKeyKey     = "KINETIX_NOTARY_EVIDENCE_ANCHORER_PRIVATE_KEY"
+	EvidenceBatchKey   = "KINETIX_NOTARY_EVIDENCE_BATCH_INTERVAL"
+	FeedTimeoutKey     = "KINETIX_NOTARY_FEED_TIMEOUT"
 
 	defaultTrustDomain     = "kinetix.local"
 	defaultEpochInterval   = time.Hour
 	defaultTick            = 15 * time.Second
 	defaultSnapshotTimeout = 3 * time.Minute
+	defaultEvidenceBatch   = 24 * time.Hour
+	defaultFeedTimeout     = 30 * time.Second
 )
 
 type Daemon struct {
@@ -64,6 +72,13 @@ type Daemon struct {
 	JWKSURL         string
 	JWTIssuer       string
 	JWTAudience     string
+	OrderAddress    string
+	MatchingAddress string
+	ReviewAddress   string
+	Registry        notary.Address
+	EvidenceKey     Secret
+	EvidenceBatch   time.Duration
+	FeedTimeout     time.Duration
 }
 
 func LoadDaemon(lookup Lookup) (Daemon, error) {
@@ -144,27 +159,35 @@ func LoadDaemon(lookup Lookup) (Daemon, error) {
 		cfg.AnswererKey = Secret{value: raw}
 	}
 
-	if raw := required(PaymentAddressKey); raw != "" {
-		host, port, err := net.SplitHostPort(raw)
-		if err != nil || host == "" || port == "" {
-			problems = append(problems, PaymentAddressKey+" must be host:port")
+	hostPort := func(key string) string {
+		raw := required(key)
+		if raw == "" {
+			return raw
 		}
 
-		cfg.PaymentAddress = raw
+		host, port, err := net.SplitHostPort(raw)
+		if err != nil || host == "" || port == "" {
+			problems = append(problems, key+" must be host:port")
+		}
+
+		return raw
+	}
+
+	cfg.PaymentAddress = hostPort(PaymentAddressKey)
+	cfg.OrderAddress = hostPort(OrderAddressKey)
+	cfg.MatchingAddress = hostPort(MatchingAddressKey)
+	cfg.ReviewAddress = hostPort(ReviewAddressKey)
+	cfg.Registry = address(EvidenceRegistryKey, required(EvidenceRegistryKey), &problems)
+
+	if raw := required(EvidenceKeyKey); raw != "" {
+		cfg.EvidenceKey = Secret{value: raw}
 	}
 
 	cfg.Council = address(CouncilAddressKey, required(CouncilAddressKey), &problems)
 	cfg.Directory = address(DirectoryAddressKey, required(DirectoryAddressKey), &problems)
 	cfg.Paymaster = address(PaymasterAddressKey, required(PaymasterAddressKey), &problems)
 
-	if raw := required(WatchAddressKey); raw != "" {
-		host, port, err := net.SplitHostPort(raw)
-		if err != nil || host == "" || port == "" {
-			problems = append(problems, WatchAddressKey+" must be host:port")
-		}
-
-		cfg.WatchAddress = raw
-	}
+	cfg.WatchAddress = hostPort(WatchAddressKey)
 
 	cfg.PKIDir = required(PKIDirKey)
 	cfg.TrustDomains = trustDomains(lookup)
@@ -199,6 +222,8 @@ func LoadDaemon(lookup Lookup) (Daemon, error) {
 	cfg.EpochInterval = duration(EpochIntervalKey, defaultEpochInterval, time.Minute, 24*time.Hour)
 	cfg.Tick = duration(TickKey, defaultTick, time.Second, 5*time.Minute)
 	cfg.SnapshotTimeout = duration(SnapshotTimeoutKey, defaultSnapshotTimeout, 10*time.Second, 30*time.Minute)
+	cfg.EvidenceBatch = duration(EvidenceBatchKey, defaultEvidenceBatch, time.Minute, 7*24*time.Hour)
+	cfg.FeedTimeout = duration(FeedTimeoutKey, defaultFeedTimeout, time.Second, 5*time.Minute)
 
 	if raw := required(JWKSURLKey); raw != "" {
 		parsed, err := url.Parse(raw)
