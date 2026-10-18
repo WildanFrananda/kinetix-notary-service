@@ -33,6 +33,8 @@ func registrationRouter(a *auth, r *registrant) http.Handler {
 		func(*http.Request) error { return nil },
 		httpapi.NewProofHandler(a, &issuer{}, keccak.NewScheme(), discard),
 		httpapi.NewRegistrationHandler(a, r, discard),
+		httpapi.NewOrderEvidenceHandler(a, &evidenceIssuer{}, discard),
+		httpapi.NewReviewEvidenceHandler(a, &evidenceIssuer{}, discard),
 	)
 }
 

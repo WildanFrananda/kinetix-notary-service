@@ -15,6 +15,7 @@ import (
 
 	"github.com/WildanFrananda/kinetix-notary-service/internal/config"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/notary"
+	"github.com/WildanFrananda/kinetix-notary-service/internal/prooffile"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/verifycli"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/verifying"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/wiring"
@@ -83,6 +84,10 @@ func arguments(args []js.Value) (string, config.Lookup) {
 }
 
 func run(ctx context.Context, document string, lookup config.Lookup, stdout, stderr io.Writer) int {
+	if prooffile.IsEvidence([]byte(document)) {
+		return evidence(ctx, document, lookup, stdout, stderr)
+	}
+
 	container, err := wiring.Verifier(lookup)
 	if err != nil {
 		_, _ = fmt.Fprintln(stderr, err)
@@ -96,16 +101,43 @@ func run(ctx context.Context, document string, lookup config.Lookup, stdout, std
 
 		code = verifycli.RunDocument(ctx, strings.NewReader(document), scheme.Version(), verifier, stdout)
 	})
+
+	return settle(code, err, stdout, stderr)
+}
+
+func evidence(ctx context.Context, document string, lookup config.Lookup, stdout, stderr io.Writer) int {
+	container, err := wiring.EvidenceVerifier(lookup)
 	if err != nil {
-		cause := dig.RootCause(err)
-		if notary.KindOf(cause) != notary.KindUnknown {
-			return verifycli.Fail(stdout, cause)
-		}
-
-		_, _ = fmt.Fprintln(stderr, cause)
-
+		_, _ = fmt.Fprintln(stderr, err)
 		return verifycli.ExitConfig
 	}
 
-	return code
+	code := verifycli.ExitUnknown
+
+	err = container.Invoke(func(
+		client *ethclient.Client,
+		scheme notary.EvidenceScheme,
+		verifier *verifying.EvidenceVerifier,
+	) {
+		defer client.Close()
+
+		code = verifycli.RunEvidence(ctx, strings.NewReader(document), scheme.EvidenceVersion(), verifier, stdout)
+	})
+
+	return settle(code, err, stdout, stderr)
+}
+
+func settle(code int, err error, stdout, stderr io.Writer) int {
+	if err == nil {
+		return code
+	}
+
+	cause := dig.RootCause(err)
+	if notary.KindOf(cause) != notary.KindUnknown {
+		return verifycli.Fail(stdout, cause)
+	}
+
+	_, _ = fmt.Fprintln(stderr, cause)
+
+	return verifycli.ExitConfig
 }

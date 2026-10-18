@@ -12,6 +12,7 @@ import (
 
 	"github.com/WildanFrananda/kinetix-notary-service/internal/anchoring"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/answering"
+	"github.com/WildanFrananda/kinetix-notary-service/internal/evidencing"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/notary"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/sponsoring"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/watching"
@@ -29,6 +30,7 @@ type Build struct {
 
 type Metrics struct {
 	edge
+	evidence
 
 	registry     *prometheus.Registry
 	lastEpoch    prometheus.Gauge
@@ -55,6 +57,7 @@ var (
 	_ watching.Observer   = (*Metrics)(nil)
 	_ answering.Observer  = (*Metrics)(nil)
 	_ sponsoring.Observer = (*Metrics)(nil)
+	_ evidencing.Observer = (*Metrics)(nil)
 )
 
 func New(build Build) *Metrics {
@@ -75,6 +78,7 @@ func New(build Build) *Metrics {
 
 	m := &Metrics{
 		edge:     newEdge(),
+		evidence: newEvidence(),
 		registry: registry,
 		lastEpoch: prometheus.NewGauge(prometheus.GaugeOpts{
 			Name: "kinetix_notary_last_finalized_epoch",
@@ -148,7 +152,8 @@ func New(build Build) *Metrics {
 			Help: "1 while the paymaster sponsors this notary's courts and their current signer, 0 when it does not.",
 		}),
 	}
-	m.register(factory)
+	m.edge.register(factory)
+	m.evidence.register(factory)
 
 	for _, c := range []prometheus.Collector{
 		m.lastEpoch,

@@ -1,18 +1,12 @@
 package ethereum
 
 import (
-	"github.com/ethereum/go-ethereum/common"
-
 	"github.com/WildanFrananda/kinetix-notary-service/internal/contractgen/council"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/contractgen/ledger"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/notary"
 )
 
-var refusals = []struct {
-	id   common.Hash
-	name string
-	kind notary.Kind
-}{
+var refusals = []refusal{
 	{ledger.LiabilityLedgerEpochAlreadyAnchoredErrorID(), "EpochAlreadyAnchored", notary.KindAlreadyAnchored},
 	{ledger.LiabilityLedgerSnapshotInFutureErrorID(), "SnapshotInFuture", notary.KindAnchorDeferred},
 	{

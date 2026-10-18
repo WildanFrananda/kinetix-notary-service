@@ -12,8 +12,11 @@ them.
 ## What this service is
 
 It commits to what the platform owes, anchors the commitment on a public chain, and lets every
-account holder prove their balance is inside it without trusting Kinetix. It never owns a balance,
-an order or a review — it reads a snapshot from the owner and commits to it — and it never moves
+account holder prove their balance is inside it without trusting Kinetix. From step 12 it does the
+same for evidence: it reads the append-only logs of order (lifecycle), matching (deliveries) and review,
+commits to every record with a salt of its own, anchors a batch per stream a day in the
+`EvidenceRegistry`, and gives each record's proof to the parties to it. It never owns a balance,
+an order or a review — it reads what the owner wrote and commits to it — and it never moves
 money on chain.
 
 ## Everything runs in Docker
@@ -75,6 +78,10 @@ bin/stake-paymaster base-sepolia                # the admin's addStake up to the
 bin/fund-paymaster base-sepolia 0.1             # the deployer's EntryPoint.depositTo(paymaster); waits for latest to show it
 bin/inspect-paymaster base-sepolia              # its facts, the courts' current signer, the stake, the deposit in operations at the ceiling
 bin/dev bin/build-verifier-wasm v1.4.0 dist/verifier   # the browser verifier, reproducible, with wasm_exec.js and SHA256SUMS
+bin/new-evidence-anchorer-key prod              # the seventh key, the evidence anchorer, straight into the SOPS store
+bin/fund-evidence-anchorer base-sepolia 0.001   # the deployer pays the evidence anchorer's gas
+bin/deploy-evidence-registry base-sepolia [--broadcast]   # the evidence registry; dry run by default
+bin/inspect-evidence-registry base-sepolia      # its facts, its streams, who holds the anchorer role, Sourcify
 ```
 
 `notary-verify` reads `KINETIX_NOTARY_RPC_URL`, `KINETIX_NOTARY_CHAIN_ID`, `KINETIX_NOTARY_DIRECTORY_ADDRESS`
@@ -109,6 +116,21 @@ the court's current signer. It then reads the deposit every tick into `kinetix_n
 the locked stake into `kinetix_notary_paymaster_stake_wei` (0 from the moment the admin unlocks it), and sets
 `kinetix_notary_paymaster_current` to 0 the moment the signer moves on without a new paymaster. A missing
 stake does not stop notaryd: its own work needs no paymaster, so the stake is an alert, not a refusal.
+
+From step 12 notaryd also needs `KINETIX_NOTARY_ORDER_GRPC_ADDR`, `KINETIX_NOTARY_MATCHING_GRPC_ADDR`,
+`KINETIX_NOTARY_REVIEW_GRPC_ADDR`, `KINETIX_NOTARY_EVIDENCE_REGISTRY_ADDRESS` and
+`KINETIX_NOTARY_EVIDENCE_ANCHORER_PRIVATE_KEY`; `KINETIX_NOTARY_EVIDENCE_BATCH_INTERVAL` (default 24h,
+decision 42) and `KINETIX_NOTARY_FEED_TIMEOUT` (default 30s) are optional. It refuses to start unless the
+registry is one on its chain, commits with scheme 1, keeps streams 1–3 and grants the evidence key its
+anchorer role, and unless that key is not the liabilities anchorer (decision 41). The evidence loop shares
+the writer lease with anchoring, and keeps one batch in flight across all three streams, because one key
+has one nonce sequence. A batch the registry refuses for good is abandoned and stops its own stream; the
+other two go on. `/health/ready` also requires the evidence loop to have completed a pass.
+
+A document whose `format` is `kinetix.notary.evidence.v1` is evidence: `notary-verify` and the browser
+verifier then read `KINETIX_NOTARY_EVIDENCE_REGISTRY_ADDRESS` instead of the directory, with the same RPC,
+chain id and timeout, and trust that registry, never the one the document names. A missing setting is
+`ExitConfig` (78), the same as for a liabilities proof.
 
 `notary-sponsor` reads the verifier's four variables, `KINETIX_NOTARY_PAYMASTER_ADDRESS`,
 `KINETIX_NOTARY_BUNDLER_URL`, `KINETIX_NOTARY_HOLDER_KEYSTORE`, `KINETIX_NOTARY_HOLDER_PASSWORD_FILE` and,
@@ -157,9 +179,9 @@ as `verify-contracts` and `verify-go`.
 | `internal/verifying` | `internal/notary` only; `DirectoryVerifier` resolves a generation, then verifies through `Verifier` |
 | `internal/keccak`, `prooffile`, `config`, `verifycli` | `internal/notary` + their own library |
 | `internal/ethereum` | the above + go-ethereum + `internal/contractgen` — the only adapter that touches a chain |
-| `internal/payment`, `internal/mesh` | `internal/notary` + gRPC + `internal/protogen` — the only adapters that speak gRPC |
+| `internal/payment`, `internal/feeds`, `internal/mesh` | `internal/notary` + gRPC + `internal/protogen` — the only adapters that speak gRPC; `feeds` reads the three evidence logs |
 | `internal/postgres` | `internal/notary` + pgx + goose + `internal/storegen` — the only adapter that touches Postgres |
-| `internal/anchoring`, `internal/proving`, `internal/registering`, `internal/answering`, `internal/approving`, `internal/sponsoring` | `internal/notary` only, like `internal/verifying` |
+| `internal/anchoring`, `internal/proving`, `internal/registering`, `internal/answering`, `internal/approving`, `internal/sponsoring`, `internal/evidencing` | `internal/notary` only, like `internal/verifying`; `evidencing` collects, batches, anchors and proves evidence |
 | `internal/bundler` | `internal/notary` + the standard library: the ERC-4337 bundler's JSON-RPC, nothing from go-ethereum |
 | `internal/sponsorcli` | `internal/notary` + `prooffile`; turns a kind into a verdict and an exit code, like `verifycli` |
 | `internal/epochwatch` | `internal/notary` + gRPC + `internal/protogen` + `internal/mesh` — the watch's server and notaryd's client |
@@ -208,8 +230,9 @@ Package names say what a package provides (`keccak.NewScheme`, `ethereum.NewLedg
   `status.Error(`: the watch's handler must return a gRPC status as it is, because a wrapped one reaches
   the caller as `Unknown` and notaryd could no longer tell a refusal from an outage.
 - **The differential fixture is a contract between the languages.** `tests/fixtures` regenerates
-  `contracts/test/fixtures/scheme-v1.json` and fails when the committed file differs; Foundry's
-  `Differential.t.sol` re-verifies every tree, proof, rejection and digest in it. Proven on
+  `contracts/test/fixtures/scheme-v1.json` and `evidence-v1.json` and fails when a committed file differs;
+  Foundry's `Differential.t.sol` and `EvidenceDifferential.t.sol` re-verify every tree, proof, rejection
+  and digest in them. Proven on
   2026-10-11 by mutating Go's leaf tag: Foundry went red.
 - **Every adapter carries a compile-time assertion** (`var _ notary.Ledger = (*Ledger)(nil)`).
 - **Generated bindings are never committed.** `bin/generate-bindings` builds them from the forge
@@ -503,6 +526,24 @@ A failure must never be reported as a definite answer. In this service that mean
   `notary-verify` with `-buildvcs=false` for the same reason: it was the first `go build` in the suite, and it went
   red on its first CI run.
 
+- **Postgres keeps microseconds; .NET writes 100 ns ticks.** An evidence record's time is part of its
+  digest, so a `timestamptz` column would round order's `occurred_at` and every later proof would
+  reach another leaf. The record tables keep seconds and nanoseconds as two integers.
+- **A batch built is a batch in flight, even when sending it failed.** The closer's first draft went on
+  to the next stream after `begin` built a batch whose fee quote was refused; the next stream then hit
+  the one-in-flight index and logged a collision. A built batch now ends the pass, success or not;
+  the fee-ceiling test asserts that no second batch was tried.
+- **Attempts with the same `sent_at` sort by hash.** `BatchAttempts` orders by `(sent_at, tx_hash)`, and
+  keep-alive takes the last as the latest. A test that never moves its clock gets two attempts in an
+  arbitrary order; real clocks never tie at microsecond precision.
+- **A config error wrapped in a kind is a verdict, not a config error.** The evidence verifier's
+  provider first wrapped the loader's error as `invalid_argument`, so a missing registry printed
+  `unknown` and exited 4 where a missing directory exits 78. The browser test, which compares the two
+  binaries case by case, caught it.
+- **A fake server that drops what it cannot place hides the reader's refusal.** The first evidence feed
+  fake skipped a record with no position, so the reader's "without a position" refusal was never
+  reached. Fakes send what they are given; the reader refuses.
+
 ## Not built yet
 
 Steps 1–5 are done: contracts v1.0.23, payment v0.1.11, notaryd v0.2.0 anchoring on Base Sepolia, and
@@ -521,7 +562,9 @@ revised on 2026-10-16: the paymaster is staked and refuses what the court would 
 the deploy, stake and fund scripts are rehearsed on a fork. Step 10 is live: the paymaster `0xD388…0aeb`,
 staked with 1 ETH and funded with 0.1 ETH, and notary v1.3.0, released on 2026-10-16. A holder with no ETH
 had a statement request sponsored through Pimlico's public bundler, and notaryd answered it (PLAN.md step 10).
-Step 11 (decisions 31–35) is built and green, uncommitted: the browser verifier, the CLI image and their release
-jobs here, and the Verify section in `kinetix-docs`; it waits on the user's v1.4.0 release (PLAN.md step 11). 6b
-(delivery through notification) and steps 12–14 do not exist yet. Contract deploys stay manual, never in
+Step 11 (decisions 31–35) is live as v1.4.0, released on 2026-10-16: the browser verifier and
+`kinetix-notary-cli` are published from the release, CI's amd64 build matched the laptop's arm64 pin byte for
+byte, and the Verify section in `kinetix-docs` loads it (PLAN.md step 11). 6b
+(delivery through notification) and steps 13–14 do not exist yet. Step 12 (evidence, decisions 36–42) is
+built and green in every owner and here, unreleased: the order of releases is PLAN.md 12-8. Contract deploys stay manual, never in
 CI.

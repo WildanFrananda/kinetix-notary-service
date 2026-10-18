@@ -3,12 +3,12 @@ set -eu
 
 HERE="$(cd "$(dirname "$0")/.." && pwd)"
 REPO="https://github.com/WildanFrananda/kinetix-contracts.git"
-TAG="v1.2.0"
-COMMIT="48d7806308461c877e81bede8f254664b76cbc09"
+TAG="v1.3.0"
+COMMIT="edc6c266cdd62d3635f96a14c796289f98447197"
 DEST="$HERE/.contracts"
 GEN="$HERE/internal/protogen"
 MODULE="github.com/WildanFrananda/kinetix-notary-service/internal/protogen"
-SPOKEN="common/v1/common.proto payment/v1/liability.proto payment/v1/liability_record.proto notary/v1/watch.proto"
+SPOKEN="common/v1/common.proto payment/v1/liability.proto payment/v1/liability_record.proto notary/v1/watch.proto order/v1/order.proto order/v1/lifecycle.proto fulfillment/v1/delivery_evidence.proto review/v1/review.proto"
 
 if [ -d "$DEST/.git" ] && [ "$(git -C "$DEST" rev-parse HEAD)" != "$COMMIT" ]; then
   rm -rf "$DEST"
@@ -55,7 +55,13 @@ for expected in \
   payment/v1/liability_record.pb.go \
   payment/v1/liability_record_grpc.pb.go \
   notary/v1/watch.pb.go \
-  notary/v1/watch_grpc.pb.go
+  notary/v1/watch_grpc.pb.go \
+  order/v1/lifecycle.pb.go \
+  order/v1/lifecycle_grpc.pb.go \
+  fulfillment/v1/delivery_evidence.pb.go \
+  fulfillment/v1/delivery_evidence_grpc.pb.go \
+  review/v1/review.pb.go \
+  review/v1/review_grpc.pb.go
 do
   if [ ! -s "$GEN/$expected" ]; then
     echo "protoc reported success but wrote no $expected" >&2

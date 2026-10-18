@@ -39,6 +39,7 @@ const (
 	KindNotSponsored
 	KindNotDue
 	KindCallRefused
+	KindNoEvidence
 )
 
 func (k Kind) String() string {
@@ -113,6 +114,8 @@ func (k Kind) String() string {
 		return "not_due"
 	case KindCallRefused:
 		return "call_refused"
+	case KindNoEvidence:
+		return "no_evidence"
 	default:
 		return "unknown"
 	}
