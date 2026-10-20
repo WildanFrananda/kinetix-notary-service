@@ -35,6 +35,10 @@ func (k AccountKind) Valid() bool {
 	return k >= AccountCustomerBalance && k <= AccountSuspensePendingEscrow
 }
 
+func (k AccountKind) HeldByPrincipal() bool {
+	return k >= AccountCustomerBalance && k < AccountSuspenseAvailable
+}
+
 func (k AccountKind) String() string {
 	switch k {
 	case AccountCustomerBalance:

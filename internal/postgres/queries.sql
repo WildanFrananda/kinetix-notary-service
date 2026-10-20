@@ -344,3 +344,71 @@ JOIN evidence_batches b ON b.stream = a.stream AND b.number = a.batch_number
 WHERE b.state = 'finalized' AND a.outcome = 'included'
 ORDER BY b.updated_at DESC
 LIMIT sqlc.arg(row_limit);
+
+-- name: StatementProgress :one
+SELECT last_epoch, last_day FROM statement_progress WHERE id = 1;
+
+-- name: FinalizedEpochsAfter :many
+SELECT * FROM epochs
+WHERE number > sqlc.arg(after)::bigint AND state = 'finalized'
+ORDER BY number
+LIMIT sqlc.arg(row_limit);
+
+-- name: StatementFingerprints :many
+SELECT DISTINCT ON (holder) holder, fingerprint
+FROM statement_deliveries
+WHERE holder = ANY(sqlc.arg(holders)::text[]) AND state <> 'superseded'
+ORDER BY holder, epoch_number DESC;
+
+-- name: AdvanceStatementProgress :one
+INSERT INTO statement_progress (id, last_epoch, last_day)
+VALUES (1, sqlc.arg(epoch)::bigint, sqlc.arg(day)::date)
+ON CONFLICT (id) DO UPDATE
+SET last_epoch = EXCLUDED.last_epoch, last_day = EXCLUDED.last_day, updated_at = now()
+WHERE statement_progress.last_epoch < EXCLUDED.last_epoch
+RETURNING id;
+
+-- name: SupersedeStatements :exec
+UPDATE statement_deliveries
+SET state = 'superseded', updated_at = now()
+WHERE holder = ANY(sqlc.arg(holders)::text[]) AND state = 'pending' AND day < sqlc.arg(day)::date;
+
+-- name: InsertStatements :exec
+INSERT INTO statement_deliveries (holder, epoch_number, day, fingerprint, next_attempt_at, planned_at)
+SELECT
+    unnest(sqlc.arg(holders)::text[]),
+    sqlc.arg(epoch)::bigint,
+    sqlc.arg(day)::date,
+    unnest(sqlc.arg(fingerprints)::bytea[]),
+    sqlc.arg(at)::timestamptz,
+    sqlc.arg(at)::timestamptz
+ON CONFLICT DO NOTHING;
+
+-- name: DueStatements :many
+SELECT holder, epoch_number, attempts
+FROM statement_deliveries
+WHERE state = 'pending' AND next_attempt_at <= sqlc.arg(now)::timestamptz
+ORDER BY next_attempt_at, epoch_number, holder
+LIMIT sqlc.arg(row_limit);
+
+-- name: MarkStatementSent :exec
+UPDATE statement_deliveries
+SET state = 'sent', notification_id = sqlc.arg(notification_id)::text, attempts = attempts + 1, updated_at = now()
+WHERE holder = sqlc.arg(holder)::text AND epoch_number = sqlc.arg(epoch)::bigint AND state = 'pending';
+
+-- name: MarkStatementRefused :exec
+UPDATE statement_deliveries
+SET state = 'refused', refused_reason = sqlc.arg(reason)::text, attempts = attempts + 1, updated_at = now()
+WHERE holder = sqlc.arg(holder)::text AND epoch_number = sqlc.arg(epoch)::bigint AND state = 'pending';
+
+-- name: PostponeStatement :exec
+UPDATE statement_deliveries
+SET attempts = attempts + 1, next_attempt_at = sqlc.arg(next_attempt_at)::timestamptz, updated_at = now()
+WHERE holder = sqlc.arg(holder)::text AND epoch_number = sqlc.arg(epoch)::bigint AND state = 'pending';
+
+-- name: StatementBacklog :one
+SELECT
+    count(*) AS pending,
+    count(*) FILTER (WHERE planned_at < sqlc.arg(planned_before)::timestamptz) AS overdue
+FROM statement_deliveries
+WHERE state = 'pending';

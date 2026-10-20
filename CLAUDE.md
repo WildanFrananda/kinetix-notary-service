@@ -152,6 +152,17 @@ the writer lease with anchoring, and keeps one batch in flight across all three 
 has one nonce sequence. A batch the registry refuses for good is abandoned and stops its own stream; the
 other two go on. `/health/ready` also requires the evidence loop to have completed a pass.
 
+From step 6b notaryd also needs `KINETIX_NOTARY_NOTIFICATION_GRPC_ADDR`, `KINETIX_NOTARY_STATEMENT_VERIFY_URL` (an
+https URL, the public Verify page) and `KINETIX_NOTARY_STATEMENT_UTC_OFFSET` (`+07:00`); `KINETIX_NOTARY_NOTIFY_TIMEOUT`
+(default 30s) is optional. Once a day, at the first final epoch whose snapshot falls on a new day at that offset, the
+statement loop (`internal/delivering`) plans one statement for each holder whose amounts changed since the last
+statement planned for them, and hands each to notification's `Notify` as `TEMPLATE_LIABILITY_STATEMENT` with only
+`epoch` and `verify_url`: the user ruled on 2026-10-20 that no amount goes through the email provider. Suspense
+accounts are left out, the first run starts at the newest final epoch, and a holder notification has no address for is
+`refused` and asked again only once their balance changes. Anything else notification says is retried with a backoff
+from 1 minute to 6 hours, never taken as delivered. `/health/ready` also requires the statement loop to have
+completed a pass. The release order and the refusals are in infra `docs/NOTARY-STATEMENTS.md`.
+
 A document whose `format` is `kinetix.notary.evidence.v1` is evidence: `notary-verify` and the browser
 verifier then read `KINETIX_NOTARY_EVIDENCE_REGISTRY_ADDRESS` instead of the directory, with the same RPC,
 chain id and timeout, and trust that registry, never the one the document names. A missing setting is
@@ -207,9 +218,9 @@ as `verify-contracts` and `verify-go`.
 | `internal/plonk` | `internal/notary` + gnark: scheme 2's circuit, its prover and the Solidity verifier it exports |
 | `internal/ignition` | `internal/notary` + gnark-crypto + `net/http`: reads Aztec Ignition, checks every contribution and builds the KZG SRS (`cmd/notary-srs`) |
 | `internal/ethereum` | the above + go-ethereum + `internal/contractgen` — the only adapter that touches a chain |
-| `internal/payment`, `internal/feeds`, `internal/mesh` | `internal/notary` + gRPC + `internal/protogen` — the only adapters that speak gRPC; `feeds` reads the three evidence logs |
+| `internal/payment`, `internal/feeds`, `internal/notification`, `internal/mesh` | `internal/notary` + gRPC + `internal/protogen` — the only adapters that speak gRPC; `feeds` reads the three evidence logs, `notification` hands holders' statements over |
 | `internal/postgres` | `internal/notary` + pgx + goose + `internal/storegen` — the only adapter that touches Postgres |
-| `internal/anchoring`, `internal/proving`, `internal/registering`, `internal/answering`, `internal/approving`, `internal/sponsoring`, `internal/evidencing` | `internal/notary` only, like `internal/verifying`; `evidencing` collects, batches, anchors and proves evidence |
+| `internal/anchoring`, `internal/proving`, `internal/registering`, `internal/answering`, `internal/approving`, `internal/sponsoring`, `internal/evidencing`, `internal/delivering` | `internal/notary` only, like `internal/verifying`; `evidencing` collects, batches, anchors and proves evidence; `delivering` plans and hands over holders' statements |
 | `internal/bundler` | `internal/notary` + the standard library: the ERC-4337 bundler's JSON-RPC, nothing from go-ethereum |
 | `internal/sponsorcli` | `internal/notary` + `prooffile`; turns a kind into a verdict and an exit code, like `verifycli` |
 | `internal/epochwatch` | `internal/notary` + gRPC + `internal/protogen` + `internal/mesh` — the watch's server and notaryd's client |
@@ -635,25 +646,13 @@ A failure must never be reported as a definite answer. In this service that mean
 
 ## Not built yet
 
-Steps 1–5 are done: contracts v1.0.23, payment v0.1.11, notaryd v0.2.0 anchoring on Base Sepolia, and
-the proof API (v0.3.0, gateway v1.0.0) live and proven end to end in the lab on 2026-10-13. Step 6a —
-the statement court and a signed statement on every proof — is live: the production court
-`0xE1Ffcb004Dd734F83ED0B194fdaFF5B0c7c5927B` and notaryd v0.4.0, proven in production on 2026-10-13.
-Step 7 (withholding, PLAN.md step 7 and decisions 15–17) is live: the withholding court `0xe980…a601`,
-notaryd v1.0.0 and gateway v1.1.0, released on 2026-10-14. That release scanned in spans the public RPC
-refuses; v1.0.1 fixed it the same day and is proven in production (PLAN.md 7-7). Step 8 (threshold
-anchoring, decisions 18–21) is being built: the council, payment's snapshot record, `notary-watch` and
-notaryd's council mode are live on contracts v1.2.0 and notary v1.1.0: since 2026-10-15 the council
-`0xf6c3…791b` is the ledger's only anchorer, and the anchorer key alone anchors nothing (PLAN.md 8-7). Step 9
-(the ledger directory, decisions 22–25) is live: the directory `0x6C71…4ac8` and notary v1.2.0, released on
-2026-10-15. Step 10 (the paymaster, decisions 26–30) is built and green in both halves. Decision 26 was
-revised on 2026-10-16: the paymaster is staked and refuses what the court would refuse. `notary-sponsor` and
-the deploy, stake and fund scripts are rehearsed on a fork. Step 10 is live: the paymaster `0xD388…0aeb`,
-staked with 1 ETH and funded with 0.1 ETH, and notary v1.3.0, released on 2026-10-16. A holder with no ETH
-had a statement request sponsored through Pimlico's public bundler, and notaryd answered it (PLAN.md step 10).
-Step 11 (decisions 31–35) is live as v1.4.0, released on 2026-10-16: the browser verifier and
-`kinetix-notary-cli` are published from the release, CI's amd64 build matched the laptop's arm64 pin byte for
-byte, and the Verify section in `kinetix-docs` loads it (PLAN.md step 11). 6b
-(delivery through notification) and steps 13–14 do not exist yet. Step 12 (evidence, decisions 36–42) is
-built and green in every owner and here, unreleased: the order of releases is PLAN.md 12-8. Contract deploys stay manual, never in
-CI.
+Steps 1–13 are live; PLAN.md records each one's release and proof. The last, scheme 2, has run in production since
+2026-10-20 on notary v1.6.1: generation 2 from epoch 183, its council `0xB165…A45A` the ledger's only anchorer. What
+the plan still holds is outside this repository:
+- 6b's delivery itself is notification's (decision 14); the notary side, which decides who is told and when, is built
+  here (uncommitted), on kinetix-contracts v1.7.0, which carries `TEMPLATE_LIABILITY_STATEMENT`;
+- step 14, the product passport, is a service of its own, and it starts with owner-side work in warehouse and buyer
+  wallets.
+
+Generation 2 holds 256 accounts. Growing past that is a new generation (decision 46), and
+`kinetix-notary-capacity` warns at 75%. Contract deploys stay manual, never in CI.

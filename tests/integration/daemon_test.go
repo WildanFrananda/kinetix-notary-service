@@ -34,12 +34,14 @@ import (
 	"github.com/WildanFrananda/kinetix-notary-service/internal/answering"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/approving"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/config"
+	"github.com/WildanFrananda/kinetix-notary-service/internal/delivering"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/evidencing"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/keccak"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/metrics"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/notary"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/postgres"
 	commonv1 "github.com/WildanFrananda/kinetix-notary-service/internal/protogen/common/v1"
+	notificationv1 "github.com/WildanFrananda/kinetix-notary-service/internal/protogen/notification/v1"
 	paymentv1 "github.com/WildanFrananda/kinetix-notary-service/internal/protogen/payment/v1"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/proving"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/registering"
@@ -50,7 +52,10 @@ import (
 	"github.com/WildanFrananda/kinetix-notary-service/tests/notarytest"
 )
 
-const databaseURLKey = "KINETIX_NOTARY_TEST_DATABASE_URL"
+const (
+	databaseURLKey     = "KINETIX_NOTARY_TEST_DATABASE_URL"
+	statementVerifyURL = "https://docs.example.test/id/verify/proof-of-liabilities/"
+)
 
 type estate struct {
 	t           *testing.T
@@ -75,6 +80,7 @@ type estate struct {
 	identity    *notarytest.Identity
 	registry    notary.RegistryIdentity
 	evidence    *notarytest.EvidenceServers
+	notified    *notarytest.NotificationServer
 	values      map[string]string
 	omit        string
 	mu          sync.Mutex
@@ -84,16 +90,17 @@ type estate struct {
 
 type running struct {
 	dig.In
-	Evidencer *evidencing.Evidencer
-	Registry  *evidencing.RegistryCheck
-	Anchorer  *anchoring.Anchorer
-	Handler   http.Handler
-	Verifier  *verifying.Verifier
-	Prover    *proving.Prover
-	Directory *proving.DirectoryCheck
-	Sponsors  *sponsoring.Watcher
-	Registrar *registering.Registrar
-	Answerer  *answering.Answerer
+	Evidencer  *evidencing.Evidencer
+	Registry   *evidencing.RegistryCheck
+	Anchorer   *anchoring.Anchorer
+	Handler    http.Handler
+	Verifier   *verifying.Verifier
+	Prover     *proving.Prover
+	Directory  *proving.DirectoryCheck
+	Sponsors   *sponsoring.Watcher
+	Registrar  *registering.Registrar
+	Answerer   *answering.Answerer
+	Statements *delivering.Runner
 }
 
 type confidential struct {
@@ -184,6 +191,13 @@ func newEstateOf(t *testing.T, two *confidential) *estate {
 		feeds[service] = notarytest.ServeMesh(t, pki.Issue(t, "kinetix.local", service), e.registerFeeds)
 	}
 
+	e.notified = &notarytest.NotificationServer{}
+	notificationAddress := notarytest.ServeMesh(
+		t,
+		pki.Issue(t, "kinetix.local", "notification"),
+		func(s *grpc.Server) { notificationv1.RegisterNotificationServiceServer(s, e.notified) },
+	)
+
 	e.values = map[string]string{
 		config.RPCURLKey:           c.url,
 		config.ChainIDKey:          strconv.FormatUint(e.ledger.ChainID, 10),
@@ -214,6 +228,9 @@ func newEstateOf(t *testing.T, two *confidential) *estate {
 		config.ReviewAddressKey:    feeds["review"],
 		config.EvidenceRegistryKey: e.registry.Address.Hex(),
 		config.EvidenceKeyKey:      "0x" + hex.EncodeToString(crypto.FromECDSA(evidenceKey)),
+		config.NotificationKey:     notificationAddress,
+		config.VerifyURLKey:        statementVerifyURL,
+		config.StatementDayKey:     "+07:00",
 	}
 
 	if two != nil {
