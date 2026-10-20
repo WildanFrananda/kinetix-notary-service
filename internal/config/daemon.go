@@ -41,6 +41,10 @@ const (
 	SchemeKey          = "KINETIX_NOTARY_SCHEME"
 	SRSPathKey         = "KINETIX_NOTARY_SRS_PATH"
 	SRSSHA256Key       = "KINETIX_NOTARY_SRS_SHA256"
+	NotificationKey    = "KINETIX_NOTARY_NOTIFICATION_GRPC_ADDR"
+	NotifyTimeoutKey   = "KINETIX_NOTARY_NOTIFY_TIMEOUT"
+	VerifyURLKey       = "KINETIX_NOTARY_STATEMENT_VERIFY_URL"
+	StatementDayKey    = "KINETIX_NOTARY_STATEMENT_UTC_OFFSET"
 
 	defaultTrustDomain     = "kinetix.local"
 	defaultEpochInterval   = time.Hour
@@ -48,6 +52,8 @@ const (
 	defaultSnapshotTimeout = 3 * time.Minute
 	defaultEvidenceBatch   = 24 * time.Hour
 	defaultFeedTimeout     = 30 * time.Second
+	defaultNotifyTimeout   = 30 * time.Second
+	maxUTCOffset           = 14 * time.Hour
 )
 
 type Daemon struct {
@@ -85,6 +91,10 @@ type Daemon struct {
 	SRSPath         string
 	SRSSHA256       string
 	FeedTimeout     time.Duration
+	Notification    string
+	NotifyTimeout   time.Duration
+	VerifyURL       string
+	UTCOffset       time.Duration
 }
 
 func LoadDaemon(lookup Lookup) (Daemon, error) {
@@ -183,6 +193,7 @@ func LoadDaemon(lookup Lookup) (Daemon, error) {
 	cfg.OrderAddress = hostPort(OrderAddressKey)
 	cfg.MatchingAddress = hostPort(MatchingAddressKey)
 	cfg.ReviewAddress = hostPort(ReviewAddressKey)
+	cfg.Notification = hostPort(NotificationKey)
 	cfg.Registry = address(EvidenceRegistryKey, required(EvidenceRegistryKey), &problems)
 
 	if raw := required(EvidenceKeyKey); raw != "" {
@@ -230,6 +241,7 @@ func LoadDaemon(lookup Lookup) (Daemon, error) {
 	cfg.SnapshotTimeout = duration(SnapshotTimeoutKey, defaultSnapshotTimeout, 10*time.Second, 30*time.Minute)
 	cfg.EvidenceBatch = duration(EvidenceBatchKey, defaultEvidenceBatch, time.Minute, 7*24*time.Hour)
 	cfg.FeedTimeout = duration(FeedTimeoutKey, defaultFeedTimeout, time.Second, 5*time.Minute)
+	cfg.NotifyTimeout = duration(NotifyTimeoutKey, defaultNotifyTimeout, time.Second, 5*time.Minute)
 
 	cfg.Scheme = 1
 
@@ -269,9 +281,43 @@ func LoadDaemon(lookup Lookup) (Daemon, error) {
 	cfg.JWTIssuer = required(JWTIssuerKey)
 	cfg.JWTAudience = required(JWTAudienceKey)
 
+	if raw := required(VerifyURLKey); raw != "" {
+		parsed, err := url.Parse(raw)
+		if err != nil || parsed.Scheme != "https" || parsed.Host == "" {
+			problems = append(problems, VerifyURLKey+" must be an https URL with a host")
+		}
+
+		cfg.VerifyURL = raw
+	}
+
+	if raw := required(StatementDayKey); raw != "" {
+		offset, err := utcOffset(raw)
+		if err != nil {
+			problems = append(problems, StatementDayKey+" must be an offset from UTC such as +07:00, at most 14 hours")
+		}
+
+		cfg.UTCOffset = offset
+	}
+
 	if len(problems) > 0 {
 		return Daemon{}, errors.New("configuration refused: " + strings.Join(problems, "; "))
 	}
 
 	return cfg, nil
+}
+
+func utcOffset(raw string) (time.Duration, error) {
+	parsed, err := time.Parse("-07:00", raw)
+	if err != nil {
+		return 0, errors.New("not an offset such as +07:00")
+	}
+
+	_, seconds := parsed.Zone()
+	offset := time.Duration(seconds) * time.Second
+
+	if offset > maxUTCOffset || offset < -maxUTCOffset {
+		return 0, errors.New("the offset is beyond 14 hours")
+	}
+
+	return offset, nil
 }

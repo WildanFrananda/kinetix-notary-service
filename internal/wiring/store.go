@@ -37,6 +37,7 @@ type storeResult struct {
 	Registrations  notary.RegistrationStore
 	Evidence       notary.EvidenceStore
 	EvidenceProofs notary.EvidenceProofSource
+	Statements     notary.StatementStore
 }
 
 func provideStore(p storeParams) storeResult {
@@ -48,5 +49,6 @@ func provideStore(p storeParams) storeResult {
 		Registrations:  store,
 		Evidence:       store,
 		EvidenceProofs: store,
+		Statements:     store,
 	}
 }

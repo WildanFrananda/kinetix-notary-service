@@ -12,6 +12,7 @@ import (
 
 	"github.com/WildanFrananda/kinetix-notary-service/internal/anchoring"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/answering"
+	"github.com/WildanFrananda/kinetix-notary-service/internal/delivering"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/evidencing"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/notary"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/sponsoring"
@@ -31,6 +32,7 @@ type Build struct {
 type Metrics struct {
 	edge
 	evidence
+	statements
 
 	registry     *prometheus.Registry
 	lastEpoch    prometheus.Gauge
@@ -62,6 +64,7 @@ var (
 	_ answering.Observer  = (*Metrics)(nil)
 	_ sponsoring.Observer = (*Metrics)(nil)
 	_ evidencing.Observer = (*Metrics)(nil)
+	_ delivering.Observer = (*Metrics)(nil)
 )
 
 func New(build Build) *Metrics {
@@ -81,9 +84,10 @@ func New(build Build) *Metrics {
 	info.WithLabelValues(build.Service, build.Version).Set(1)
 
 	m := &Metrics{
-		edge:     newEdge(),
-		evidence: newEvidence(),
-		registry: registry,
+		edge:       newEdge(),
+		evidence:   newEvidence(),
+		statements: newStatements(),
+		registry:   registry,
 		lastEpoch: prometheus.NewGauge(prometheus.GaugeOpts{
 			Name: "kinetix_notary_last_finalized_epoch",
 			Help: "Number of the newest epoch the ledger holds at a finalized block.",
@@ -174,6 +178,7 @@ func New(build Build) *Metrics {
 	}
 	m.edge.register(factory)
 	m.evidence.register(factory)
+	m.statements.register(factory)
 
 	for _, c := range []prometheus.Collector{
 		m.lastEpoch,

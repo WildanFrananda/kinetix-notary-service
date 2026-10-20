@@ -747,6 +747,46 @@ Prometheus had never scraped the notary, so the stall, abandon, runway and prove
 silent since step 4. That is fixed in infrastructure, and `bin/prod-deploy` now refuses a service that
 Prometheus does not scrape. **6b**, pushing statements to holders, is notification's work.
 
+**6b, designed and built 2026-10-20 (uncommitted).** notification owns delivery, so notary decides only who is told
+and when, and notification sends it.
+
+*Ruled by the user on 2026-10-20:*
+- **The message carries no amount.** It says that the holder's statement for an epoch is signed and links the public
+  Verify page. The email provider reads whatever is in it, so the balance, salt and secret stay out of it, and the
+  holder fetches the proof with their own token.
+- **Daily, and only on a change.** The first epoch final after midnight WIB is the day's statement epoch. A holder is
+  told only when their amounts differ from the statement last planned for them.
+
+*Taken on my recommendation:*
+- notaryd calls notification's `Notify` over gRPC with a new template, `TEMPLATE_LIABILITY_STATEMENT` (kinetix-contracts,
+  additive). That is a new edge, notary → notification.
+- **A store-backed queue.** Each planned statement is a row in `statement_deliveries`, so an outage of notification
+  loses nothing. The idempotency key is `liability-statement:<epoch>:<holder>`, so a retry or a second notaryd never
+  sends twice.
+- No amount ever lives in notification's store either: its params are the epoch and the URL.
+- All channels notification has for the holder: email today, and push once an app registers devices.
+
+*What notary keeps:*
+- `statement_progress`, the last epoch examined and its day;
+- `statement_deliveries`, holding `pending`, `sent` (with notification's id), `refused` (no address, not asked again
+  until the balance changes) and `superseded` (a newer day replaced it before it was handed over).
+
+Unknown is not no: a refusal that is not about the holder (a missing grant, an unknown template, a transport error) is
+retried with a backoff, from 1 minute to 6 hours, and `kinetix-notary-statements-overdue` warns after six hours.
+
+*Proven:*
+- unit tests on fakes for the day boundary, change detection, suspense, races and backoff;
+- the store against Postgres;
+- the adapter against a real mTLS server, for every refusal code and status;
+- the daemon end to end on anvil and Postgres: four holders told once, one refused, nothing repeated on an unchanged
+  epoch, and statements waiting through an outage and sent after it.
+
+Three mutations (suspense let in, the same-day supersede, a refusal misread) each turned the suite red.
+
+*Release order* (infra `docs/NOTARY-STATEMENTS.md`): contracts, then infra, then notification, then notary. The user
+published kinetix-contracts v1.7.0 (`26984a9`) the same day. notary and notification are pinned to it, notary's full
+gate passes on it (Go coverage 84.8%), and so does notification's suite (111 tests, Postgres included).
+
 #### Step 7 — withholding (`WithholdingCourt`). **Ruled 2026-10-13 (decision 15); live 2026-10-14 (v1.0.1).**
 
 Step 6 punishes a lie the notary signed; this step punishes the silence that would hide an omitted
@@ -887,7 +927,7 @@ possible extension and is not part of this proposal.
   - a holder-signed registration through Kong returned one registration from epoch 42; the same body
     naming another holder was refused 403.
 
-#### Step 8 — threshold anchoring (`AnchorCouncil`). **Ruled 2026-10-14 (decisions 18–21); built, waiting on the production council.**
+#### Step 8 — threshold anchoring (`AnchorCouncil`). **Ruled 2026-10-14 (decisions 18–21); live 2026-10-15** (the council the ledger's only anchorer).
 
 One hot key can anchor anything today. The council holds `ANCHORER_ROLE` and anchors an epoch only
 with k-of-n EIP-712 signatures over its header (domain-separated by chain id and ledger address).
@@ -1604,7 +1644,7 @@ releases; infrastructure's `docs/NOTARY-EVIDENCE-DEPLOY.md` now lists it in the 
 Production now runs order v1.2.0 and matching v1.3.0, after the shipping-fee release, and review v1.1.1. The public
 Verify pages link the owners' logs at those tags.
 
-### Step 13 — scheme v2: zero-knowledge proof of liabilities. **Design 2026-10-20; 13-1 to 13-7 built (uncommitted), the cutover proven end to end on anvil; 13-8 is the user's.**
+### Step 13 — scheme v2: zero-knowledge proof of liabilities. **Live 2026-10-20** (notary v1.6.1; generation 2 from epoch 183, the cutover record in infra `docs/NOTARY-GENERATION-TWO.md`).
 
 The total stops being public, and the proof gets stronger. Built with gnark on Base, decided on 2026-10-20
 after a research round on Midnight/Compact (report: `reports/Notary ZK di Midnight Compact.md` in the estate

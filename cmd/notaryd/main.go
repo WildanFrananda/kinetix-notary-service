@@ -18,11 +18,13 @@ import (
 	"github.com/WildanFrananda/kinetix-notary-service/internal/anchoring"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/answering"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/config"
+	"github.com/WildanFrananda/kinetix-notary-service/internal/delivering"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/epochwatch"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/evidencing"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/feeds"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/metrics"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/notary"
+	"github.com/WildanFrananda/kinetix-notary-service/internal/notification"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/payment"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/proving"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/registering"
@@ -35,29 +37,31 @@ var version = "unknown"
 
 type daemon struct {
 	dig.In
-	Config    config.Daemon
-	Client    *ethclient.Client
-	Pool      *pgxpool.Pool
-	Payment   *payment.Source
-	Ledger    notary.Ledger
-	Chain     notary.AnchorChain
-	Anchorer  *anchoring.Anchorer
-	Watch     *epochwatch.Client
-	Runner    *anchoring.Runner
-	Prover    *proving.Prover
-	Directory *proving.DirectoryCheck
-	Sponsors  *sponsoring.Watcher
-	Registrar *registering.Registrar
-	Answerer  *answering.Answerer
-	Answers   notary.AnswerChain
-	Watcher   *watching.Watcher
-	Evidence  *evidencing.Runner
-	Registry  *evidencing.RegistryCheck
-	Evidences notary.EvidenceChain
-	Lifecycle *feeds.LifecycleFeed
-	Delivery  *feeds.DeliveryFeed
-	Reviews   *feeds.ReviewFeed
-	Handler   http.Handler
+	Config     config.Daemon
+	Client     *ethclient.Client
+	Pool       *pgxpool.Pool
+	Payment    *payment.Source
+	Ledger     notary.Ledger
+	Chain      notary.AnchorChain
+	Anchorer   *anchoring.Anchorer
+	Watch      *epochwatch.Client
+	Runner     *anchoring.Runner
+	Prover     *proving.Prover
+	Directory  *proving.DirectoryCheck
+	Sponsors   *sponsoring.Watcher
+	Registrar  *registering.Registrar
+	Answerer   *answering.Answerer
+	Answers    notary.AnswerChain
+	Watcher    *watching.Watcher
+	Evidence   *evidencing.Runner
+	Registry   *evidencing.RegistryCheck
+	Evidences  notary.EvidenceChain
+	Lifecycle  *feeds.LifecycleFeed
+	Delivery   *feeds.DeliveryFeed
+	Reviews    *feeds.ReviewFeed
+	Notifier   *notification.Notifier
+	Statements *delivering.Runner
+	Handler    http.Handler
 }
 
 func main() {
@@ -96,6 +100,7 @@ func start(ctx context.Context, log *slog.Logger) error {
 		defer func() { _ = d.Lifecycle.Close() }()
 		defer func() { _ = d.Delivery.Close() }()
 		defer func() { _ = d.Reviews.Close() }()
+		defer func() { _ = d.Notifier.Close() }()
 
 		return serve(ctx, log, d)
 	})
@@ -184,6 +189,10 @@ func serve(ctx context.Context, log *slog.Logger, d daemon) error {
 		d.Config.MatchingAddress,
 		"review",
 		d.Config.ReviewAddress,
+		"notification",
+		d.Config.Notification,
+		"statement_utc_offset",
+		d.Config.UTCOffset.String(),
 	)
 
 	ctx, cancel := context.WithCancel(ctx)
@@ -226,6 +235,13 @@ func serve(ctx context.Context, log *slog.Logger, d daemon) error {
 		close(evidenced)
 	}()
 
+	delivered := make(chan struct{})
+
+	go func() {
+		d.Statements.Run(ctx)
+		close(delivered)
+	}()
+
 	sponsored := make(chan struct{})
 
 	go func() {
@@ -255,6 +271,7 @@ func serve(ctx context.Context, log *slog.Logger, d daemon) error {
 	<-answered
 	<-sponsored
 	<-evidenced
+	<-delivered
 	log.Info("notaryd stopped cleanly")
 
 	return failure

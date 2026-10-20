@@ -52,6 +52,9 @@ func daemonValues() map[string]string {
 		config.ReviewAddressKey:    "kinetix-review-grpc:50060",
 		config.EvidenceRegistryKey: "0x00000000000000000000000000000000e0e0e0e0",
 		config.EvidenceKeyKey:      evidenceKey,
+		config.NotificationKey:     "kinetix-notification-service:50057",
+		config.VerifyURLKey:        "https://docs.example.test/id/verify/proof-of-liabilities/",
+		config.StatementDayKey:     "+07:00",
 	}
 }
 
@@ -89,6 +92,10 @@ func TestADaemonConfigurationLoadsWithTheEstatesDefaults(t *testing.T) {
 	require.Equal(t, evidenceKey, cfg.EvidenceKey.Reveal())
 	require.Equal(t, 24*time.Hour, cfg.EvidenceBatch)
 	require.Equal(t, 30*time.Second, cfg.FeedTimeout)
+	require.Equal(t, "kinetix-notification-service:50057", cfg.Notification)
+	require.Equal(t, 30*time.Second, cfg.NotifyTimeout)
+	require.Equal(t, "https://docs.example.test/id/verify/proof-of-liabilities/", cfg.VerifyURL)
+	require.Equal(t, 7*time.Hour, cfg.UTCOffset)
 }
 
 func TestSecretsNeverPrint(t *testing.T) {
@@ -144,6 +151,10 @@ func TestEveryMissingOrBrokenSettingIsNamedAtOnce(t *testing.T) {
 	delete(values, config.EvidenceKeyKey)
 	values[config.EvidenceBatchKey] = "30s"
 	values[config.FeedTimeoutKey] = "1h"
+	values[config.NotificationKey] = "notification"
+	values[config.NotifyTimeoutKey] = "0s"
+	values[config.VerifyURLKey] = "http://docs.example.test/verify/"
+	values[config.StatementDayKey] = "+15:00"
 
 	_, err := config.LoadDaemon(from(values))
 
@@ -177,8 +188,39 @@ func TestEveryMissingOrBrokenSettingIsNamedAtOnce(t *testing.T) {
 		config.EvidenceKeyKey,
 		config.EvidenceBatchKey,
 		config.FeedTimeoutKey,
+		config.NotificationKey,
+		config.NotifyTimeoutKey,
+		config.VerifyURLKey,
+		config.StatementDayKey,
 	} {
 		require.ErrorContains(t, err, key)
+	}
+}
+
+func TestTheStatementDayIsAnOffsetFromUTC(t *testing.T) {
+	cases := map[string]time.Duration{
+		"+07:00": 7 * time.Hour,
+		"+05:30": 5*time.Hour + 30*time.Minute,
+		"-03:00": -3 * time.Hour,
+		"+00:00": 0,
+		"+14:00": 14 * time.Hour,
+	}
+
+	for raw, want := range cases {
+		values := daemonValues()
+		values[config.StatementDayKey] = raw
+
+		cfg, err := config.LoadDaemon(from(values))
+		require.NoError(t, err, raw)
+		require.Equal(t, want, cfg.UTCOffset, raw)
+	}
+
+	for _, raw := range []string{"7", "WIB", "Asia/Jakarta", "+7:00", "-15:00", ""} {
+		values := daemonValues()
+		values[config.StatementDayKey] = raw
+
+		_, err := config.LoadDaemon(from(values))
+		require.ErrorContains(t, err, config.StatementDayKey, raw)
 	}
 }
 

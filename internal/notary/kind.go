@@ -40,6 +40,9 @@ const (
 	KindNotDue
 	KindCallRefused
 	KindNoEvidence
+	KindRecipientUnreachable
+	KindNotifierRefused
+	KindNotifierUnavailable
 )
 
 func (k Kind) String() string {
@@ -116,6 +119,12 @@ func (k Kind) String() string {
 		return "call_refused"
 	case KindNoEvidence:
 		return "no_evidence"
+	case KindRecipientUnreachable:
+		return "recipient_unreachable"
+	case KindNotifierRefused:
+		return "notifier_refused"
+	case KindNotifierUnavailable:
+		return "notifier_unavailable"
 	default:
 		return "unknown"
 	}

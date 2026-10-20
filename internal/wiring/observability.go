@@ -5,12 +5,14 @@ import (
 
 	"github.com/WildanFrananda/kinetix-notary-service/internal/anchoring"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/answering"
+	"github.com/WildanFrananda/kinetix-notary-service/internal/delivering"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/epochwatch"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/evidencing"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/httpapi"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/metrics"
 	fulfillmentv1 "github.com/WildanFrananda/kinetix-notary-service/internal/protogen/fulfillment/v1"
 	notaryv1 "github.com/WildanFrananda/kinetix-notary-service/internal/protogen/notary/v1"
+	notificationv1 "github.com/WildanFrananda/kinetix-notary-service/internal/protogen/notification/v1"
 	orderv1 "github.com/WildanFrananda/kinetix-notary-service/internal/protogen/order/v1"
 	paymentv1 "github.com/WildanFrananda/kinetix-notary-service/internal/protogen/payment/v1"
 	reviewv1 "github.com/WildanFrananda/kinetix-notary-service/internal/protogen/review/v1"
@@ -31,6 +33,7 @@ type metricsResult struct {
 	Answering answering.Observer
 	Sponsors  sponsoring.Observer
 	Evidence  evidencing.Observer
+	Delivery  delivering.Observer
 }
 
 func provideMetrics(p metricsParams) metricsResult {
@@ -50,6 +53,7 @@ func provideMetrics(p metricsParams) metricsResult {
 	m.SeedCall("order", orderv1.OrderLifecycleService_LifecycleEventsSince_FullMethodName)
 	m.SeedCall("matching", fulfillmentv1.DeliveryEvidenceService_DeliveriesSince_FullMethodName)
 	m.SeedCall("review", reviewv1.ReviewEvidenceService_ReviewsSince_FullMethodName)
+	m.SeedCall("notification", notificationv1.NotificationService_Notify_FullMethodName)
 
-	return metricsResult{Metrics: m, Observer: m, Watching: m, Answering: m, Sponsors: m, Evidence: m}
+	return metricsResult{Metrics: m, Observer: m, Watching: m, Answering: m, Sponsors: m, Evidence: m, Delivery: m}
 }

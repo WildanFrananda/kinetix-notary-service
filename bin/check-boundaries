@@ -27,7 +27,7 @@ if [ -n "$offenders" ]; then
   failed=1
 fi
 
-for usecase in verifying anchoring proving watching registering answering approving sponsoring evidencing; do
+for usecase in verifying anchoring proving watching registering answering approving sponsoring evidencing delivering; do
   deps="$(go list -deps "$MODULE/internal/$usecase")"
   offenders="$(
     beyond_notary "$deps" "$usecase"
@@ -90,11 +90,11 @@ offenders="$(
   { imports google.golang.org/grpc; imports google.golang.org/protobuf; } \
     | grep -v -e "^$MODULE/cmd/" -e "^$MODULE/internal/wiring$" -e "^$MODULE/internal/payment$" \
       -e "^$MODULE/internal/mesh$" -e "^$MODULE/internal/metrics$" -e "^$MODULE/internal/protogen/" \
-      -e "^$MODULE/internal/epochwatch$" -e "^$MODULE/internal/feeds$" \
+      -e "^$MODULE/internal/epochwatch$" -e "^$MODULE/internal/feeds$" -e "^$MODULE/internal/notification$" \
     || true
 )"
 if [ -n "$offenders" ]; then
-  echo "gRPC belongs to the gRPC adapters (payment, feeds, mesh, metrics, epochwatch), but these import it:"
+  echo "gRPC belongs to the gRPC adapters (payment, feeds, notification, mesh, metrics, epochwatch), but these import it:"
   echo "$offenders" | sed 's/^/  /'
   failed=1
 fi

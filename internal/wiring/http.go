@@ -8,6 +8,7 @@ import (
 	"go.uber.org/dig"
 
 	"github.com/WildanFrananda/kinetix-notary-service/internal/anchoring"
+	"github.com/WildanFrananda/kinetix-notary-service/internal/delivering"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/evidencing"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/httpapi"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/metrics"
@@ -18,6 +19,7 @@ type httpParams struct {
 	Metrics        *metrics.Metrics
 	Runner         *anchoring.Runner
 	Evidence       *evidencing.Runner
+	Statements     *delivering.Runner
 	Pool           *pgxpool.Pool
 	Proofs         *httpapi.ProofHandler
 	Registrations  *httpapi.RegistrationHandler
@@ -33,6 +35,10 @@ func provideHTTP(p httpParams) http.Handler {
 
 		if alive, since := p.Evidence.Alive(); !alive {
 			return fmt.Errorf("the evidence loop has not completed a pass for %s", since)
+		}
+
+		if alive, since := p.Statements.Alive(); !alive {
+			return fmt.Errorf("the statement loop has not completed a pass for %s", since)
 		}
 
 		if err := p.Pool.Ping(r.Context()); err != nil {

@@ -3,12 +3,12 @@ set -eu
 
 HERE="$(cd "$(dirname "$0")/.." && pwd)"
 REPO="https://github.com/WildanFrananda/kinetix-contracts.git"
-TAG="v1.6.0"
-COMMIT="563391d458c63db81f71e00e24f04c97fdd77aa7"
+TAG="v1.7.0"
+COMMIT="26984a992109936bbd3ce775a509eca4a028fe63"
 DEST="$HERE/.contracts"
 GEN="$HERE/internal/protogen"
 MODULE="github.com/WildanFrananda/kinetix-notary-service/internal/protogen"
-SPOKEN="common/v1/common.proto payment/v1/liability.proto payment/v1/liability_record.proto notary/v1/watch.proto order/v1/order.proto order/v1/lifecycle.proto fulfillment/v1/delivery_evidence.proto review/v1/review.proto"
+SPOKEN="common/v1/common.proto payment/v1/liability.proto payment/v1/liability_record.proto notary/v1/watch.proto order/v1/order.proto order/v1/lifecycle.proto fulfillment/v1/delivery_evidence.proto review/v1/review.proto notification/v1/notification.proto"
 
 if [ -d "$DEST/.git" ] && [ "$(git -C "$DEST" rev-parse HEAD)" != "$COMMIT" ]; then
   rm -rf "$DEST"
@@ -61,7 +61,9 @@ for expected in \
   fulfillment/v1/delivery_evidence.pb.go \
   fulfillment/v1/delivery_evidence_grpc.pb.go \
   review/v1/review.pb.go \
-  review/v1/review_grpc.pb.go
+  review/v1/review_grpc.pb.go \
+  notification/v1/notification.pb.go \
+  notification/v1/notification_grpc.pb.go
 do
   if [ ! -s "$GEN/$expected" ]; then
     echo "protoc reported success but wrote no $expected" >&2
