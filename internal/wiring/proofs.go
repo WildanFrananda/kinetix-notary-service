@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 
+	"github.com/ethereum/go-ethereum/ethclient"
 	"go.uber.org/dig"
 
 	"github.com/WildanFrananda/kinetix-notary-service/internal/config"
@@ -36,20 +37,44 @@ func provideStatementSigner(p statementSignerParams) (statementSignerResult, err
 
 type proverParams struct {
 	dig.In
-	Source     notary.ProofSource
-	Scheme     notary.Scheme
-	Statements notary.StatementScheme
-	Court      notary.Court
-	Signer     notary.StatementSigner
-	Identity   notary.CourtIdentity
+	Client       *ethclient.Client
+	Settings     ethereum.Settings
+	Earlier      []notary.Generation `name:"earlier"`
+	Source       notary.ProofSource
+	Scheme       notary.Scheme
+	Confidential notary.ConfidentialScheme
+	Statements   notary.StatementScheme
+	Court        notary.Court
+	Signer       notary.StatementSigner
+	Identity     notary.CourtIdentity
 }
 
 func provideProver(p proverParams) *proving.Prover {
-	return proving.NewProver(p.Source, p.Scheme, p.Statements, p.Court, p.Signer, p.Identity)
+	earlier := make([]proving.Venue, 0, len(p.Earlier))
+	for _, generation := range p.Earlier {
+		earlier = append(earlier, proving.Venue{
+			Ledger:   generation.LedgerIdentity(),
+			Court:    ethereum.NewCourt(p.Client, settingsOf(p.Settings, generation)),
+			Identity: notary.CourtIdentity{ChainID: generation.ChainID, Address: generation.Court},
+		})
+	}
+
+	return proving.NewProver(
+		p.Source,
+		p.Scheme,
+		p.Confidential,
+		p.Statements,
+		p.Signer,
+		proving.Venue{Ledger: p.Settings.Ledger, Court: p.Court, Identity: p.Identity},
+		earlier,
+	)
 }
 
 type watcherParams struct {
 	dig.In
+	Client   *ethclient.Client
+	Settings ethereum.Settings
+	Earlier  []notary.Generation `name:"earlier"`
 	Court    notary.Court
 	Observer watching.Observer
 	Config   config.Daemon
@@ -57,7 +82,12 @@ type watcherParams struct {
 }
 
 func provideWatcher(p watcherParams) *watching.Watcher {
-	return watching.NewWatcher(p.Court, p.Observer, p.Log, p.Config.Tick)
+	courts := []notary.Court{p.Court}
+	for _, generation := range p.Earlier {
+		courts = append(courts, ethereum.NewCourt(p.Client, settingsOf(p.Settings, generation)))
+	}
+
+	return watching.NewWatcher(courts, p.Observer, p.Log, p.Config.Tick)
 }
 
 type authenticatorParams struct {

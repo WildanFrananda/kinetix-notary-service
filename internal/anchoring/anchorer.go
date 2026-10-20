@@ -21,6 +21,7 @@ type Anchorer struct {
 	clock    func() time.Time
 	log      *slog.Logger
 	policy   Policy
+	two      *SchemeTwo
 }
 
 func NewAnchorer(
@@ -35,6 +36,7 @@ func NewAnchorer(
 	clock func() time.Time,
 	log *slog.Logger,
 	policy Policy,
+	two *SchemeTwo,
 ) *Anchorer {
 	return &Anchorer{
 		scheme:   scheme,
@@ -48,6 +50,7 @@ func NewAnchorer(
 		clock:    clock,
 		log:      log,
 		policy:   policy,
+		two:      two,
 	}
 }
 
@@ -99,16 +102,9 @@ func (a *Anchorer) begin(ctx context.Context, lease notary.Lease) error {
 	}
 
 	if hasLast && last.Ledger != a.policy.Ledger {
-		return notary.Errf(
-			notary.KindLedgerDiverged,
-			op,
-			nil,
-			"this database anchors to %s on chain %d, not %s on chain %d",
-			last.Ledger.Address.Hex(),
-			last.Ledger.ChainID,
-			a.policy.Ledger.Address.Hex(),
-			a.policy.Ledger.ChainID,
-		)
+		if err := a.succeeds(ctx, last); err != nil {
+			return err
+		}
 	}
 
 	if hasLast && a.clock().Before(last.Header.AsOf.Time().Add(a.policy.EpochInterval)) {
@@ -164,6 +160,7 @@ func (a *Anchorer) begin(ctx context.Context, lease notary.Lease) error {
 	}
 
 	liabilities := snapshot.Liabilities()
+	a.observer.Occupancy(uint64(len(liabilities)), a.capacity())
 
 	keys := make([]notary.AccountKey, len(liabilities))
 	for i, liability := range liabilities {
@@ -175,9 +172,28 @@ func (a *Anchorer) begin(ctx context.Context, lease notary.Lease) error {
 		return err
 	}
 
-	plan, err := notary.PlanEpoch(a.scheme, a.salts, a.secrets, known, head.NextEpoch, head.Head, snapshot)
+	plan, err := a.plan(ctx, known, head, snapshot)
 	if err != nil {
 		return err
+	}
+
+	if plan.Confidential != nil {
+		renewed, held, err := a.store.Lease(ctx, a.policy.Instance, a.policy.LeaseTerm)
+		if err != nil {
+			return err
+		}
+
+		if !held {
+			return notary.Errf(
+				notary.KindLeaseLost,
+				op,
+				nil,
+				"another writer took the lease while epoch %d was proven",
+				head.NextEpoch,
+			)
+		}
+
+		lease = renewed
 	}
 
 	record, err := a.store.SaveBuilt(ctx, lease, a.policy.Ledger, plan)
@@ -199,6 +215,105 @@ func (a *Anchorer) begin(ctx context.Context, lease notary.Lease) error {
 	)
 
 	return a.advance(ctx, lease, record)
+}
+
+func (a *Anchorer) capacity() uint64 {
+	if a.two == nil {
+		return 0
+	}
+
+	return uint64(1) << a.two.Depth
+}
+
+func (a *Anchorer) succeeds(ctx context.Context, last notary.EpochRecord) error {
+	const op = "anchoring.Anchorer.succeeds"
+
+	head, err := a.chain.Head(ctx)
+	if err != nil {
+		return err
+	}
+
+	if head.GenesisEpoch == last.Header.Number+1 && head.GenesisDigest == last.Digest {
+		return nil
+	}
+
+	return notary.Errf(
+		notary.KindLedgerDiverged,
+		op,
+		nil,
+		"this database anchors to %s on chain %d, and %s on chain %d does not start where it ends: "+
+			"its genesis is epoch %d with %s, this database finalized epoch %d with digest %s",
+		last.Ledger.Address.Hex(),
+		last.Ledger.ChainID,
+		a.policy.Ledger.Address.Hex(),
+		a.policy.Ledger.ChainID,
+		head.GenesisEpoch,
+		head.GenesisDigest.Hex(),
+		last.Header.Number,
+		last.Digest.Hex(),
+	)
+}
+
+func (a *Anchorer) plan(
+	ctx context.Context,
+	known map[notary.AccountKey]notary.AccountSecret,
+	head notary.LedgerHead,
+	snapshot notary.Snapshot,
+) (notary.EpochPlan, error) {
+	if a.two == nil {
+		return notary.PlanEpoch(a.scheme, a.salts, a.secrets, known, head.NextEpoch, head.Head, snapshot)
+	}
+
+	plan, err := notary.PlanConfidentialEpoch(
+		a.scheme,
+		a.two.Scheme,
+		a.two.Depth,
+		a.salts,
+		a.secrets,
+		a.two.Blindings,
+		known,
+		head.NextEpoch,
+		head.Head,
+		snapshot,
+	)
+	if err != nil {
+		return notary.EpochPlan{}, err
+	}
+
+	entries := make([]notary.Entry, len(plan.Accounts))
+	for i, account := range plan.Accounts {
+		entries[i] = notary.Entry{Commitment: account.Commitment, Amount: account.Liability.Amount}
+	}
+
+	started := a.clock()
+	proof, err := a.two.Prover.Prove(ctx, notary.ProofRequest{
+		Number:          plan.Header.Number,
+		Depth:           plan.Confidential.Depth,
+		Entries:         entries,
+		TreeRoot:        plan.Confidential.TreeRoot,
+		TotalCommitment: plan.Confidential.TotalCommitment,
+		Blinding:        plan.Confidential.Blinding,
+	})
+	a.observer.Proved(a.clock().Sub(started), err != nil)
+
+	if err != nil {
+		return notary.EpochPlan{}, err
+	}
+
+	plan.Confidential.Proof = proof
+
+	a.log.InfoContext(
+		ctx,
+		"epoch proven",
+		"epoch",
+		plan.Header.Number,
+		"accounts",
+		plan.Header.LeafCount,
+		"seconds",
+		a.clock().Sub(started).Seconds(),
+	)
+
+	return plan, nil
 }
 
 func (a *Anchorer) advance(ctx context.Context, lease notary.Lease, record notary.EpochRecord) error {
@@ -239,6 +354,17 @@ func (a *Anchorer) submit(ctx context.Context, lease notary.Lease, record notary
 		}
 
 		return nil
+	}
+
+	if a.two != nil {
+		proven, err := a.two.Chain.IsProven(ctx, number, record.Header.Root, record.Header.LeafCount)
+		if err != nil {
+			return err
+		}
+
+		if !proven {
+			return a.keepAlive(ctx, lease, record, notary.AttemptForProof)
+		}
 	}
 
 	approvals, err := a.approve(ctx, record)
@@ -355,19 +481,24 @@ func (a *Anchorer) watch(ctx context.Context, lease notary.Lease, record notary.
 		record.State = notary.StateSubmitted
 	}
 
-	return a.keepAlive(ctx, lease, record)
+	return a.keepAlive(ctx, lease, record, notary.AttemptForAnchor)
 }
 
-func (a *Anchorer) keepAlive(ctx context.Context, lease notary.Lease, record notary.EpochRecord) error {
+func (a *Anchorer) keepAlive(
+	ctx context.Context,
+	lease notary.Lease,
+	record notary.EpochRecord,
+	kind notary.AttemptKind,
+) error {
 	const op = "anchoring.Anchorer.keepAlive"
 
-	attempts, err := a.store.Attempts(ctx, record.Header.Number)
+	attempts, err := a.attemptsOf(ctx, record.Header.Number, kind)
 	if err != nil {
 		return err
 	}
 
 	if len(attempts) == 0 {
-		return a.submit(ctx, lease, record)
+		return a.fresh(ctx, lease, record, kind)
 	}
 
 	reverted := false
@@ -413,14 +544,16 @@ func (a *Anchorer) keepAlive(ctx context.Context, lease notary.Lease, record not
 		if reverted {
 			a.log.WarnContext(
 				ctx,
-				"anchor reverted; preparing a fresh one",
+				"transaction reverted; preparing a fresh one",
 				"epoch",
 				record.Header.Number,
+				"kind",
+				kind.String(),
 				"nonce",
 				nonce,
 			)
 
-			return a.submit(ctx, lease, record)
+			return a.fresh(ctx, lease, record, kind)
 		}
 
 		if a.anyMined(ctx, attempts) {
@@ -454,6 +587,94 @@ func (a *Anchorer) keepAlive(ctx context.Context, lease notary.Lease, record not
 	return nil
 }
 
+func (a *Anchorer) attemptsOf(ctx context.Context, epoch uint64, kind notary.AttemptKind) ([]notary.Attempt, error) {
+	attempts, err := a.store.Attempts(ctx, epoch)
+	if err != nil {
+		return nil, err
+	}
+
+	kept := make([]notary.Attempt, 0, len(attempts))
+	for _, attempt := range attempts {
+		if attempt.Kind == kind {
+			kept = append(kept, attempt)
+		}
+	}
+
+	return kept, nil
+}
+
+func (a *Anchorer) fresh(
+	ctx context.Context,
+	lease notary.Lease,
+	record notary.EpochRecord,
+	kind notary.AttemptKind,
+) error {
+	if kind == notary.AttemptForProof {
+		return a.sendProof(ctx, lease, record)
+	}
+
+	return a.submit(ctx, lease, record)
+}
+
+func (a *Anchorer) sendProof(ctx context.Context, lease notary.Lease, record notary.EpochRecord) error {
+	const op = "anchoring.Anchorer.sendProof"
+
+	number := record.Header.Number
+	if a.two == nil || record.Confidential == nil || len(record.Confidential.Proof) == 0 {
+		return a.abandon(
+			ctx,
+			lease,
+			record,
+			notary.Errf(notary.KindAnchorRefused, op, nil, "epoch %d holds no proof to send", number),
+		)
+	}
+
+	nonce, err := a.chain.Nonce(ctx)
+	if err != nil {
+		return err
+	}
+
+	base, tip, err := a.chain.Fees(ctx)
+	if err != nil {
+		return err
+	}
+
+	quote, err := notary.QuoteFees(base, tip, a.policy.FeeCeiling)
+	if err != nil {
+		if notary.KindOf(err) == notary.KindAnchorDeferred {
+			a.observer.FeeCeilingHit()
+		}
+
+		return err
+	}
+
+	prepared, err := a.two.Chain.PrepareProof(ctx, record.Header, *record.Confidential, nonce, quote)
+	switch notary.KindOf(err) {
+	case notary.KindUnknown:
+	case notary.KindAlreadyAnchored:
+		return nil
+	case notary.KindAnchorRefused:
+		return a.abandon(ctx, lease, record, err)
+	default:
+		return err
+	}
+
+	attempt := notary.Attempt{
+		Epoch:   number,
+		Kind:    notary.AttemptForProof,
+		Anchor:  prepared,
+		Outcome: notary.AttemptPending,
+		SentAt:  a.clock(),
+	}
+	if err := a.store.RecordAttempt(ctx, lease, attempt); err != nil {
+		return err
+	}
+
+	a.log.InfoContext(ctx, "proof sent", "epoch", number, "tx", prepared.Hash.Hex(), "nonce", prepared.Nonce)
+
+	return a.chain.Broadcast(ctx, prepared)
+}
+
 func (a *Anchorer) anyMined(ctx context.Context, attempts []notary.Attempt) bool {
 	for _, attempt := range attempts {
 		if _, mined, err := a.chain.Receipt(ctx, attempt.Anchor.Hash); err == nil && mined {
@@ -480,12 +701,23 @@ func (a *Anchorer) replace(ctx context.Context, lease notary.Lease, latest notar
 		return a.chain.Broadcast(ctx, latest.Anchor)
 	}
 
-	anchor, err := a.chain.Resign(latest.Anchor, bumped)
+	resign := a.chain.Resign
+	if latest.Kind == notary.AttemptForProof && a.two != nil {
+		resign = a.two.Chain.Resign
+	}
+
+	anchor, err := resign(latest.Anchor, bumped)
 	if err != nil {
 		return err
 	}
 
-	attempt := notary.Attempt{Epoch: latest.Epoch, Anchor: anchor, Outcome: notary.AttemptPending, SentAt: a.clock()}
+	attempt := notary.Attempt{
+		Epoch:   latest.Epoch,
+		Kind:    latest.Kind,
+		Anchor:  anchor,
+		Outcome: notary.AttemptPending,
+		SentAt:  a.clock(),
+	}
 	if err := a.store.RecordAttempt(ctx, lease, attempt); err != nil {
 		return err
 	}

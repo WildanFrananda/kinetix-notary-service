@@ -3,6 +3,7 @@ package wiring
 import (
 	"log/slog"
 
+	"github.com/ethereum/go-ethereum/ethclient"
 	"go.uber.org/dig"
 
 	"github.com/WildanFrananda/kinetix-notary-service/internal/approving"
@@ -90,15 +91,17 @@ func provideSnapshotRecords(p snapshotRecordsParams) (snapshotRecordsResult, err
 
 type approverParams struct {
 	dig.In
-	Config    config.Watch
-	Records   notary.SnapshotRecords
-	Heads     notary.LedgerHeads
-	Council   notary.Council
-	Signer    notary.ApprovalSigner
-	Scheme    notary.Scheme
-	Approvals notary.ApprovalScheme
-	Observer  approving.Observer
-	Log       *slog.Logger
+	Config       config.Watch
+	Records      notary.SnapshotRecords
+	Heads        notary.LedgerHeads
+	Council      notary.Council
+	Signer       notary.ApprovalSigner
+	Scheme       notary.Scheme
+	Confidential notary.ConfidentialScheme
+	Proofs       notary.ProofReader
+	Approvals    notary.ApprovalScheme
+	Observer     approving.Observer
+	Log          *slog.Logger
 }
 
 func provideApprover(p approverParams) *approving.Approver {
@@ -108,10 +111,27 @@ func provideApprover(p approverParams) *approving.Approver {
 		p.Council,
 		p.Signer,
 		p.Scheme,
+		p.Confidential,
+		p.Proofs,
 		p.Approvals,
 		notary.CouncilIdentity{ChainID: p.Config.Chain.Ledger.ChainID, Address: p.Config.Council},
 		p.Config.Chain.Ledger.Address,
 		p.Observer,
 		p.Log,
 	)
+}
+
+type proofReaderParams struct {
+	dig.In
+	Client   *ethclient.Client
+	Settings ethereum.Settings
+}
+
+type proofReaderResult struct {
+	dig.Out
+	Proofs notary.ProofReader
+}
+
+func provideProofReader(p proofReaderParams) proofReaderResult {
+	return proofReaderResult{Proofs: ethereum.NewProofReader(p.Client, p.Settings)}
 }

@@ -34,7 +34,8 @@ bin/dev go test ./tests/fixtures -update        # regenerate the differential fi
 bin/dev down                                    # stop the chain
 ```
 
-The image built from `Dockerfile` carries five binaries and runs `notaryd` by default:
+The image built from `Dockerfile` carries six binaries and runs `notaryd` by default (the sixth, `notary-prove`, is
+the one-shot scheme-2 prover notaryd starts per epoch, PLAN.md step 13-5):
 `notary-migrate` is the one-shot migrator, `notary-watch` is the council's second member (PLAN.md step 8),
 an account holder verifies with `docker run <image> notary-verify proof.json` (the image used to
 start `notary-verify` itself), and sends a sponsored call with `notary-sponsor` (PLAN.md step 10).
@@ -72,7 +73,9 @@ bin/hand-over-anchoring base-sepolia [--broadcast]           # the admin grants 
 bin/retire-anchorer base-sepolia <council anchor tx> [--broadcast]   # then revokes the anchorer key's own
 bin/deploy-directory base-sepolia [--broadcast] # the ledger directory, generation 0 = the ledger and its courts
 bin/inspect-directory base-sepolia              # its facts, and that its current generation is deploy/<network>.env's
+bin/seal-ledger base-sepolia <head> [--broadcast]   # admin; permanent; the successor's genesis is read at it
 bin/register-successor base-sepolia <ledger> <court> <withholding> [--broadcast]   # admin; after a seal
+bin/deploy-ledger base-sepolia-2 [--broadcast]  # generation 2: deploy/<network>-2.env, KINETIX_NOTARY_SCHEME=2, after the seal
 bin/deploy-paymaster base-sepolia [--broadcast] # the paymaster; refuses unless the EntryPoint and account carry the pinned code hashes
 bin/stake-paymaster base-sepolia                # the admin's addStake up to the file's stake; refuses another key or an unlocking stake
 bin/fund-paymaster base-sepolia 0.1             # the deployer's EntryPoint.depositTo(paymaster); waits for latest to show it
@@ -82,6 +85,10 @@ bin/new-evidence-anchorer-key prod              # the seventh key, the evidence 
 bin/fund-evidence-anchorer base-sepolia 0.001   # the deployer pays the evidence anchorer's gas
 bin/deploy-evidence-registry base-sepolia [--broadcast]   # the evidence registry; dry run by default
 bin/inspect-evidence-registry base-sepolia      # its facts, its streams, who holds the anchorer role, Sourcify
+bin/dev go run ./cmd/notary-srs -depth 8 -srs /workspace/dist/srs/ignition-d8.srs   # Aztec Ignition → checked SRS (PLAN.md step 13)
+bin/dev go run ./cmd/notary-srs -depth 8 -from /workspace/dist/srs/ignition-d8.srs -verifier /workspace/dist/srs/PlonkVerifier.sol
+bin/dev env KINETIX_NOTARY_IGNITION_SRS=/workspace/dist/srs/ignition-d8.srs go test ./tests/fixtures -run Production -update
+bin/dev env KINETIX_NOTARY_IGNITION_SRS=/workspace/dist/srs/ignition-d8.srs go test ./tests/integration -run Ignition   # notaryd at D = 8, ~80 s
 ```
 
 `notary-verify` reads `KINETIX_NOTARY_RPC_URL`, `KINETIX_NOTARY_CHAIN_ID`, `KINETIX_NOTARY_DIRECTORY_ADDRESS`
@@ -116,6 +123,24 @@ the court's current signer. It then reads the deposit every tick into `kinetix_n
 the locked stake into `kinetix_notary_paymaster_stake_wei` (0 from the moment the admin unlocks it), and sets
 `kinetix_notary_paymaster_current` to 0 the moment the signer moves on without a new paymaster. A missing
 stake does not stop notaryd: its own work needs no paymaster, so the stake is an alert, not a refusal.
+
+From step 13 notaryd takes `KINETIX_NOTARY_SCHEME` (1 by default). With 2 it also needs `KINETIX_NOTARY_SRS_PATH`
+and `KINETIX_NOTARY_SRS_SHA256`, hashes the SRS against that pin at start, and reads `D` from the ledger. It proves each
+epoch by starting `notary-prove`, a one-shot child, sends `proveEpoch` before it asks the watch, and anchors only a
+statement the ledger already holds as proven. The ledger adapter is built for the configured scheme, so a notary of one
+scheme refuses a ledger of the other at start (`wrong_ledger`).
+
+A successor keeps its predecessor's database (PLAN.md 13-6). At start notaryd reads every earlier generation on its
+chain from the directory (`Directory.Lineage`, `provideEarlierGenerations`), and then:
+- it signs each epoch's statement for the court of the generation that holds the epoch (`proving.Venue`);
+- it answers every earlier withholding court, scanned from 100 000 blocks back, through one answer writer that
+  shares a nonce state across courts (`AnswerWriter.At`);
+- it sums proven faults and recorded silences over all of them.
+
+The anchorer continues a database whose newest final epoch is on another ledger only when the configured ledger's
+genesis is that epoch's successor and digest. Anything else is `ledger_diverged`, "does not start where it ends".
+The image takes the SRS by `ADD --checksum` from this repository's release `srs-ignition-d8`. No image builds
+until that release exists.
 
 From step 12 notaryd also needs `KINETIX_NOTARY_ORDER_GRPC_ADDR`, `KINETIX_NOTARY_MATCHING_GRPC_ADDR`,
 `KINETIX_NOTARY_REVIEW_GRPC_ADDR`, `KINETIX_NOTARY_EVIDENCE_REGISTRY_ADDRESS` and
@@ -178,6 +203,9 @@ as `verify-contracts` and `verify-go`.
 | `internal/notary` | the standard library. **Nothing else.** |
 | `internal/verifying` | `internal/notary` only; `DirectoryVerifier` resolves a generation, then verifies through `Verifier` |
 | `internal/keccak`, `prooffile`, `config`, `verifycli` | `internal/notary` + their own library |
+| `internal/poseidon` | `internal/notary` + gnark-crypto: scheme 2's Poseidon2 tree, its own permutation held to gnark-crypto's (PLAN.md step 13) |
+| `internal/plonk` | `internal/notary` + gnark: scheme 2's circuit, its prover and the Solidity verifier it exports |
+| `internal/ignition` | `internal/notary` + gnark-crypto + `net/http`: reads Aztec Ignition, checks every contribution and builds the KZG SRS (`cmd/notary-srs`) |
 | `internal/ethereum` | the above + go-ethereum + `internal/contractgen` — the only adapter that touches a chain |
 | `internal/payment`, `internal/feeds`, `internal/mesh` | `internal/notary` + gRPC + `internal/protogen` — the only adapters that speak gRPC; `feeds` reads the three evidence logs |
 | `internal/postgres` | `internal/notary` + pgx + goose + `internal/storegen` — the only adapter that touches Postgres |
@@ -216,8 +244,9 @@ Package names say what a package provides (`keccak.NewScheme`, `ethereum.NewLedg
   would make the repository disagree with the verified bytecode); for `StatementCourt`, Aderyn
   `centralization-risk` (the admin schedules signers, by design) and `reentrancy-state-change` (its only
   external calls are `view` reads of the immutable ledger, compiled to STATICCALL, which cannot re-enter;
-  Slither, which tells a STATICCALL apart, reports nothing there); for `AnchorCouncil`, Aderyn
-  `centralization-risk` (the admin schedules memberships, behind a 7-day delay, by design); for
+  Slither, which tells a STATICCALL apart, reports nothing there); for `AnchorCouncil` and its scheme-2 copy
+  `ConfidentialAnchorCouncil`, Aderyn `centralization-risk` (the admin schedules memberships, behind a 7-day delay, by
+  design); for `LiabilityLedgerV2`, the same entries as v1's minus `unchecked-return`, which v2 fixes in code; for
   `LedgerDirectory`, Aderyn `centralization-risk` (only the admin registers a successor, decision 23); for
   `NotaryPaymaster`, Aderyn `centralization-risk` (only the admin withdraws the deposit, the kill switch of
   decision 26, and only the admin adds to, unlocks or withdraws the stake, because the EntryPoint relocks a
@@ -233,7 +262,36 @@ Package names say what a package provides (`keccak.NewScheme`, `ethereum.NewLedg
   `contracts/test/fixtures/scheme-v1.json` and `evidence-v1.json` and fails when a committed file differs;
   Foundry's `Differential.t.sol` and `EvidenceDifferential.t.sol` re-verify every tree, proof, rejection
   and digest in them. Proven on
-  2026-10-11 by mutating Go's leaf tag: Foundry went red.
+  2026-10-11 by mutating Go's leaf tag: Foundry went red. Scheme 2 adds `scheme-v2.json`
+  (`ConfidentialDifferential.t.sol`) and `plonk-v2.json` (`PlonkVerifier.t.sol`).
+- **A generated verifier is gnark's output, byte for byte.** `tests/fixtures` exports the PLONK verifier of a
+  depth-3 circuit over a fixed test SRS (`unsafekzg.WithToxicValue`, never cached to disk) into
+  `contracts/test/support/TestPlonkVerifier.sol`, renamed from `PlonkVerifier`, and fails when the committed file
+  differs. Its comments, Apache-2.0 header and layout are gnark's: it is in forge fmt's `ignore` list, and it is
+  never edited, formatted or stripped by hand, or the check goes red. forge-lint and solc report nothing on it, so
+  it has no other exemption. A PLONK proof is randomized, so `-update` proves again every time and changes the
+  `proof` line of `plonk-v2.json`; the Go check compares the statement and the public inputs, and Foundry checks
+  that the committed proof verifies. Proven on 2026-10-20: one flipped digit in the proof turned Foundry red, a
+  64→63 range check in the circuit turned the Go check red.
+- **The production verifier is gnark's output too, from the Aztec Ignition SRS.** `src/confidential/PlonkVerifier.sol`
+  is the depth-8 verifier `notary-srs -from dist/srs/ignition-d8.srs -verifier` writes, byte for byte. It is in forge
+  fmt's and forge-lint's `ignore`. It is left out of Slither (`filter_paths`) and Aderyn (`-x`) the way `dependencies/`
+  is, because it is third-party generated code that may never be edited. forge-lint reports `uninitialized-local` and
+  `require-revert-in-loop` in its assembly, though it reports nothing on the test copy in `test/support`. `internal/plonk/production.go` pins four SHA-256s: the
+  circuit at `D = 8`, the SRS, the verifying key and the verifier file.
+  - `tests/plonk` fails when the committed file or the compiled circuit stops matching its pin.
+  - With `KINETIX_NOTARY_IGNITION_SRS` set, `tests/fixtures` derives everything from the SRS again and checks all
+    four. With `-update` as well, it proves `plonk-production.json` afresh, which Foundry verifies with the
+    production verifier.
+  - A change to the circuit, or a gnark bump, therefore goes red until the verifier is derived again and every pin
+    and fixture is updated together. The deployed generation-2 ledger keeps the verifier it was deployed with.
+- **A copy of a deployed contract is held to its original by `tests/sources`.** `ConfidentialAnchorCouncil.sol` and
+  `DeployConfidentialAnchorCouncil.s.sol` must equal `AnchorCouncil.sol` and `DeployAnchorCouncil.s.sol` after the
+  listed substitutions. Change the original and every substitution's count is checked again. Change the copy
+  anywhere else and the test goes red. The original stays frozen, because it is the verified source of the live
+  council.
+- **The ledger holds the generated `PlonkVerifier` type, never an interface of ours.** Slither reports an interface
+  method named `Verify` as a naming violation, and the name is fixed by gnark's selector.
 - **Every adapter carries a compile-time assertion** (`var _ notary.Ledger = (*Ledger)(nil)`).
 - **Generated bindings are never committed.** `bin/generate-bindings` builds them from the forge
   artifacts into `internal/contractgen/`; the Dockerfile and `bin/ci` run it every time.
@@ -382,6 +440,9 @@ A failure must never be reported as a definite answer. In this service that mean
 - **The fork test has its own profile** (`[profile.fork]`, `test = "fork"`), so a plain `forge test`
   stays offline; `bin/ci-contracts` runs it with the public RPC and the pinned block from
   `deploy/base-sepolia.env`.
+  `GenerationTwoFork.t.sol` forks a later block, `KINETIX_NOTARY_FORK_GENERATION_BLOCK`, where the live directory
+  exists, and `plonk-production.json` is proven for that block's next epoch: moving the block means proving the
+  fixture again with the SRS.
 - **The ERC-7562 test has its own profile too** (`[profile.rules]`, `test = "rules"`, `verbosity = 3`, its
   own `out/rules` and `cache/rules`). `vm.startDebugTraceRecording` needs a tracer, which forge starts only
   at `-vvv`; the profile carries the verbosity so `FOUNDRY_PROFILE=rules forge test` is all `bin/ci-contracts`
@@ -540,6 +601,29 @@ A failure must never be reported as a definite answer. In this service that mean
   provider first wrapped the loader's error as `invalid_argument`, so a missing registry printed
   `unknown` and exited 4 where a missing directory exits 78. The browser test, which compares the two
   binaries case by case, caught it.
+- **The Ignition SRS everyone uses is the sealed transcript, not the last participant's.** The manifest's `crs.t2`
+  equals the τ of `MAIN IGNITION/sealed/transcript00.dat`. The last participant's (position 197) differs, because a
+  sealing step multiplied τ once more. `Follows` holds from the seal back to the generator.
+- **A curve point in a PLONK proof that is off the curve burns all the gas it is given.** gnark's verifier calls the
+  ecMul and ecAdd precompiles with `gas()`, and a failing precompile consumes everything it was forwarded before the
+  verifier reverts. The first tamper test exhausted Foundry's 1.07 billion gas. Tests cap each call at 1M. The ledger
+  does not cap it, because a cap in an immutable contract breaks when a fork reprices the precompiles.
+- **gnark logs to stdout.** Its zerolog console writer prints coloured lines (`compiling circuit`, …) on standard
+  output, and the first child prover's proof came back as `invalid byte: U+001B`. `notary-prove` calls
+  `logger.Disable()`: its stdout carries the proof and nothing else.
+- **Binary from `curl` through the hook is text.** The rewriter turned a range read of a transcript into UTF-8
+  replacement characters, and the header decoded as nonsense. Fetch with `rtk proxy curl -o <file>` and read the
+  file.
+- **A second daemon in one test waits out the first one's lease.** The writer's instance name ends in random bytes and
+  the lease lasts 30 s, so a restarted notaryd ticks `nil` and builds nothing until the old lease lapses. The cutover
+  test expires `writer_lease` itself, as a dead process would.
+- **An epoch in flight at a seal blocks the successor.** The sealed ledger refuses it (`LedgerIsSealed` is
+  `anchor_refused`), it is abandoned, and its row keeps the number the successor's first epoch needs. The cutover
+  stops notaryd between two epochs first (`kinetix-infrastructure/docs/NOTARY-GENERATION-TWO.md`, step 0).
+- **Tests freeze the clock that times the prover,** so `kinetix_notary_proving_seconds` reads 0 there. The Ignition
+  test logs wall time instead.
+- **`bin/inspect-directory` checks the generation that holds the file's ledger, not the current one.** Comparing with
+  the current generation would have reported generation 1's own file `WRONG` from the moment it was succeeded.
 - **A fake server that drops what it cannot place hides the reader's refusal.** The first evidence feed
   fake skipped a record with no position, so the reader's "without a position" refusal was never
   reached. Fakes send what they are given; the reader refuses.

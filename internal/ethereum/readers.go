@@ -9,17 +9,20 @@ import (
 type Readers struct {
 	client   *ethclient.Client
 	settings Settings
-	scheme   notary.Scheme
 }
 
 var _ notary.GenerationReaders = (*Readers)(nil)
 
-func NewReaders(client *ethclient.Client, settings Settings, scheme notary.Scheme) *Readers {
-	return &Readers{client: client, settings: settings, scheme: scheme}
+func NewReaders(client *ethclient.Client, settings Settings) *Readers {
+	return &Readers{client: client, settings: settings}
 }
 
 func (r *Readers) Ledger(generation notary.Generation) notary.Ledger {
-	return NewLedger(r.client, r.of(generation), r.scheme)
+	return NewLedgerOfScheme(r.client, r.of(generation), generation.Scheme)
+}
+
+func (r *Readers) Confidential(generation notary.Generation) notary.ConfidentialLedger {
+	return NewLedgerOfScheme(r.client, r.of(generation), generation.Scheme)
 }
 
 func (r *Readers) Court(generation notary.Generation) notary.Court {

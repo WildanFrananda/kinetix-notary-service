@@ -26,6 +26,7 @@ func Watch(lookup config.Lookup, build metrics.Build, log *slog.Logger) (*dig.Co
 		provideCouncil,
 		provideWatchSigner,
 		provideSnapshotRecords,
+		provideProofReader,
 		provideApprover,
 		provideWatchHTTP,
 		provideWatchGRPC,

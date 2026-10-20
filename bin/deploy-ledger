@@ -39,9 +39,22 @@ exec docker compose -f "$HERE/toolchain/compose.yaml" "$@" toolchain sh -c '
   set -a
   . "./deploy/$network.env"
   set +a
+  case "${KINETIX_NOTARY_SCHEME:-1}" in
+    1)
+      script=script/DeployLiabilityLedger.s.sol:DeployLiabilityLedger
+      keys="KINETIX_NOTARY_GENESIS_EPOCH KINETIX_NOTARY_GENESIS_DIGEST KINETIX_NOTARY_GENESIS_AS_OF"
+      ;;
+    2)
+      script=script/DeployLiabilityLedgerV2.s.sol:DeployLiabilityLedgerV2
+      keys="KINETIX_NOTARY_PREDECESSOR_LEDGER_ADDRESS KINETIX_NOTARY_LEDGER_DEPTH KINETIX_NOTARY_PLONK_VERIFIER_DEPLOY_SALT"
+      ;;
+    *)
+      echo "KINETIX_NOTARY_SCHEME in deploy/$network.env must be 1 or 2" >&2
+      exit 78
+      ;;
+  esac
   for key in KINETIX_NOTARY_CHAIN_ID KINETIX_NOTARY_VERIFY_SOURCE KINETIX_NOTARY_ADMIN_ADDRESS \
-    KINETIX_NOTARY_ADMIN_TRANSFER_DELAY_SECONDS KINETIX_NOTARY_ANCHORER_ADDRESS KINETIX_NOTARY_GENESIS_EPOCH \
-    KINETIX_NOTARY_GENESIS_DIGEST KINETIX_NOTARY_GENESIS_AS_OF KINETIX_NOTARY_DEPLOY_SALT; do
+    KINETIX_NOTARY_ADMIN_TRANSFER_DELAY_SECONDS KINETIX_NOTARY_ANCHORER_ADDRESS KINETIX_NOTARY_DEPLOY_SALT $keys; do
     eval "value=\${$key:-}"
     if [ -z "$value" ]; then
       echo "$key is empty in deploy/$network.env" >&2
@@ -59,11 +72,21 @@ exec docker compose -f "$HERE/toolchain/compose.yaml" "$@" toolchain sh -c '
     echo "a successor is a new salt and a new genesis, written into the file deliberately" >&2
     exit 1
   fi
+  if [ "${KINETIX_NOTARY_SCHEME:-1}" = "2" ]; then
+    predecessor="$KINETIX_NOTARY_PREDECESSOR_LEDGER_ADDRESS"
+    if [ "$(cast call "$predecessor" "isSealed()(bool)" --rpc-url "$KINETIX_NOTARY_RPC_URL")" != "true" ]; then
+      echo "the predecessor $predecessor still anchors: its genesis is read at its seal, so run bin/seal-ledger first" >&2
+      exit 1
+    fi
+    echo "generation genesis, read from the sealed predecessor $predecessor:"
+    echo "  epoch    $(cast call "$predecessor" "nextEpoch()(uint64)" --rpc-url "$KINETIX_NOTARY_RPC_URL")"
+    echo "  digest   $(cast call "$predecessor" "head()(bytes32)" --rpc-url "$KINETIX_NOTARY_RPC_URL")"
+    echo "  snapshot $(cast call "$predecessor" "lastAsOf()(uint64)" --rpc-url "$KINETIX_NOTARY_RPC_URL")"
+  fi
 
   cd contracts
   forge soldeer install >/dev/null
-  set -- script/DeployLiabilityLedger.s.sol:DeployLiabilityLedger \
-    --rpc-url "$KINETIX_NOTARY_RPC_URL" --keystore /keystores/notary-deployer
+  set -- "$script" --rpc-url "$KINETIX_NOTARY_RPC_URL" --keystore /keystores/notary-deployer
   if [ -n "$password_arg" ]; then
     set -- "$@" --password-file /run/keystore-password
   fi

@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"math/big"
 	"strings"
-	"sync"
 	"time"
 
 	goethereum "github.com/ethereum/go-ethereum"
@@ -39,8 +38,7 @@ type AnswerWriter struct {
 	ceiling uint64
 	wait    time.Duration
 	poll    time.Duration
-	mu      sync.Mutex
-	last    sentAnswer
+	sent    *answerSequence
 }
 
 type sentAnswer struct {
@@ -66,7 +64,15 @@ func NewAnswerWriter(client *ethclient.Client, settings Settings, key *ecdsa.Pri
 		ceiling: ceiling,
 		wait:    answerWait,
 		poll:    answerPoll,
+		sent:    &answerSequence{},
 	}
+}
+
+func (w *AnswerWriter) At(withholding notary.Address) *AnswerWriter {
+	sibling := *w
+	sibling.court = common.Address(withholding)
+
+	return &sibling
 }
 
 func (w *AnswerWriter) Answerer() notary.Address {
@@ -88,8 +94,8 @@ func (w *AnswerWriter) Balance(ctx context.Context) (*big.Int, error) {
 func (w *AnswerWriter) Answer(ctx context.Context, answer notary.Answer) (notary.Digest, error) {
 	const op = "ethereum.AnswerWriter.Answer"
 
-	w.mu.Lock()
-	defer w.mu.Unlock()
+	w.sent.mu.Lock()
+	defer w.sent.mu.Unlock()
 
 	siblings := make([]withholding.SumNode, len(answer.Proof.Siblings))
 	for i, node := range answer.Proof.Siblings {
@@ -114,7 +120,7 @@ func (w *AnswerWriter) Answer(ctx context.Context, answer notary.Answer) (notary
 		return notary.Digest{}, err
 	}
 
-	w.last = sentAnswer{
+	w.sent.last = sentAnswer{
 		pending: true,
 		nonce:   tx.Nonce(),
 		fees:    notary.FeeQuote{MaxFeePerGas: tx.GasFeeCap().Uint64(), MaxPriorityFeePerGas: tx.GasTipCap().Uint64()},
@@ -160,8 +166,8 @@ func (w *AnswerWriter) prepare(
 		return nil, err
 	}
 
-	if w.last.pending && w.last.nonce == nonce {
-		if bumped, ok := w.last.fees.Bumped(w.ceiling); ok {
+	if w.sent.last.pending && w.sent.last.nonce == nonce {
+		if bumped, ok := w.sent.last.fees.Bumped(w.ceiling); ok {
 			fees.MaxFeePerGas = max(fees.MaxFeePerGas, bumped.MaxFeePerGas)
 			fees.MaxPriorityFeePerGas = max(fees.MaxPriorityFeePerGas, bumped.MaxPriorityFeePerGas)
 		}
@@ -232,7 +238,7 @@ func (w *AnswerWriter) await(ctx context.Context, op string, hash common.Hash) (
 		}
 
 		if receipt != nil {
-			w.last.pending = false
+			w.sent.last.pending = false
 
 			if receipt.Status != types.ReceiptStatusSuccessful {
 				return notary.Digest(

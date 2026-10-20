@@ -385,6 +385,7 @@ func batchAttemptOf(op string, row storegen.EvidenceAttempt) (notary.BatchAttemp
 		GasUsed:              row.GasUsed,
 		EffectiveGasPrice:    row.EffectiveGasPrice,
 		L1FeeWei:             row.L1FeeWei,
+		Kind:                 notary.AttemptForAnchor.String(),
 	})
 	if err != nil {
 		return notary.BatchAttempt{}, err

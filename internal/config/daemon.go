@@ -38,6 +38,9 @@ const (
 	EvidenceKeyKey     = "KINETIX_NOTARY_EVIDENCE_ANCHORER_PRIVATE_KEY"
 	EvidenceBatchKey   = "KINETIX_NOTARY_EVIDENCE_BATCH_INTERVAL"
 	FeedTimeoutKey     = "KINETIX_NOTARY_FEED_TIMEOUT"
+	SchemeKey          = "KINETIX_NOTARY_SCHEME"
+	SRSPathKey         = "KINETIX_NOTARY_SRS_PATH"
+	SRSSHA256Key       = "KINETIX_NOTARY_SRS_SHA256"
 
 	defaultTrustDomain     = "kinetix.local"
 	defaultEpochInterval   = time.Hour
@@ -78,6 +81,9 @@ type Daemon struct {
 	Registry        notary.Address
 	EvidenceKey     Secret
 	EvidenceBatch   time.Duration
+	Scheme          uint16
+	SRSPath         string
+	SRSSHA256       string
 	FeedTimeout     time.Duration
 }
 
@@ -224,6 +230,32 @@ func LoadDaemon(lookup Lookup) (Daemon, error) {
 	cfg.SnapshotTimeout = duration(SnapshotTimeoutKey, defaultSnapshotTimeout, 10*time.Second, 30*time.Minute)
 	cfg.EvidenceBatch = duration(EvidenceBatchKey, defaultEvidenceBatch, time.Minute, 7*24*time.Hour)
 	cfg.FeedTimeout = duration(FeedTimeoutKey, defaultFeedTimeout, time.Second, 5*time.Minute)
+
+	cfg.Scheme = 1
+
+	if raw := optional(SchemeKey); raw != "" {
+		switch raw {
+		case "1":
+			cfg.Scheme = 1
+		case "2":
+			cfg.Scheme = 2
+		default:
+			problems = append(problems, SchemeKey+" must be 1 or 2")
+		}
+	}
+
+	if cfg.Scheme == 2 {
+		cfg.SRSPath = required(SRSPathKey)
+		if raw := required(SRSSHA256Key); raw != "" {
+			if len(raw) != 64 || strings.ContainsFunc(raw, func(r rune) bool {
+				return (r < '0' || r > '9') && (r < 'a' || r > 'f')
+			}) {
+				problems = append(problems, SRSSHA256Key+" must be 64 lowercase hex digits")
+			}
+
+			cfg.SRSSHA256 = raw
+		}
+	}
 
 	if raw := required(JWKSURLKey); raw != "" {
 		parsed, err := url.Parse(raw)

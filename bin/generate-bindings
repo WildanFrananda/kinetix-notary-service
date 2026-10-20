@@ -34,6 +34,14 @@ forge inspect Simple7702Account bytecode > "$WORK/Simple7702Account.bin"
 forge inspect EvidenceRegistry abi --json > "$WORK/EvidenceRegistry.abi"
 forge inspect EvidenceRegistry bytecode > "$WORK/EvidenceRegistry.bin"
 forge inspect IEvidenceRegistry abi --json > "$WORK/IEvidenceRegistry.abi"
+forge inspect LiabilityLedgerV2 abi --json > "$WORK/LiabilityLedgerV2.abi"
+forge inspect LiabilityLedgerV2 bytecode > "$WORK/LiabilityLedgerV2.bin"
+forge inspect ConfidentialAnchorCouncil abi --json > "$WORK/ConfidentialAnchorCouncil.abi"
+forge inspect ConfidentialAnchorCouncil bytecode > "$WORK/ConfidentialAnchorCouncil.bin"
+forge inspect TestPlonkVerifier abi --json > "$WORK/TestPlonkVerifier.abi"
+forge inspect TestPlonkVerifier bytecode > "$WORK/TestPlonkVerifier.bin"
+forge inspect PlonkVerifier abi --json > "$WORK/PlonkVerifier.abi"
+forge inspect PlonkVerifier bytecode > "$WORK/PlonkVerifier.bin"
 
 rm -rf "$GEN"
 mkdir -p \
@@ -53,7 +61,11 @@ mkdir -p \
   "$GEN/entrypoint" \
   "$GEN/account7702" \
   "$GEN/evidence" \
-  "$GEN/evidenceinterface"
+  "$GEN/evidenceinterface" \
+  "$GEN/ledgertwo" \
+  "$GEN/counciltwo" \
+  "$GEN/testverifier" \
+  "$GEN/plonkverifier"
 abigen --v2 \
   --abi "$WORK/LiabilityLedger.abi" \
   --bin "$WORK/LiabilityLedger.bin" \
@@ -148,5 +160,30 @@ abigen --v2 \
   --pkg evidenceinterface \
   --type IEvidenceRegistry \
   --out "$GEN/evidenceinterface/ievidence_registry.go"
+
+abigen --v2 \
+  --abi "$WORK/LiabilityLedgerV2.abi" \
+  --bin "$WORK/LiabilityLedgerV2.bin" \
+  --pkg ledgertwo \
+  --type LiabilityLedgerV2 \
+  --out "$GEN/ledgertwo/liability_ledger_v2.go"
+abigen --v2 \
+  --abi "$WORK/ConfidentialAnchorCouncil.abi" \
+  --bin "$WORK/ConfidentialAnchorCouncil.bin" \
+  --pkg counciltwo \
+  --type ConfidentialAnchorCouncil \
+  --out "$GEN/counciltwo/confidential_anchor_council.go"
+abigen --v2 \
+  --abi "$WORK/TestPlonkVerifier.abi" \
+  --bin "$WORK/TestPlonkVerifier.bin" \
+  --pkg testverifier \
+  --type TestPlonkVerifier \
+  --out "$GEN/testverifier/test_plonk_verifier.go"
+abigen --v2 \
+  --abi "$WORK/PlonkVerifier.abi" \
+  --bin "$WORK/PlonkVerifier.bin" \
+  --pkg plonkverifier \
+  --type PlonkVerifier \
+  --out "$GEN/plonkverifier/plonk_verifier.go"
 
 echo "generated $GEN"

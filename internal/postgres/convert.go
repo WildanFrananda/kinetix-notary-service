@@ -101,6 +101,11 @@ func recordOf(op string, row storegen.Epoch) (notary.EpochRecord, error) {
 		return notary.EpochRecord{}, err
 	}
 
+	confidential, err := confidentialOf(op, row)
+	if err != nil {
+		return notary.EpochRecord{}, err
+	}
+
 	return notary.EpochRecord{
 		Ledger: notary.LedgerIdentity{ChainID: values[3], Address: address},
 		Header: notary.EpochHeader{
@@ -116,6 +121,7 @@ func recordOf(op string, row storegen.Epoch) (notary.EpochRecord, error) {
 		State:           state,
 		AbandonedReason: reason,
 		SnapshotID:      snapshot,
+		Confidential:    confidential,
 	}, nil
 }
 

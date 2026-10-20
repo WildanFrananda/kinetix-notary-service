@@ -75,6 +75,18 @@ if [ -n "$offenders" ]; then
 fi
 
 offenders="$(
+  imports github.com/consensys/gnark \
+    | grep -v -e "^$MODULE/cmd/" -e "^$MODULE/internal/wiring$" -e "^$MODULE/internal/poseidon$" -e "^$MODULE/internal/plonk$" \
+      -e "^$MODULE/internal/ignition$" \
+    || true
+)"
+if [ -n "$offenders" ]; then
+  echo "gnark and gnark-crypto belong to internal/poseidon, internal/plonk and internal/ignition, but these import them:"
+  echo "$offenders" | sed 's/^/  /'
+  failed=1
+fi
+
+offenders="$(
   { imports google.golang.org/grpc; imports google.golang.org/protobuf; } \
     | grep -v -e "^$MODULE/cmd/" -e "^$MODULE/internal/wiring$" -e "^$MODULE/internal/payment$" \
       -e "^$MODULE/internal/mesh$" -e "^$MODULE/internal/metrics$" -e "^$MODULE/internal/protogen/" \

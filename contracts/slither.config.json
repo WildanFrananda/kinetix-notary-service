@@ -1,5 +1,5 @@
 {
-  "filter_paths": "dependencies|test|script|fork|rules",
+  "filter_paths": "dependencies|test|script|fork|rules|src/confidential/PlonkVerifier.sol",
   "exclude_dependencies": true,
   "detectors_to_exclude": "timestamp",
   "fail_on": "pedantic"

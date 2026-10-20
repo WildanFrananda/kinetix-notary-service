@@ -55,14 +55,37 @@ exec docker compose -f "$HERE/toolchain/compose.yaml" run --rm --no-deps -T \
   expect "admin" "$(call "defaultAdmin()(address)")" "$KINETIX_NOTARY_DIRECTORY_ADMIN_ADDRESS"
   expect "admin transfer delay" "$(call "defaultAdminDelay()(uint48)")" "$KINETIX_NOTARY_DIRECTORY_ADMIN_TRANSFER_DELAY_SECONDS"
   expect "foreign successor delay" "$(call "foreignSuccessorDelay()(uint64)")" "$KINETIX_NOTARY_FOREIGN_SUCCESSOR_DELAY_SECONDS"
-  show "generations" "$(call "generationCount()(uint256)")"
-  current="$(call "current()$generation")"
-  expect "current chain" "$(field "$current" 1)" "$KINETIX_NOTARY_CHAIN_ID"
-  expect "current ledger" "$(field "$current" 2)" "$KINETIX_NOTARY_LEDGER_ADDRESS"
-  expect "current court" "$(field "$current" 3)" "$KINETIX_NOTARY_COURT_ADDRESS"
-  expect "current withholding" "$(field "$current" 4)" "$KINETIX_NOTARY_WITHHOLDING_COURT_ADDRESS"
-  show "current genesis epoch" "$(field "$current" 5)"
-  show "current registered at" "$(field "$current" 8)"
+  count="$(call "generationCount()(uint256)")"
+  show "generations" "$count"
+  ledger="$(printf %s "${KINETIX_NOTARY_LEDGER_ADDRESS:-}" | tr A-F a-f)"
+  index=0
+  found=""
+  while [ -n "$ledger" ] && [ "$index" -lt "$count" ]; do
+    candidate="$(call "generation(uint256)$generation" "$index")"
+    if [ "$(field "$candidate" 2 | tr A-F a-f)" = "$ledger" ]; then
+      found="$candidate"
+      break
+    fi
+    index=$((index + 1))
+  done
+  if [ -z "$found" ]; then
+    printf "  WRONG %-24s %s\n" "generation" "the ledger ${KINETIX_NOTARY_LEDGER_ADDRESS:-(empty)} is no generation of this directory"
+    failed=1
+  else
+    show "generation" "$index"
+    expect "chain" "$(field "$found" 1)" "$KINETIX_NOTARY_CHAIN_ID"
+    expect "ledger" "$(field "$found" 2)" "$KINETIX_NOTARY_LEDGER_ADDRESS"
+    expect "court" "$(field "$found" 3)" "$KINETIX_NOTARY_COURT_ADDRESS"
+    expect "withholding" "$(field "$found" 4)" "$KINETIX_NOTARY_WITHHOLDING_COURT_ADDRESS"
+    expect "scheme" "$(field "$found" 7)" "${KINETIX_NOTARY_SCHEME:-1}"
+    show "genesis epoch" "$(field "$found" 5)"
+    show "registered at" "$(field "$found" 8)"
+    if [ "$index" -eq "$((count - 1))" ]; then
+      show "current" "yes"
+    else
+      show "current" "no: generation $((count - 1)) succeeds it"
+    fi
+  fi
   show "pending successor" "$(cast call "$directory" "pendingSuccessor()(($generation,uint64))" --rpc-url "$rpc")"
   if [ "${KINETIX_NOTARY_VERIFY_SOURCE:-}" = "true" ] && [ "${KINETIX_NOTARY_VERIFIER:-}" = "sourcify" ]; then
     verdict="$(curl -fsS --max-time 30 "https://sourcify.dev/server/v2/contract/$KINETIX_NOTARY_CHAIN_ID/$directory" \

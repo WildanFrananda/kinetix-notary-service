@@ -26,7 +26,7 @@ func proposalMessage(op string, proposal notary.EpochProposal, currency string) 
 		return nil, malformed(op, "the snapshot time of epoch %d does not fit int64", header.Number)
 	}
 
-	return &notaryv1.EpochProposal{
+	message := &notaryv1.EpochProposal{
 		SnapshotId:     string(proposal.SnapshotID),
 		Number:         header.Number,
 		PreviousDigest: header.PreviousDigest[:],
@@ -34,6 +34,66 @@ func proposalMessage(op string, proposal notary.EpochProposal, currency string) 
 		Total:          &commonv1.Money{AmountMinor: total, Currency: currency},
 		LeafCount:      header.LeafCount,
 		AsOf:           &timestamppb.Timestamp{Seconds: seconds},
+	}
+
+	if plan := proposal.Confidential; plan != nil {
+		if plan.Depth < 0 || plan.Depth > notary.MaxConfidentialDepth {
+			return nil, malformed(op, "epoch %d has depth %d", header.Number, plan.Depth)
+		}
+
+		message.Confidential = &notaryv1.ConfidentialProposal{
+			Scheme:          uint32(plan.Scheme),
+			Depth:           uint32(plan.Depth),
+			TreeRoot:        plan.TreeRoot[:],
+			TotalCommitment: plan.TotalCommitment[:],
+			Blinding:        plan.Blinding[:],
+		}
+	}
+
+	return message, nil
+}
+
+func confidentialOf(op string, message *notaryv1.ConfidentialProposal) (*notary.ConfidentialPlan, error) {
+	if message == nil {
+		return nil, nil
+	}
+
+	scheme, depth := message.GetScheme(), message.GetDepth()
+	if scheme < 2 || scheme > math.MaxUint16 {
+		return nil, malformed(op, "the confidential part names scheme %d", scheme)
+	}
+
+	if depth > notary.MaxConfidentialDepth {
+		return nil, malformed(op, "the confidential part has depth %d", depth)
+	}
+
+	treeRoot, ok := digestOf(message.GetTreeRoot())
+	if !ok {
+		return nil, malformed(op, "the tree root is not 32 bytes")
+	}
+
+	commitment, ok := digestOf(message.GetTotalCommitment())
+	if !ok {
+		return nil, malformed(op, "the total commitment is not 32 bytes")
+	}
+
+	var blinding notary.Blinding
+	if len(message.GetBlinding()) != len(blinding) {
+		return nil, malformed(op, "the blinding is not %d bytes", len(blinding))
+	}
+
+	copy(blinding[:], message.GetBlinding())
+
+	if blinding.IsZero() {
+		return nil, malformed(op, "the blinding is zero")
+	}
+
+	return &notary.ConfidentialPlan{
+		Scheme:          uint16(scheme),
+		Depth:           int(depth),
+		TreeRoot:        treeRoot,
+		TotalCommitment: commitment,
+		Blinding:        blinding,
 	}, nil
 }
 

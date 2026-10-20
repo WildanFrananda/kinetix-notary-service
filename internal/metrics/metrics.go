@@ -40,6 +40,10 @@ type Metrics struct {
 	cost         prometheus.Gauge
 	runway       prometheus.Gauge
 	ceilingHits  prometheus.Counter
+	proving      prometheus.Gauge
+	provingFails prometheus.Counter
+	accounts     prometheus.Gauge
+	capacity     prometheus.Gauge
 	leaseHeld    prometheus.Gauge
 	faults       prometheus.Gauge
 	silences     prometheus.Gauge
@@ -108,6 +112,22 @@ func New(build Build) *Metrics {
 			Name: "kinetix_notary_fee_ceiling_hits_total",
 			Help: "Times the fee ceiling held an anchor back.",
 		}),
+		proving: prometheus.NewGauge(prometheus.GaugeOpts{
+			Name: "kinetix_notary_proving_seconds",
+			Help: "How long the last scheme-2 proof took to make, failed or not.",
+		}),
+		provingFails: prometheus.NewCounter(prometheus.CounterOpts{
+			Name: "kinetix_notary_proving_failures_total",
+			Help: "Scheme-2 proofs the prover did not make.",
+		}),
+		accounts: prometheus.NewGauge(prometheus.GaugeOpts{
+			Name: "kinetix_notary_accounts",
+			Help: "Accounts in the newest snapshot an epoch was planned from.",
+		}),
+		capacity: prometheus.NewGauge(prometheus.GaugeOpts{
+			Name: "kinetix_notary_account_capacity",
+			Help: "Accounts one epoch of the current generation can hold; 0 for scheme 1, which has no fixed capacity.",
+		}),
 		leaseHeld: prometheus.NewGauge(prometheus.GaugeOpts{
 			Name: "kinetix_notary_lease_held",
 			Help: "1 while this process is the one writer, 0 while it waits.",
@@ -163,6 +183,10 @@ func New(build Build) *Metrics {
 		m.cost,
 		m.runway,
 		m.ceilingHits,
+		m.proving,
+		m.provingFails,
+		m.accounts,
+		m.capacity,
 		m.leaseHeld,
 		m.faults,
 		m.silences,
@@ -230,6 +254,19 @@ func (m *Metrics) Funds(balance *big.Int, meanCost uint64, runway time.Duration,
 
 func (m *Metrics) FeeCeilingHit() {
 	m.ceilingHits.Inc()
+}
+
+func (m *Metrics) Proved(elapsed time.Duration, failed bool) {
+	m.proving.Set(elapsed.Seconds())
+
+	if failed {
+		m.provingFails.Inc()
+	}
+}
+
+func (m *Metrics) Occupancy(accounts, capacity uint64) {
+	m.accounts.Set(float64(accounts))
+	m.capacity.Set(float64(capacity))
 }
 
 func (m *Metrics) ProvenFaults(total uint64) {

@@ -32,9 +32,14 @@ INSERT INTO epochs (
     leaf_count,
     as_of,
     currency,
-    snapshot_id
+    snapshot_id,
+    tree_root,
+    total_commitment,
+    blinding,
+    depth,
+    proof
 ) VALUES (
-    $1, 'built', $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12
+    $1, 'built', $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17
 );
 
 -- name: InsertAccounts :copyfrom
@@ -64,9 +69,9 @@ WHERE number = sqlc.arg(number) AND state = sqlc.arg(from_state)::text;
 
 -- name: InsertAttempt :exec
 INSERT INTO attempts (
-    tx_hash, epoch_number, nonce, raw_tx, gas_limit, max_fee_per_gas, max_priority_fee_per_gas, outcome, sent_at
+    tx_hash, epoch_number, nonce, raw_tx, gas_limit, max_fee_per_gas, max_priority_fee_per_gas, outcome, sent_at, kind
 ) VALUES (
-    $1, $2, $3, $4, $5, $6, $7, 'pending', $8
+    $1, $2, $3, $4, $5, $6, $7, 'pending', $8, $9
 );
 
 -- name: EpochAttempts :many
@@ -85,12 +90,13 @@ WHERE tx_hash = sqlc.arg(tx_hash);
 SELECT count(*) FROM epochs WHERE state = 'abandoned';
 
 -- name: RecentIncludedReceipts :many
-SELECT a.tx_hash, a.block_number, a.gas_used, a.effective_gas_price, a.l1_fee_wei
+SELECT a.epoch_number, a.tx_hash, a.block_number, a.gas_used, a.effective_gas_price, a.l1_fee_wei
 FROM attempts a
-JOIN epochs e ON e.number = a.epoch_number
-WHERE e.state = 'finalized' AND a.outcome = 'included'
-ORDER BY e.number DESC
-LIMIT sqlc.arg(row_limit);
+WHERE a.outcome = 'included'
+  AND a.epoch_number IN (
+    SELECT e.number FROM epochs e WHERE e.state = 'finalized' ORDER BY e.number DESC LIMIT sqlc.arg(epoch_limit)
+  )
+ORDER BY a.epoch_number DESC, a.tx_hash;
 
 -- name: EpochByNumber :one
 SELECT * FROM epochs WHERE number = $1;

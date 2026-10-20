@@ -27,7 +27,7 @@ func TestTheGaugeFollowsTheCourtAndANewFaultIsAnError(t *testing.T) {
 
 	var logs bytes.Buffer
 
-	watcher := watching.NewWatcher(court, observer, slog.New(slog.NewJSONHandler(&logs, nil)), 0)
+	watcher := watching.NewWatcher([]notary.Court{court}, observer, slog.New(slog.NewJSONHandler(&logs, nil)), 0)
 
 	watcher.Look(context.Background())
 	require.NotContains(t, logs.String(), `"level":"ERROR"`)
@@ -51,9 +51,40 @@ func TestACourtThatCannotBeReadLeavesTheGaugeAlone(t *testing.T) {
 
 	var logs bytes.Buffer
 
-	watching.NewWatcher(court, observer, slog.New(slog.NewJSONHandler(&logs, nil)), 0).Look(context.Background())
+	watcher := watching.NewWatcher([]notary.Court{court}, observer, slog.New(slog.NewJSONHandler(&logs, nil)), 0)
+	watcher.Look(context.Background())
 
 	require.Empty(t, observer.seen)
 	require.Contains(t, logs.String(), `"level":"WARN"`)
 	require.Contains(t, logs.String(), "ledger_unavailable")
+}
+
+func TestFaultsAgainstEveryGenerationsCourtAreCountedTogether(t *testing.T) {
+	current := &notarytest.Court{Total: 1}
+	earlier := &notarytest.Court{Total: 3}
+	observer := &recorder{}
+
+	var logs bytes.Buffer
+
+	watcher := watching.NewWatcher(
+		[]notary.Court{current, earlier},
+		observer,
+		slog.New(slog.NewJSONHandler(&logs, nil)),
+		0,
+	)
+
+	watcher.Look(context.Background())
+
+	earlier.Total = 4
+
+	watcher.Look(context.Background())
+
+	require.Equal(t, []uint64{4, 5}, observer.seen)
+	require.Contains(t, logs.String(), `"new":1`)
+
+	earlier.TotalErr = notary.Errf(notary.KindLedgerUnavailable, "test", nil, "down")
+
+	watcher.Look(context.Background())
+
+	require.Equal(t, []uint64{4, 5}, observer.seen)
 }

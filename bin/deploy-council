@@ -58,6 +58,19 @@ exec docker compose -f "$HERE/toolchain/compose.yaml" "$@" toolchain sh -c '
     echo "there is no ledger at $KINETIX_NOTARY_LEDGER_ADDRESS for the council to anchor" >&2
     exit 1
   fi
+  scheme="$(cast call "$KINETIX_NOTARY_LEDGER_ADDRESS" "scheme()(uint16)" --rpc-url "$KINETIX_NOTARY_RPC_URL")"
+  if [ "$scheme" != "${KINETIX_NOTARY_SCHEME:-1}" ]; then
+    echo "the ledger at $KINETIX_NOTARY_LEDGER_ADDRESS speaks scheme $scheme, deploy/$network.env scheme ${KINETIX_NOTARY_SCHEME:-1}" >&2
+    exit 1
+  fi
+  case "$scheme" in
+    1) script=script/DeployAnchorCouncil.s.sol:DeployAnchorCouncil ;;
+    2) script=script/DeployConfidentialAnchorCouncil.s.sol:DeployConfidentialAnchorCouncil ;;
+    *)
+      echo "no council speaks scheme $scheme" >&2
+      exit 1
+      ;;
+  esac
   if [ -n "${KINETIX_NOTARY_COUNCIL_ADDRESS:-}" ] \
     && [ "$(cast code "$KINETIX_NOTARY_COUNCIL_ADDRESS" --rpc-url "$KINETIX_NOTARY_RPC_URL")" != "0x" ]; then
     echo "deploy/$network.env already names a deployed council at $KINETIX_NOTARY_COUNCIL_ADDRESS" >&2
@@ -66,8 +79,7 @@ exec docker compose -f "$HERE/toolchain/compose.yaml" "$@" toolchain sh -c '
 
   cd contracts
   forge soldeer install >/dev/null
-  set -- script/DeployAnchorCouncil.s.sol:DeployAnchorCouncil \
-    --rpc-url "$KINETIX_NOTARY_RPC_URL" --keystore /keystores/notary-deployer
+  set -- "$script" --rpc-url "$KINETIX_NOTARY_RPC_URL" --keystore /keystores/notary-deployer
   if [ -n "$password_arg" ]; then
     set -- "$@" --password-file /run/keystore-password
   fi

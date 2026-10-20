@@ -2,6 +2,7 @@ package config_test
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -239,4 +240,43 @@ func TestTheWithholdingCourtIsRequired(t *testing.T) {
 	_, err := config.LoadDaemon(from(values))
 
 	require.ErrorContains(t, err, config.WithholdingKey+" is not set")
+}
+
+func TestTheDaemonSpeaksSchemeOneUnlessToldOtherwise(t *testing.T) {
+	cfg, err := config.LoadDaemon(from(daemonValues()))
+	require.NoError(t, err)
+	require.Equal(t, uint16(1), cfg.Scheme)
+	require.Empty(t, cfg.SRSPath)
+}
+
+func TestSchemeTwoNeedsTheSRSAndItsPin(t *testing.T) {
+	values := daemonValues()
+	values[config.SchemeKey] = "2"
+
+	_, err := config.LoadDaemon(from(values))
+	require.ErrorContains(t, err, config.SRSPathKey+" is not set")
+	require.ErrorContains(t, err, config.SRSSHA256Key+" is not set")
+
+	values[config.SRSPathKey] = "/srs/ignition-d8.srs"
+	values[config.SRSSHA256Key] = strings.Repeat("ab", 32)
+
+	cfg, err := config.LoadDaemon(from(values))
+	require.NoError(t, err)
+	require.Equal(t, uint16(2), cfg.Scheme)
+	require.Equal(t, "/srs/ignition-d8.srs", cfg.SRSPath)
+}
+
+func TestASchemeOrPinThatCannotBeRightIsRefused(t *testing.T) {
+	values := daemonValues()
+	values[config.SchemeKey] = "3"
+
+	_, err := config.LoadDaemon(from(values))
+	require.ErrorContains(t, err, config.SchemeKey+" must be 1 or 2")
+
+	values[config.SchemeKey] = "2"
+	values[config.SRSPathKey] = "/srs/ignition-d8.srs"
+	values[config.SRSSHA256Key] = strings.Repeat("AB", 32)
+
+	_, err = config.LoadDaemon(from(values))
+	require.ErrorContains(t, err, config.SRSSHA256Key+" must be 64 lowercase hex digits")
 }

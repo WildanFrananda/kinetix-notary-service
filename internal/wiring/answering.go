@@ -24,7 +24,8 @@ type answerChainParams struct {
 
 type answerChainResult struct {
 	dig.Out
-	Chain notary.AnswerChain
+	Writer *ethereum.AnswerWriter
+	Chain  notary.AnswerChain
 }
 
 func provideAnswerChain(p answerChainParams) (answerChainResult, error) {
@@ -33,18 +34,23 @@ func provideAnswerChain(p answerChainParams) (answerChainResult, error) {
 		return answerChainResult{}, err
 	}
 
-	return answerChainResult{
-		Chain: ethereum.NewAnswerWriter(p.Client, p.Settings, key, p.Config.MaxFeePerGasWei),
-	}, nil
+	writer := ethereum.NewAnswerWriter(p.Client, p.Settings, key, p.Config.MaxFeePerGasWei)
+
+	return answerChainResult{Writer: writer, Chain: writer}, nil
 }
 
 type answererParams struct {
 	dig.In
+	Client        *ethclient.Client
+	Settings      ethereum.Settings
 	Court         notary.WithholdingCourt
 	Chain         notary.AnswerChain
+	Writer        *ethereum.AnswerWriter
+	Earlier       []notary.Generation `name:"earlier"`
 	Source        notary.ProofSource
 	Registrations notary.RegistrationStore
 	Scheme        notary.Scheme
+	Confidential  notary.ConfidentialScheme
 	Observer      answering.Observer
 	Clock         func() time.Time
 	Log           *slog.Logger
@@ -52,19 +58,27 @@ type answererParams struct {
 }
 
 func provideAnswerer(p answererParams) *answering.Answerer {
+	venues := []answering.Venue{{Court: p.Court, Chain: p.Chain, FromBlock: p.Config.WithholdingFrom}}
+
+	for _, generation := range p.Earlier {
+		venues = append(venues, answering.Venue{
+			Court: ethereum.NewWithholdingCourt(p.Client, settingsOf(p.Settings, generation)),
+			Chain: p.Writer.At(generation.Withholding),
+		})
+	}
+
 	return answering.NewAnswerer(
-		p.Court,
-		p.Chain,
+		venues,
 		p.Source,
 		p.Registrations,
 		p.Scheme,
+		p.Confidential,
 		p.Observer,
 		p.Clock,
 		p.Log,
 		answering.Policy{
-			FromBlock: p.Config.WithholdingFrom,
-			Lookback:  answerLookbackBlocks,
-			Span:      p.Config.LogRange,
+			Lookback: answerLookbackBlocks,
+			Span:     p.Config.LogRange,
 		},
 	)
 }

@@ -224,25 +224,30 @@ func (s *Store) SaveBuilt(
 		return notary.EpochRecord{}, err
 	}
 
+	params := storegen.InsertEpochParams{
+		Number:         ints[0],
+		ChainID:        ints[1],
+		LedgerAddress:  ledger.Address[:],
+		Scheme:         int32(s.scheme),
+		PreviousDigest: header.PreviousDigest[:],
+		Root:           header.Root[:],
+		Digest:         plan.Digest[:],
+		Total:          ints[2],
+		LeafCount:      ints[3],
+		AsOf:           ints[4],
+		Currency:       plan.Currency,
+		SnapshotID:     snapshot,
+	}
+	if err := confidentialParams(op, plan.Confidential, &params); err != nil {
+		return notary.EpochRecord{}, err
+	}
+
 	err = s.fenced(ctx, op, lease, func(tx pgx.Tx, q *storegen.Queries) error {
 		if err := keepSecrets(ctx, op, q, plan.Accounts); err != nil {
 			return err
 		}
 
-		if err := q.InsertEpoch(ctx, storegen.InsertEpochParams{
-			Number:         ints[0],
-			ChainID:        ints[1],
-			LedgerAddress:  ledger.Address[:],
-			Scheme:         int32(s.scheme),
-			PreviousDigest: header.PreviousDigest[:],
-			Root:           header.Root[:],
-			Digest:         plan.Digest[:],
-			Total:          ints[2],
-			LeafCount:      ints[3],
-			AsOf:           ints[4],
-			Currency:       plan.Currency,
-			SnapshotID:     snapshot,
-		}); err != nil {
+		if err := q.InsertEpoch(ctx, params); err != nil {
 			return err
 		}
 
@@ -278,12 +283,13 @@ func (s *Store) SaveBuilt(
 	}
 
 	return notary.EpochRecord{
-		Ledger:     ledger,
-		Header:     header,
-		Digest:     plan.Digest,
-		Currency:   plan.Currency,
-		State:      notary.StateBuilt,
-		SnapshotID: plan.SnapshotID,
+		Ledger:       ledger,
+		Header:       header,
+		Digest:       plan.Digest,
+		Currency:     plan.Currency,
+		State:        notary.StateBuilt,
+		SnapshotID:   plan.SnapshotID,
+		Confidential: plan.Confidential,
 	}, nil
 }
 
@@ -362,8 +368,13 @@ func (s *Store) RecordAttempt(ctx context.Context, lease notary.Lease, attempt n
 			MaxFeePerGas:         ints[3],
 			MaxPriorityFeePerGas: ints[4],
 			SentAt:               pgtype.Timestamptz{Time: attempt.SentAt, Valid: true},
+			Kind:                 attempt.Kind.String(),
 		}); err != nil {
 			return err
+		}
+
+		if attempt.Kind != notary.AttemptForAnchor {
+			return nil
 		}
 
 		_, err := q.TransitionEpoch(ctx, storegen.TransitionEpochParams{
@@ -413,6 +424,11 @@ func attemptOf(op string, epoch uint64, row storegen.Attempt) (notary.Attempt, e
 		return notary.Attempt{}, notary.Errf(notary.KindStoreUnavailable, op, err, "")
 	}
 
+	kind, err := notary.ParseAttemptKind(row.Kind)
+	if err != nil {
+		return notary.Attempt{}, notary.Errf(notary.KindStoreUnavailable, op, err, "")
+	}
+
 	values := make([]uint64, 0, 4)
 
 	for _, v := range []int64{row.Nonce, row.GasLimit, row.MaxFeePerGas, row.MaxPriorityFeePerGas} {
@@ -435,6 +451,7 @@ func attemptOf(op string, epoch uint64, row storegen.Attempt) (notary.Attempt, e
 
 	return notary.Attempt{
 		Epoch: epoch,
+		Kind:  kind,
 		Anchor: notary.PreparedAnchor{
 			Hash:     hash,
 			Raw:      row.RawTx,
@@ -562,6 +579,8 @@ func (s *Store) RecentCosts(ctx context.Context, limit int32) ([]uint64, error) 
 	}
 
 	costs := make([]uint64, 0, len(rows))
+	last := int64(-1)
+
 	for _, row := range rows {
 		hash, err := digestOf(op, row.TxHash)
 		if err != nil {
@@ -578,7 +597,23 @@ func (s *Store) RecentCosts(ctx context.Context, limit int32) ([]uint64, error) 
 			return nil, err
 		}
 
-		costs = append(costs, cost)
+		if row.EpochNumber != last {
+			costs = append(costs, 0)
+			last = row.EpochNumber
+		}
+
+		sum := costs[len(costs)-1] + cost
+		if sum < cost {
+			return nil, notary.Errf(
+				notary.KindOverflow,
+				op,
+				nil,
+				"the cost of epoch %d does not fit 64 bits",
+				row.EpochNumber,
+			)
+		}
+
+		costs[len(costs)-1] = sum
 	}
 
 	return costs, nil

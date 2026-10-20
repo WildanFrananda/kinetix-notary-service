@@ -6,9 +6,13 @@ import (
 	"github.com/WildanFrananda/kinetix-notary-service/internal/notary"
 )
 
+type Digester interface {
+	EpochDigest(header notary.EpochHeader) notary.Digest
+}
+
 type Watch struct {
 	Signer    notary.ApprovalSigner
-	Scheme    notary.Scheme
+	Scheme    Digester
 	Approvals notary.ApprovalScheme
 	Council   notary.CouncilIdentity
 	Ledger    notary.Address

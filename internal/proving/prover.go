@@ -11,51 +11,73 @@ import (
 const cachedEpochs = 4
 
 type Prover struct {
-	source     notary.ProofSource
-	scheme     notary.Scheme
-	statements notary.StatementScheme
-	court      notary.Court
-	signer     notary.StatementSigner
-	identity   notary.CourtIdentity
-	mu         sync.Mutex
-	cache      map[uint64]proven
-	order      []uint64
+	source       notary.ProofSource
+	scheme       notary.Scheme
+	confidential notary.ConfidentialScheme
+	statements   notary.StatementScheme
+	signer       notary.StatementSigner
+	current      Venue
+	earlier      map[notary.LedgerIdentity]Venue
+	mu           sync.Mutex
+	cache        map[uint64]proven
+	order        []uint64
 }
 
 type proven struct {
 	accounts []notary.Account
-	tree     *notary.Tree
+	tree     notary.EpochTree
 	signer   notary.Address
 }
 
 func NewProver(
 	source notary.ProofSource,
 	scheme notary.Scheme,
+	confidential notary.ConfidentialScheme,
 	statements notary.StatementScheme,
-	court notary.Court,
 	signer notary.StatementSigner,
-	identity notary.CourtIdentity,
+	current Venue,
+	earlier []Venue,
 ) *Prover {
+	byLedger := make(map[notary.LedgerIdentity]Venue, len(earlier))
+	for _, venue := range earlier {
+		byLedger[venue.Ledger] = venue
+	}
+
 	return &Prover{
-		source:     source,
-		scheme:     scheme,
-		statements: statements,
-		court:      court,
-		signer:     signer,
-		identity:   identity,
-		cache:      map[uint64]proven{},
+		source:       source,
+		scheme:       scheme,
+		confidential: confidential,
+		statements:   statements,
+		signer:       signer,
+		current:      current,
+		earlier:      byLedger,
+		cache:        map[uint64]proven{},
 	}
 }
 
 func (p *Prover) CheckCourt(ctx context.Context) error {
+	if err := p.check(ctx, p.current); err != nil {
+		return err
+	}
+
+	for _, venue := range p.earlier {
+		if err := p.check(ctx, venue); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (p *Prover) check(ctx context.Context, venue Venue) error {
 	const op = "proving.Prover.CheckCourt"
 
-	identity, err := p.court.Identity(ctx)
+	identity, err := venue.Court.Identity(ctx)
 	if err != nil {
 		return err
 	}
 
-	if identity != p.identity {
+	if identity != venue.Identity {
 		return notary.Errf(
 			notary.KindWrongCourt,
 			op,
@@ -63,8 +85,8 @@ func (p *Prover) CheckCourt(ctx context.Context) error {
 			"the court answers as %s on chain %d, this notary signs for %s on chain %d",
 			identity.Address.Hex(),
 			identity.ChainID,
-			p.identity.Address.Hex(),
-			p.identity.ChainID,
+			venue.Identity.Address.Hex(),
+			venue.Identity.ChainID,
 		)
 	}
 
@@ -76,23 +98,24 @@ func (p *Prover) CheckCourt(ctx context.Context) error {
 		SiblingsHash: notary.Digest{4},
 	}
 
-	onChain, err := p.court.StatementDigest(ctx, sample)
+	onChain, err := venue.Court.StatementDigest(ctx, sample)
 	if err != nil {
 		return err
 	}
 
-	if local := p.statements.StatementDigest(p.identity, sample); local != onChain {
+	if local := p.statements.StatementDigest(venue.Identity, sample); local != onChain {
 		return notary.Errf(
 			notary.KindDisagreement,
 			op,
 			nil,
-			"the court hashes a statement to %s, this notary to %s",
+			"the court %s hashes a statement to %s, this notary to %s",
+			venue.Identity.Address.Hex(),
 			onChain.Hex(),
 			local.Hex(),
 		)
 	}
 
-	newest, err := p.court.SignerOf(ctx, math.MaxUint64)
+	newest, err := venue.Court.SignerOf(ctx, math.MaxUint64)
 	if err != nil {
 		return err
 	}
@@ -102,12 +125,33 @@ func (p *Prover) CheckCourt(ctx context.Context) error {
 			notary.KindSignerUnavailable,
 			op,
 			nil,
-			"the court's newest signer is %s and this notary holds no key for it",
+			"the newest signer of the court %s is %s and this notary holds no key for it",
+			venue.Identity.Address.Hex(),
 			newest.Hex(),
 		)
 	}
 
 	return nil
+}
+
+func (p *Prover) venueOf(record notary.EpochRecord) (Venue, error) {
+	if record.Ledger == p.current.Ledger {
+		return p.current, nil
+	}
+
+	if venue, ok := p.earlier[record.Ledger]; ok {
+		return venue, nil
+	}
+
+	return Venue{}, notary.Errf(
+		notary.KindDisagreement,
+		"proving.Prover.venueOf",
+		nil,
+		"epoch %d was anchored to %s on chain %d, which is neither this notary's ledger nor one before it",
+		record.Header.Number,
+		record.Ledger.Address.Hex(),
+		record.Ledger.ChainID,
+	)
 }
 
 func (p *Prover) Proofs(ctx context.Context, holder notary.Holder, ref EpochRef) (Bundle, error) {
@@ -139,7 +183,12 @@ func (p *Prover) Proofs(ctx context.Context, holder notary.Holder, ref EpochRef)
 		)
 	}
 
-	built, err := p.load(ctx, record)
+	venue, err := p.venueOf(record)
+	if err != nil {
+		return Bundle{}, err
+	}
+
+	built, err := p.load(ctx, venue, record)
 	if err != nil {
 		return Bundle{}, err
 	}
@@ -158,6 +207,7 @@ func (p *Prover) Proofs(ctx context.Context, holder notary.Holder, ref EpochRef)
 
 		claim := notary.Claim{
 			Ledger: record.Ledger,
+			Scheme: p.scheme.Version(),
 			Epoch:  record.Header.Number,
 			Entry:  notary.Entry{Commitment: account.Commitment, Amount: account.Liability.Amount},
 			Proof:  proof,
@@ -169,14 +219,18 @@ func (p *Prover) Proofs(ctx context.Context, holder notary.Holder, ref EpochRef)
 			},
 		}
 
+		if record.Confidential != nil {
+			claim.Scheme = record.Confidential.Scheme
+		}
+
 		statement := notary.StatementOf(p.statements, claim)
 
-		signature, err := p.signer.Sign(built.signer, p.statements.StatementDigest(p.identity, statement))
+		signature, err := p.signer.Sign(built.signer, p.statements.StatementDigest(venue.Identity, statement))
 		if err != nil {
 			return Bundle{}, err
 		}
 
-		claim.Statement = &notary.StatementSignature{Court: p.identity.Address, Signature: signature}
+		claim.Statement = &notary.StatementSignature{Court: venue.Identity.Address, Signature: signature}
 		claims = append(claims, claim)
 	}
 
@@ -217,7 +271,7 @@ func (p *Prover) resolve(ctx context.Context, ref EpochRef) (notary.EpochRecord,
 	return record, nil
 }
 
-func (p *Prover) load(ctx context.Context, record notary.EpochRecord) (proven, error) {
+func (p *Prover) load(ctx context.Context, venue Venue, record notary.EpochRecord) (proven, error) {
 	const op = "proving.Prover.load"
 
 	number := record.Header.Number
@@ -280,22 +334,12 @@ func (p *Prover) load(ctx context.Context, record notary.EpochRecord) (proven, e
 		entries[i] = notary.Entry{Commitment: account.Commitment, Amount: account.Liability.Amount}
 	}
 
-	tree, err := notary.BuildTree(p.scheme, number, entries)
+	tree, err := notary.RebuildEpochTree(p.scheme, p.confidential, record, entries)
 	if err != nil {
 		return proven{}, err
 	}
 
-	if root := tree.Root(); root.Hash != record.Header.Root || root.Sum != record.Header.Total {
-		return proven{}, notary.Errf(
-			notary.KindDisagreement,
-			op,
-			nil,
-			"the accounts stored for epoch %d do not rebuild the root it anchored",
-			number,
-		)
-	}
-
-	signer, err := p.court.SignerOf(ctx, number)
+	signer, err := venue.Court.SignerOf(ctx, number)
 	if err != nil {
 		return proven{}, err
 	}
@@ -305,7 +349,8 @@ func (p *Prover) load(ctx context.Context, record notary.EpochRecord) (proven, e
 			notary.KindSignerUnavailable,
 			op,
 			nil,
-			"the court names no signer for epoch %d",
+			"the court %s names no signer for epoch %d",
+			venue.Identity.Address.Hex(),
 			number,
 		)
 	}

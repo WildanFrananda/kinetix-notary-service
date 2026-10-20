@@ -8,4 +8,5 @@ type EpochRecord struct {
 	State           EpochState
 	AbandonedReason string
 	SnapshotID      SnapshotID
+	Confidential    *ConfidentialPlan
 }

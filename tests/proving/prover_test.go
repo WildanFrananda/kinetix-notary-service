@@ -12,11 +12,16 @@ import (
 	"github.com/WildanFrananda/kinetix-notary-service/internal/ethereum"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/keccak"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/notary"
+	"github.com/WildanFrananda/kinetix-notary-service/internal/poseidon"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/proving"
 	"github.com/WildanFrananda/kinetix-notary-service/tests/notarytest"
 )
 
-var ledgerID = notary.LedgerIdentity{ChainID: 84532, Address: notary.Address{0x4e, 0x86}}
+var (
+	ledgerID      = notary.LedgerIdentity{ChainID: 84532, Address: notary.Address{0x4e, 0x86}}
+	predecessorID = notary.LedgerIdentity{ChainID: 84532, Address: notary.Address{0x01, 0xd0}}
+	earlierCourt  = notary.CourtIdentity{ChainID: 84532, Address: notary.Address{0xc0, 0x01}}
+)
 
 func epoch(t *testing.T, number uint64, state notary.EpochState) (notary.EpochRecord, []notary.Account) {
 	t.Helper()
@@ -59,9 +64,10 @@ func source(t *testing.T, states ...notary.EpochState) *notarytest.ProofSource {
 }
 
 type rig struct {
-	prover *proving.Prover
-	court  *notarytest.Court
-	signer notary.Address
+	prover  *proving.Prover
+	court   *notarytest.Court
+	earlier *notarytest.Court
+	signer  notary.Address
 }
 
 func rigged(t *testing.T, s notary.ProofSource, extra ...*ecdsa.PrivateKey) rig {
@@ -70,10 +76,19 @@ func rigged(t *testing.T, s notary.ProofSource, extra ...*ecdsa.PrivateKey) rig 
 	key, address := notarytest.StatementKey(t, "signer")
 	scheme := keccak.NewScheme()
 	court := &notarytest.Court{IdentityValue: notarytest.CourtIdentity, Statements: scheme, Signer: address}
+	earlier := &notarytest.Court{IdentityValue: earlierCourt, Statements: scheme, Signer: address}
 	signer := ethereum.NewStatementSigner(append([]*ecdsa.PrivateKey{key}, extra...))
-	prover := proving.NewProver(s, scheme, scheme, court, signer, notarytest.CourtIdentity)
+	prover := proving.NewProver(
+		s,
+		scheme,
+		poseidon.NewScheme(),
+		scheme,
+		signer,
+		proving.Venue{Ledger: ledgerID, Court: court, Identity: notarytest.CourtIdentity},
+		[]proving.Venue{{Ledger: predecessorID, Court: earlier, Identity: earlierCourt}},
+	)
 
-	return rig{prover: prover, court: court, signer: address}
+	return rig{prover: prover, court: court, earlier: earlier, signer: address}
 }
 
 func newProver(t *testing.T, s notary.ProofSource) *proving.Prover {
@@ -379,6 +394,88 @@ func TestTheCourtIsCheckedBeforeTheNotaryServes(t *testing.T) {
 			}
 
 			require.Equal(t, c.kind, notary.KindOf(err))
+		})
+	}
+}
+
+func TestAnEpochOfAnEarlierGenerationIsSignedForThatGenerationsCourt(t *testing.T) {
+	s := source(t, notary.StateFinalized, notary.StateFinalized)
+	old := s.Records[0]
+	old.Ledger = predecessorID
+	s.Records[0] = old
+	r := rigged(t, s)
+	r.earlier.Signers = map[uint64]notary.Address{0: r.signer}
+	r.court.Signer = notary.Address{}
+	r.court.Signers = map[uint64]notary.Address{1: r.signer}
+	holder := notarytest.Holder(t, "principal-0001")
+	scheme := keccak.NewScheme()
+
+	for number, venue := range map[uint64]*notarytest.Court{0: r.earlier, 1: r.court} {
+		bundle, err := r.prover.Proofs(context.Background(), holder, proving.Number(number))
+		require.NoError(t, err, "epoch %d", number)
+		require.NotEmpty(t, bundle.Claims)
+
+		for _, claim := range bundle.Claims {
+			require.Equal(t, venue.IdentityValue.Address, claim.Statement.Court, "epoch %d", number)
+
+			recovered, err := venue.RecoverSigner(
+				context.Background(),
+				notary.StatementOf(scheme, claim),
+				claim.Statement.Signature,
+			)
+			require.NoError(t, err)
+			require.Equal(t, r.signer, recovered, "epoch %d", number)
+		}
+	}
+
+	bundle, err := r.prover.Proofs(context.Background(), holder, proving.Number(0))
+	require.NoError(t, err)
+	require.Equal(t, predecessorID, bundle.Claims[0].Ledger)
+
+	recovered, _ := r.court.RecoverSigner(
+		context.Background(),
+		notary.StatementOf(scheme, bundle.Claims[0]),
+		bundle.Claims[0].Statement.Signature,
+	)
+	require.NotEqual(t, r.signer, recovered)
+}
+
+func TestAnEpochOnALedgerOutsideTheLineageIsNeverSigned(t *testing.T) {
+	s := source(t, notary.StateFinalized)
+	stray := s.Records[0]
+	stray.Ledger = notary.LedgerIdentity{ChainID: 84532, Address: notary.Address{0xff}}
+	s.Records[0] = stray
+	r := rigged(t, s)
+
+	_, err := r.prover.Proofs(context.Background(), notarytest.Holder(t, "principal-0001"), proving.Number(0))
+
+	require.Equal(t, notary.KindDisagreement, notary.KindOf(err))
+	require.ErrorContains(t, err, "neither this notary's ledger nor one before it")
+}
+
+func TestEveryEarlierCourtIsCheckedBeforeTheNotaryServes(t *testing.T) {
+	_, stranger := notarytest.StatementKey(t, "a key this notary never had")
+
+	spoils := map[string]struct {
+		spoil func(*notarytest.Court)
+		kind  notary.Kind
+	}{
+		"a court somewhere else": {
+			func(c *notarytest.Court) { c.IdentityValue.Address = notary.Address{0xee} },
+			notary.KindWrongCourt,
+		},
+		"a court that hashes differently": {func(c *notarytest.Court) { c.Disagree = true }, notary.KindDisagreement},
+		"a newest signer this notary has no key for": {
+			func(c *notarytest.Court) { c.Signers = map[uint64]notary.Address{math.MaxUint64: stranger} },
+			notary.KindSignerUnavailable,
+		},
+	}
+	for name, c := range spoils {
+		t.Run(name, func(t *testing.T) {
+			r := rigged(t, source(t, notary.StateFinalized))
+			c.spoil(r.earlier)
+
+			require.Equal(t, c.kind, notary.KindOf(r.prover.CheckCourt(context.Background())))
 		})
 	}
 }

@@ -1,6 +1,7 @@
 package wiring
 
 import (
+	"context"
 	"log/slog"
 
 	"github.com/ethereum/go-ethereum/ethclient"
@@ -32,7 +33,6 @@ type generationReadersParams struct {
 	dig.In
 	Client   *ethclient.Client
 	Settings ethereum.Settings
-	Scheme   notary.Scheme
 }
 
 type generationReadersResult struct {
@@ -41,7 +41,47 @@ type generationReadersResult struct {
 }
 
 func provideGenerationReaders(p generationReadersParams) generationReadersResult {
-	return generationReadersResult{Readers: ethereum.NewReaders(p.Client, p.Settings, p.Scheme)}
+	return generationReadersResult{Readers: ethereum.NewReaders(p.Client, p.Settings)}
+}
+
+type earlierGenerationsParams struct {
+	dig.In
+	Directory notary.Directory
+	Settings  ethereum.Settings
+}
+
+type earlierGenerationsResult struct {
+	dig.Out
+	Earlier []notary.Generation `name:"earlier"`
+}
+
+func provideEarlierGenerations(p earlierGenerationsParams) (earlierGenerationsResult, error) {
+	lineage, err := p.Directory.Lineage(context.Background())
+	if err != nil {
+		return earlierGenerationsResult{}, err
+	}
+
+	earlier := make([]notary.Generation, 0, len(lineage))
+
+	for _, generation := range lineage {
+		if generation.LedgerIdentity() == p.Settings.Ledger {
+			break
+		}
+
+		if generation.ChainID == p.Settings.Ledger.ChainID {
+			earlier = append(earlier, generation)
+		}
+	}
+
+	return earlierGenerationsResult{Earlier: earlier}, nil
+}
+
+func settingsOf(settings ethereum.Settings, generation notary.Generation) ethereum.Settings {
+	settings.Ledger = generation.LedgerIdentity()
+	settings.Court = generation.Court
+	settings.Withholding = generation.Withholding
+
+	return settings
 }
 
 type directoryCheckParams struct {

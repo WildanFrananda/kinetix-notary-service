@@ -6,11 +6,12 @@ import (
 )
 
 type EpochPlan struct {
-	Header     EpochHeader
-	Digest     Digest
-	Currency   string
-	SnapshotID SnapshotID
-	Accounts   []Account
+	Header       EpochHeader
+	Digest       Digest
+	Currency     string
+	SnapshotID   SnapshotID
+	Accounts     []Account
+	Confidential *ConfidentialPlan
 }
 
 func PlanEpoch(
@@ -22,27 +23,9 @@ func PlanEpoch(
 	previous Digest,
 	snapshot Snapshot,
 ) (EpochPlan, error) {
-	const op = "notary.PlanEpoch"
-
-	liabilities := snapshot.Liabilities()
-
-	accounts := make([]Account, len(liabilities))
-	for i, liability := range liabilities {
-		salt, err := salts.Salt()
-		if err != nil {
-			return EpochPlan{}, Errf(KindUnknown, op, err, "drawing a salt")
-		}
-
-		if salt.IsZero() {
-			return EpochPlan{}, Errf(KindInvalidArgument, op, nil, "the salt source returned an all-zero salt")
-		}
-
-		secret, err := secretFor(secrets, known, AccountKey{Holder: liability.Holder, Kind: liability.Kind})
-		if err != nil {
-			return EpochPlan{}, err
-		}
-
-		accounts[i] = OpenAccount(scheme, liability, salt, secret)
+	accounts, err := openAccounts(scheme, salts, secrets, known, snapshot.Liabilities())
+	if err != nil {
+		return EpochPlan{}, err
 	}
 
 	plan, err := AssembleEpoch(scheme, number, previous, snapshot.AsOf(), snapshot.Currency(), accounts)
@@ -75,28 +58,9 @@ func AssembleEpoch(
 	currency string,
 	accounts []Account,
 ) (EpochPlan, error) {
-	const op = "notary.AssembleEpoch"
-
-	ordered := make([]Account, len(accounts))
-	copy(ordered, accounts)
-	sort.Slice(ordered, func(a, b int) bool {
-		return bytes.Compare(ordered[a].Commitment[:], ordered[b].Commitment[:]) < 0
-	})
-
-	entries := make([]Entry, len(ordered))
-	for i := range ordered {
-		if i > 0 && ordered[i].Commitment == ordered[i-1].Commitment {
-			return EpochPlan{}, Errf(
-				KindInvalidArgument,
-				op,
-				nil,
-				"two accounts of epoch %d share a commitment",
-				number,
-			)
-		}
-
-		ordered[i].Position = uint64(i)
-		entries[i] = Entry{Commitment: ordered[i].Commitment, Amount: ordered[i].Liability.Amount}
+	ordered, entries, err := orderAccounts(number, accounts)
+	if err != nil {
+		return EpochPlan{}, err
 	}
 
 	tree, err := BuildTree(scheme, number, entries)
@@ -115,6 +79,63 @@ func AssembleEpoch(
 		Currency: currency,
 		Accounts: ordered,
 	}, nil
+}
+
+func openAccounts(
+	scheme Scheme,
+	salts SaltSource,
+	secrets SecretSource,
+	known map[AccountKey]AccountSecret,
+	liabilities []Liability,
+) ([]Account, error) {
+	const op = "notary.PlanEpoch"
+
+	accounts := make([]Account, len(liabilities))
+	for i, liability := range liabilities {
+		salt, err := salts.Salt()
+		if err != nil {
+			return nil, Errf(KindUnknown, op, err, "drawing a salt")
+		}
+
+		if salt.IsZero() {
+			return nil, Errf(KindInvalidArgument, op, nil, "the salt source returned an all-zero salt")
+		}
+
+		secret, err := secretFor(secrets, known, AccountKey{Holder: liability.Holder, Kind: liability.Kind})
+		if err != nil {
+			return nil, err
+		}
+
+		accounts[i] = OpenAccount(scheme, liability, salt, secret)
+	}
+
+	return accounts, nil
+}
+
+func orderAccounts(number uint64, accounts []Account) ([]Account, []Entry, error) {
+	ordered := make([]Account, len(accounts))
+	copy(ordered, accounts)
+	sort.Slice(ordered, func(a, b int) bool {
+		return bytes.Compare(ordered[a].Commitment[:], ordered[b].Commitment[:]) < 0
+	})
+
+	entries := make([]Entry, len(ordered))
+	for i := range ordered {
+		if i > 0 && ordered[i].Commitment == ordered[i-1].Commitment {
+			return nil, nil, Errf(
+				KindInvalidArgument,
+				"notary.AssembleEpoch",
+				nil,
+				"two accounts of epoch %d share a commitment",
+				number,
+			)
+		}
+
+		ordered[i].Position = uint64(i)
+		entries[i] = Entry{Commitment: ordered[i].Commitment, Amount: ordered[i].Liability.Amount}
+	}
+
+	return ordered, entries, nil
 }
 
 func secretFor(secrets SecretSource, known map[AccountKey]AccountSecret, key AccountKey) (AccountSecret, error) {

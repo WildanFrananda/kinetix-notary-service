@@ -140,10 +140,14 @@ func (a *Anchorer) approve(ctx context.Context, record notary.EpochRecord) ([]no
 		proposed[i] = notary.ProposedAccount{Liability: account.Liability, Secret: account.Secret, Salt: account.Salt}
 	}
 
-	watched, err := a.quorum.Watch.Approve(
-		ctx,
-		notary.EpochProposal{SnapshotID: record.SnapshotID, Header: record.Header, Accounts: proposed},
-	)
+	proposal := notary.EpochProposal{SnapshotID: record.SnapshotID, Header: record.Header, Accounts: proposed}
+	if record.Confidential != nil {
+		statement := *record.Confidential
+		statement.Proof = nil
+		proposal.Confidential = &statement
+	}
+
+	watched, err := a.quorum.Watch.Approve(ctx, proposal)
 	if err != nil {
 		return nil, err
 	}
