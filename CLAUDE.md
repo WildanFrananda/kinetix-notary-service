@@ -624,6 +624,11 @@ A failure must never be reported as a definite answer. In this service that mean
   test logs wall time instead.
 - **`bin/inspect-directory` checks the generation that holds the file's ledger, not the current one.** Comparing with
   the current generation would have reported generation 1's own file `WRONG` from the moment it was succeeded.
+- **`COPY --chmod` gives the directories it creates the file's mode.** v1.6.0 copied the SRS with `--chmod=0444`, and
+  BuildKit made `/usr/local/share/kinetix-notary` `dr--r--r--` too: the user `notary` could not enter it, and the
+  cutover's first start refused with `CheckSRSFile … permission denied`. Scheme 1 never opens the file, so v1.6.0 ran
+  green on it for an hour. The final stage creates the directory with `install -d -m 0755` before the copy, and
+  build-and-push opens the SRS in the built image as `notary` before it pushes.
 - **A fake server that drops what it cannot place hides the reader's refusal.** The first evidence feed
   fake skipped a record with no position, so the reader's "without a position" refusal was never
   reached. Fakes send what they are given; the reader refuses.
