@@ -45,7 +45,8 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates curl \
     && rm -rf /var/lib/apt/lists/* \
     && groupadd --system --gid 10001 notary \
-    && useradd --system --uid 10001 --gid 10001 --no-create-home notary
+    && useradd --system --uid 10001 --gid 10001 --no-create-home notary \
+    && install -d -m 0755 /usr/local/share/kinetix-notary
 
 COPY --from=build /out/notaryd /out/notary-migrate /out/notary-verify /out/notary-watch /out/notary-sponsor \
     /out/notary-prove /usr/local/bin/

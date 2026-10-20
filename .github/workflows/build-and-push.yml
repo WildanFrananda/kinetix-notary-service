@@ -44,6 +44,14 @@ jobs:
           cache-to: type=gha,mode=max
           provenance: false
 
+      - name: The SRS opens as the user notaryd runs as, and is the pinned one
+        run: |
+          pin="$(sed -n 's/.*--checksum=sha256:\([0-9a-f]\{64\}\).*/\1/p' Dockerfile)"
+          got="$(docker run --rm --network none --entrypoint sha256sum "$IMAGE:${{ github.sha }}" /usr/local/share/kinetix-notary/ignition-d8.srs)"
+          echo "$got"
+          test -n "$pin"
+          test "${got%% *}" = "$pin"
+
       - name: Scan
         uses: aquasecurity/trivy-action@v0.36.0
         with:
