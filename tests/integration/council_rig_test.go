@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/WildanFrananda/kinetix-notary-service/internal/contractgen/council"
+	"github.com/WildanFrananda/kinetix-notary-service/internal/contractgen/counciltwo"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/ethereum"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/keccak"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/notary"
@@ -36,6 +37,35 @@ func (c *chain) deployCouncil(t *testing.T, ledgerAddress common.Address, member
 	address, tx, err := bind.DeployContract(
 		c.transactor(),
 		common.FromHex(council.AnchorCouncilMetaData.Bin),
+		c.client,
+		input,
+	)
+	require.NoError(t, err)
+	_, err = bind.WaitDeployed(context.Background(), c.client, tx.Hash())
+	require.NoError(t, err)
+
+	return address
+}
+
+func (c *chain) deployConfidentialCouncil(
+	t *testing.T,
+	ledgerAddress common.Address,
+	members ...notary.Address,
+) common.Address {
+	t.Helper()
+
+	addresses := make([]common.Address, len(members))
+	for i, member := range members {
+		addresses[i] = common.Address(member)
+	}
+
+	sort.Slice(addresses, func(a, b int) bool { return bytes.Compare(addresses[a][:], addresses[b][:]) < 0 })
+
+	input := counciltwo.NewConfidentialAnchorCouncil().
+		PackConstructor(c.from, big.NewInt(3600), ledgerAddress, addresses, 2, 7*24*3600)
+	address, tx, err := bind.DeployContract(
+		c.transactor(),
+		common.FromHex(counciltwo.ConfidentialAnchorCouncilMetaData.Bin),
 		c.client,
 		input,
 	)

@@ -45,6 +45,7 @@ verbosity = 3
 
 [lint]
 exclude_lints = ["block-timestamp", "reentrancy-events"]
+ignore = ["src/confidential/PlonkVerifier.sol"]
 
 [fmt]
 line_length = 120
@@ -58,6 +59,8 @@ ignore = [
     "src/LiabilityLedger.sol",
     "src/SumNode.sol",
     "src/SumTree.sol",
+    "src/confidential/PlonkVerifier.sol",
+    "test/support/TestPlonkVerifier.sol",
 ]
 tab_width = 4
 bracket_spacing = false

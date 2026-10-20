@@ -48,7 +48,8 @@ exec docker compose -f "$HERE/toolchain/compose.yaml" run --rm --no-deps -T \
     exit 1
   fi
   show "code bytes" "$(( (${#code} - 2) / 2 ))"
-  expect "scheme" "$(call "scheme()(uint16)")" "1"
+  scheme="${KINETIX_NOTARY_SCHEME:-1}"
+  expect "scheme" "$(call "scheme()(uint16)")" "$scheme"
   expect "default admin" "$(call "defaultAdmin()(address)")" "$KINETIX_NOTARY_ADMIN_ADDRESS"
   expect "admin delay seconds" "$(call "defaultAdminDelay()(uint48)")" "$KINETIX_NOTARY_ADMIN_TRANSFER_DELAY_SECONDS"
   holders=",$(printf %s "${KINETIX_NOTARY_ANCHORER_ROLE_HOLDERS:?KINETIX_NOTARY_ANCHORER_ROLE_HOLDERS is empty in deploy/$network.env}" | tr A-F a-f),"
@@ -63,8 +64,23 @@ exec docker compose -f "$HERE/toolchain/compose.yaml" run --rm --no-deps -T \
   if [ -n "${KINETIX_NOTARY_COUNCIL_ADDRESS:-}" ]; then
     expect "council holds role" "$(call "hasRole(bytes32,address)(bool)" "$role" "$KINETIX_NOTARY_COUNCIL_ADDRESS")" "$(listed "$KINETIX_NOTARY_COUNCIL_ADDRESS")"
   fi
-  expect "genesis epoch" "$(call "genesisEpoch()(uint64)")" "$KINETIX_NOTARY_GENESIS_EPOCH"
-  expect "genesis digest" "$(call "genesisDigest()(bytes32)")" "$KINETIX_NOTARY_GENESIS_DIGEST"
+  if [ "$scheme" = "2" ]; then
+    predecessor="$KINETIX_NOTARY_PREDECESSOR_LEDGER_ADDRESS"
+    sealed_head() {
+      cast call "$predecessor" "$@" --rpc-url "$rpc" | sed "s/ \[.*\]\$//"
+    }
+    expect "predecessor sealed" "$(sealed_head "isSealed()(bool)")" "true"
+    expect "genesis epoch" "$(call "genesisEpoch()(uint64)")" "$(sealed_head "nextEpoch()(uint64)")"
+    expect "genesis digest" "$(call "genesisDigest()(bytes32)")" "$(sealed_head "head()(bytes32)")"
+    expect "depth" "$(call "depth()(uint8)")" "$KINETIX_NOTARY_LEDGER_DEPTH"
+    verifier="$(call "verifier()(address)")"
+    show "verifier" "$verifier"
+    built="$(cd contracts && forge inspect PlonkVerifier deployedBytecode | cast keccak)"
+    expect "verifier code" "$(cast code "$verifier" --rpc-url "$rpc" | cast keccak)" "$built"
+  else
+    expect "genesis epoch" "$(call "genesisEpoch()(uint64)")" "$KINETIX_NOTARY_GENESIS_EPOCH"
+    expect "genesis digest" "$(call "genesisDigest()(bytes32)")" "$KINETIX_NOTARY_GENESIS_DIGEST"
+  fi
   show "next epoch" "$(call "nextEpoch()(uint64)")"
   show "head" "$(call "head()(bytes32)")"
   show "last snapshot" "$(call "lastAsOf()(uint64)")"

@@ -13,6 +13,7 @@ import (
 	"github.com/WildanFrananda/kinetix-notary-service/internal/answering"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/keccak"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/notary"
+	"github.com/WildanFrananda/kinetix-notary-service/internal/poseidon"
 	"github.com/WildanFrananda/kinetix-notary-service/tests/notarytest"
 )
 
@@ -52,6 +53,8 @@ type rig struct {
 	record        notary.EpochRecord
 	now           time.Time
 	policy        answering.Policy
+	from          uint64
+	earlier       []answering.Venue
 }
 
 func newRig(t *testing.T) *rig {
@@ -92,17 +95,17 @@ func newRig(t *testing.T) *rig {
 		observer:      &observed{},
 		record:        record,
 		now:           time.Unix(1760003600, 0).UTC(),
-		policy:        answering.Policy{FromBlock: 0, Lookback: 100_000, Span: 200},
+		policy:        answering.Policy{Lookback: 100_000, Span: 200},
 	}
 }
 
 func (r *rig) answerer() *answering.Answerer {
 	return answering.NewAnswerer(
-		r.court,
-		r.chain,
+		append([]answering.Venue{{Court: r.court, Chain: r.chain, FromBlock: r.from}}, r.earlier...),
 		r.source,
 		r.registrations,
 		keccak.NewScheme(),
+		poseidon.NewScheme(),
 		r.observer,
 		func() time.Time { return r.now },
 		slog.New(slog.NewTextHandler(io.Discard, nil)),
@@ -111,6 +114,18 @@ func (r *rig) answerer() *answering.Answerer {
 }
 
 func (r *rig) request(t *testing.T, account notary.Digest, tag byte, block uint64) notary.WithholdingRequest {
+	t.Helper()
+
+	return r.requestOn(t, r.court, account, tag, block)
+}
+
+func (r *rig) requestOn(
+	t *testing.T,
+	court *notarytest.WithholdingCourt,
+	account notary.Digest,
+	tag byte,
+	block uint64,
+) notary.WithholdingRequest {
 	t.Helper()
 
 	issued := notary.IssuedRegistration{
@@ -134,12 +149,12 @@ func (r *rig) request(t *testing.T, account notary.Digest, tag byte, block uint6
 		Holder:       issued.Registration.Holder,
 		DueAt:        notarytest.Unix(t, uint64(r.now.Add(time.Hour).Unix())),
 	}
-	r.court.Logged[block] = append(r.court.Logged[block], request)
-	r.court.States[notarytest.RequestKey{Registration: issued.Digest, Epoch: epoch}] = notarytest.RequestRecord{
+	court.Logged[block] = append(court.Logged[block], request)
+	court.States[notarytest.RequestKey{Registration: issued.Digest, Epoch: epoch}] = notarytest.RequestRecord{
 		State: notary.RequestOpen,
 		DueAt: request.DueAt,
 	}
-	r.court.Latest = max(r.court.Latest, block)
+	court.Latest = max(court.Latest, block)
 
 	return request
 }
@@ -188,6 +203,32 @@ func TestAnOpenRequestIsAnsweredWithAProofTheLedgerWouldAccept(t *testing.T) {
 	require.Equal(t, big.NewInt(42), r.observer.balance)
 }
 
+func TestARequestToAnEarlierGenerationsCourtIsAnsweredThereAndItsSilencesCount(t *testing.T) {
+	r := newRig(t)
+	earlier := notarytest.NewWithholdingCourt(
+		notary.CourtIdentity{ChainID: notarytest.LedgerIdentity.ChainID, Address: notary.Address{0xe0}},
+		keccak.NewScheme(),
+	)
+	earlier.MaxRange = 201
+	earlier.Silences = 3
+	chain := &notarytest.AnswerChain{Address: r.chain.Address}
+	r.earlier = []answering.Venue{{Court: earlier, Chain: chain}}
+	r.court.Latest = 400_000
+	r.court.Silences = 2
+	account := r.account(5)
+	r.requestOn(t, earlier, account.ID, 7, 360_000)
+
+	require.NoError(t, r.answerer().Tick(context.Background()))
+
+	require.Empty(t, r.chain.Answers)
+	require.Len(t, chain.Answers, 1)
+	require.Equal(t, account.ID, chain.Answers[0].Registration.Account)
+	require.Equal(t, uint64(5), r.observer.silences)
+	require.Equal(t, 0, r.observer.open)
+	require.Equal(t, uint64(300_000), r.court.Scanned[0][0])
+	require.Equal(t, uint64(260_000), earlier.Scanned[0][0])
+}
+
 func TestARequestNoLongerOpenIsLeftAlone(t *testing.T) {
 	for _, state := range []notary.RequestState{notary.RequestAnswered, notary.RequestUnanswered} {
 		t.Run(state.String(), func(t *testing.T) {
@@ -225,7 +266,7 @@ func TestTheScanStartsALookbackBehindTheHeadButNeverBeforeTheDeployBlock(t *test
 
 	r = newRig(t)
 	r.court.Latest = 250_000
-	r.policy.FromBlock = 240_000
+	r.from = 240_000
 	require.NoError(t, r.answerer().Tick(context.Background()))
 	require.Equal(t, uint64(240_000), r.court.Scanned[0][0])
 }

@@ -18,10 +18,14 @@ type chainEpoch struct {
 type pendingAnchor struct {
 	anchor notary.PreparedAnchor
 	header notary.EpochHeader
+	proof  *proofTx
 }
 
 type Chain struct {
 	Scheme        notary.Scheme
+	Confidential  notary.ConfidentialScheme
+	DepthValue    int
+	RefuseProofs  bool
 	From          notary.Address
 	Authorized    bool
 	Sealed        bool
@@ -44,6 +48,8 @@ type Chain struct {
 	mempool   map[uint64]pendingAnchor
 	receipts  map[notary.Digest]notary.AnchorReceipt
 	mined     map[notary.Digest]uint64
+	proven    map[statementKey]uint64
+	proofTxs  map[notary.Digest]proofTx
 }
 
 var _ notary.AnchorChain = (*Chain)(nil)
@@ -61,7 +67,17 @@ func NewChain(scheme notary.Scheme) *Chain {
 		mempool:    map[uint64]pendingAnchor{},
 		receipts:   map[notary.Digest]notary.AnchorReceipt{},
 		mined:      map[notary.Digest]uint64{},
+		proven:     map[statementKey]uint64{},
+		proofTxs:   map[notary.Digest]proofTx{},
 	}
+}
+
+func (c *Chain) digest(header notary.EpochHeader) notary.Digest {
+	if c.Confidential != nil {
+		return c.Confidential.EpochDigest(header)
+	}
+
+	return c.Scheme.EpochDigest(header)
 }
 
 func (c *Chain) Anchorer() notary.Address { return c.From }
@@ -138,6 +154,10 @@ func (c *Chain) Prepare(
 }
 
 func (c *Chain) Resign(previous notary.PreparedAnchor, fees notary.FeeQuote) (notary.PreparedAnchor, error) {
+	if proof, ok := c.proofTxs[previous.Hash]; ok {
+		return c.signProof(proof, previous.Nonce, previous.GasLimit, fees), nil
+	}
+
 	header, ok := c.headers[previous.Hash]
 	if !ok {
 		return notary.PreparedAnchor{}, notary.Errf(
@@ -152,7 +172,7 @@ func (c *Chain) Resign(previous notary.PreparedAnchor, fees notary.FeeQuote) (no
 }
 
 func (c *Chain) sign(header notary.EpochHeader, nonce, gas uint64, fees notary.FeeQuote) notary.PreparedAnchor {
-	digest := c.Scheme.EpochDigest(header)
+	digest := c.digest(header)
 
 	raw := append([]byte{}, digest[:]...)
 	for _, v := range []uint64{nonce, gas, fees.MaxFeePerGas, fees.MaxPriorityFeePerGas} {
@@ -176,7 +196,7 @@ func (c *Chain) refuse(ctx context.Context, header notary.EpochHeader) error {
 
 	head, _ := c.Head(ctx)
 
-	digest := c.Scheme.EpochDigest(header)
+	digest := c.digest(header)
 	switch {
 	case !c.Authorized:
 		return notary.Errf(notary.KindNotAnchorer, op, nil, "AccessControlUnauthorizedAccount")
@@ -198,6 +218,10 @@ func (c *Chain) refuse(ctx context.Context, header notary.EpochHeader) error {
 		return notary.Errf(notary.KindAnchorDeferred, op, nil, "SnapshotInFuture")
 	case header.AsOf.Seconds() <= head.LastAsOf:
 		return notary.Errf(notary.KindAnchorRefused, op, nil, "SnapshotNotAfterPrevious")
+	case c.Confidential != nil && header.Total != 0:
+		return notary.Errf(notary.KindAnchorRefused, op, nil, "TotalNotHidden")
+	case c.Confidential != nil && !c.provenAt(keyOf(header), c.block):
+		return notary.Errf(notary.KindAnchorDeferred, op, nil, "EpochNotProven")
 	}
 
 	return nil
@@ -224,7 +248,12 @@ func (c *Chain) Broadcast(_ context.Context, anchor notary.PreparedAnchor) error
 		}
 	}
 
-	c.mempool[anchor.Nonce] = pendingAnchor{anchor: anchor, header: c.headers[anchor.Hash]}
+	waiting := pendingAnchor{anchor: anchor, header: c.headers[anchor.Hash]}
+	if proof, ok := c.proofTxs[anchor.Hash]; ok {
+		waiting.proof = &proof
+	}
+
+	c.mempool[anchor.Nonce] = waiting
 
 	return nil
 }
@@ -270,12 +299,18 @@ func (c *Chain) Mine() {
 		EffectiveGasPrice: c.BaseFee + min(c.Tip, waiting.anchor.Fees.MaxPriorityFeePerGas),
 		L1FeeWei:          7,
 	}
-	if c.refuse(context.Background(), waiting.header) == nil {
+	if waiting.proof != nil {
+		receipt.GasUsed = 390_000
+		if !c.RefuseProofs && !c.provenAt(waiting.proof.key, c.block) {
+			receipt.Succeeded = true
+			c.proven[waiting.proof.key] = c.block
+		}
+	} else if c.refuse(context.Background(), waiting.header) == nil {
 		receipt.Succeeded = true
 
 		c.epochs = append(
 			c.epochs,
-			chainEpoch{digest: c.Scheme.EpochDigest(waiting.header), header: waiting.header, block: c.block},
+			chainEpoch{digest: c.digest(waiting.header), header: waiting.header, block: c.block},
 		)
 	}
 
@@ -305,6 +340,12 @@ func (c *Chain) Reorg() {
 		}
 	}
 
+	for key, block := range c.proven {
+		if block == c.block {
+			delete(c.proven, key)
+		}
+	}
+
 	c.epochs = kept
 	c.block--
 }
@@ -321,5 +362,5 @@ func (c *Chain) Foreign() {
 
 func (c *Chain) Plant(header notary.EpochHeader) {
 	c.block++
-	c.epochs = append(c.epochs, chainEpoch{digest: c.Scheme.EpochDigest(header), header: header, block: c.block})
+	c.epochs = append(c.epochs, chainEpoch{digest: c.digest(header), header: header, block: c.block})
 }

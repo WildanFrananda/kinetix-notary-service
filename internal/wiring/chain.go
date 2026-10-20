@@ -4,9 +4,11 @@ import (
 	"github.com/ethereum/go-ethereum/ethclient"
 	"go.uber.org/dig"
 
+	"github.com/WildanFrananda/kinetix-notary-service/internal/config"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/ethereum"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/keccak"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/notary"
+	"github.com/WildanFrananda/kinetix-notary-service/internal/poseidon"
 )
 
 type chainClientParams struct {
@@ -30,22 +32,24 @@ func provideChainClient(p chainClientParams) (chainClientResult, error) {
 
 type schemeResult struct {
 	dig.Out
-	Scheme      notary.Scheme
-	Statements  notary.StatementScheme
-	Withholding notary.WithholdingScheme
-	Approvals   notary.ApprovalScheme
-	Operations  notary.OperationScheme
+	Scheme       notary.Scheme
+	Confidential notary.ConfidentialScheme
+	Statements   notary.StatementScheme
+	Withholding  notary.WithholdingScheme
+	Approvals    notary.ApprovalScheme
+	Operations   notary.OperationScheme
 }
 
 func provideScheme() schemeResult {
 	scheme := keccak.NewScheme()
 
 	return schemeResult{
-		Scheme:      scheme,
-		Statements:  scheme,
-		Withholding: scheme,
-		Approvals:   scheme,
-		Operations:  scheme,
+		Scheme:       scheme,
+		Confidential: poseidon.NewScheme(),
+		Statements:   scheme,
+		Withholding:  scheme,
+		Approvals:    scheme,
+		Operations:   scheme,
 	}
 }
 
@@ -53,7 +57,7 @@ type ledgerParams struct {
 	dig.In
 	Client   *ethclient.Client
 	Settings ethereum.Settings
-	Scheme   notary.Scheme
+	Config   config.Daemon
 }
 
 type ledgerResult struct {
@@ -62,5 +66,5 @@ type ledgerResult struct {
 }
 
 func provideLedger(p ledgerParams) ledgerResult {
-	return ledgerResult{Ledger: ethereum.NewLedger(p.Client, p.Settings, p.Scheme)}
+	return ledgerResult{Ledger: ethereum.NewLedgerOfScheme(p.Client, p.Settings, p.Config.Scheme)}
 }

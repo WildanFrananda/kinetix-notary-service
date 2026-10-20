@@ -63,6 +63,11 @@ type estate struct {
 	council     notary.Address
 	watch       *approving.Approver
 	watchHTTP   http.Handler
+	watchKey    *ecdsa.PrivateKey
+	watchMember notary.Address
+	signer      notary.Address
+	pki         *notarytest.PKI
+	paymentAddr string
 	snapshots   uint64
 	dbURL       string
 	pool        *pgxpool.Pool
@@ -74,6 +79,7 @@ type estate struct {
 	omit        string
 	mu          sync.Mutex
 	now         time.Time
+	count       int
 }
 
 type running struct {
@@ -90,7 +96,27 @@ type running struct {
 	Answerer  *answering.Answerer
 }
 
+type confidential struct {
+	depth    uint8
+	verifier func(*chain, *testing.T) common.Address
+	srs      func(*testing.T) (string, string)
+}
+
+func testConfidential() *confidential {
+	return &confidential{
+		depth:    confidentialDepth,
+		verifier: (*chain).deployTestVerifier,
+		srs:      func(t *testing.T) (string, string) { return testSRSFile(t, confidentialDepth) },
+	}
+}
+
 func newEstate(t *testing.T) *estate {
+	t.Helper()
+
+	return newEstateOf(t, nil)
+}
+
+func newEstateOf(t *testing.T, two *confidential) *estate {
 	t.Helper()
 
 	base := os.Getenv(databaseURLKey)
@@ -102,12 +128,26 @@ func newEstate(t *testing.T) *estate {
 	ctx := context.Background()
 	latest, err := c.client.HeaderByNumber(ctx, nil)
 	require.NoError(t, err)
-	e := &estate{t: t, chain: c, ledger: c.identity(c.deploy(t)), now: time.Unix(int64(latest.Time), 0).UTC()}
+	e := &estate{t: t, chain: c, now: time.Unix(int64(latest.Time), 0).UTC(), count: 9}
 	watchKey, watch := memberKey(t)
-	council := c.deployCouncil(t, common.Address(e.ledger.Address), notary.Address(c.from), watch)
+
+	deployCouncil := c.deployCouncil
+
+	if two != nil {
+		e.count = 6
+		verifier := two.verifier(c, t)
+		e.ledger = c.identity(c.deployConfidentialLedger(t, verifier, two.depth, c.from, 0, notary.Digest{}, 0))
+		deployCouncil = c.deployConfidentialCouncil
+	} else {
+		e.ledger = c.identity(c.deploy(t))
+	}
+
+	council := deployCouncil(t, common.Address(e.ledger.Address), notary.Address(c.from), watch)
 	c.handOver(t, common.Address(e.ledger.Address), council)
 	e.council = notary.Address(council)
+	e.watchKey, e.watchMember = watchKey, watch
 	statementKey, statementSigner := notarytest.StatementKey(t, "estate-signer")
+	e.signer = statementSigner
 	e.court = notary.Address(c.deployCourt(t, common.Address(e.ledger.Address), statementSigner))
 	e.withholding = notary.Address(c.deployWithholding(t, common.Address(e.court)))
 	e.directory = notary.Address(
@@ -127,8 +167,10 @@ func newEstate(t *testing.T) *estate {
 	e.identity = notarytest.NewIdentity(t)
 
 	pki := notarytest.NewPKI(t)
+	e.pki = pki
 	e.payment = &notarytest.LiabilityServer{Script: e.snapshot}
 	address := notarytest.ServeLiabilities(t, pki.Issue(t, "kinetix.local", "payment"), e.payment)
+	e.paymentAddr = address
 	watchAddress := e.serveWatch(t, pki, address, watchKey)
 	evidenceKey, evidenceAnchorer := c.funded(t)
 	e.registry = notary.RegistryIdentity{
@@ -172,6 +214,15 @@ func newEstate(t *testing.T) *estate {
 		config.ReviewAddressKey:    feeds["review"],
 		config.EvidenceRegistryKey: e.registry.Address.Hex(),
 		config.EvidenceKeyKey:      "0x" + hex.EncodeToString(crypto.FromECDSA(evidenceKey)),
+	}
+
+	if two != nil {
+		path, sha := two.srs(t)
+		e.values[config.SchemeKey] = "2"
+		e.values[config.SRSPathKey] = path
+		e.values[config.SRSSHA256Key] = sha
+
+		putProverOnPath(t)
 	}
 
 	return e
@@ -271,15 +322,16 @@ func (e *estate) snapshot() []*paymentv1.StreamLiabilitySnapshotResponse {
 		return nil
 	}
 
-	accounts := make([]*paymentv1.LiabilityAccount, 0, 9)
-
 	e.mu.Lock()
 	omit := e.omit
+	count := e.count
 	e.snapshots++
 	sequence := e.snapshots
 	e.mu.Unlock()
 
-	for i := range 9 {
+	accounts := make([]*paymentv1.LiabilityAccount, 0, count)
+
+	for i := range count {
 		if fmt.Sprintf("principal-%d", i) == omit {
 			continue
 		}
@@ -349,13 +401,18 @@ func (e *estate) state(t *testing.T, epoch uint64) string {
 
 func (e *estate) tickUntil(t *testing.T, r running, epoch uint64, want string) {
 	t.Helper()
+	e.tickUntilWithin(t, r, epoch, want, 15*time.Second)
+}
+
+func (e *estate) tickUntilWithin(t *testing.T, r running, epoch uint64, want string, within time.Duration) {
+	t.Helper()
 	require.Eventually(
 		t,
 		func() bool {
 			_ = r.Anchorer.Tick(context.Background())
 			return e.state(t, epoch) == want
 		},
-		15*time.Second,
+		within,
 		100*time.Millisecond,
 		"epoch %d never became %s",
 		epoch,

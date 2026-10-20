@@ -9,12 +9,13 @@ import (
 
 type verifierParams struct {
 	dig.In
-	Directory  notary.Directory
-	Readers    notary.GenerationReaders
-	Scheme     notary.Scheme
-	Statements notary.StatementScheme
+	Directory    notary.Directory
+	Readers      notary.GenerationReaders
+	Scheme       notary.Scheme
+	Confidential notary.ConfidentialScheme
+	Statements   notary.StatementScheme
 }
 
 func provideVerifier(p verifierParams) *verifying.DirectoryVerifier {
-	return verifying.NewDirectoryVerifier(p.Directory, p.Readers, p.Scheme, p.Statements)
+	return verifying.NewDirectoryVerifier(p.Directory, p.Readers, p.Scheme, p.Confidential, p.Statements)
 }

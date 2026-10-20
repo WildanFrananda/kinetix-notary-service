@@ -3,8 +3,8 @@ set -eu
 
 HERE="$(cd "$(dirname "$0")/.." && pwd)"
 REPO="https://github.com/WildanFrananda/kinetix-contracts.git"
-TAG="v1.3.0"
-COMMIT="edc6c266cdd62d3635f96a14c796289f98447197"
+TAG="v1.6.0"
+COMMIT="563391d458c63db81f71e00e24f04c97fdd77aa7"
 DEST="$HERE/.contracts"
 GEN="$HERE/internal/protogen"
 MODULE="github.com/WildanFrananda/kinetix-notary-service/internal/protogen"

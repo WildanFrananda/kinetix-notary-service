@@ -9,15 +9,15 @@ import (
 )
 
 type Watcher struct {
-	court    notary.Court
+	courts   []notary.Court
 	observer Observer
 	log      *slog.Logger
 	interval time.Duration
 	seen     uint64
 }
 
-func NewWatcher(court notary.Court, observer Observer, log *slog.Logger, interval time.Duration) *Watcher {
-	return &Watcher{court: court, observer: observer, log: log, interval: interval}
+func NewWatcher(courts []notary.Court, observer Observer, log *slog.Logger, interval time.Duration) *Watcher {
+	return &Watcher{courts: courts, observer: observer, log: log, interval: interval}
 }
 
 func (w *Watcher) Run(ctx context.Context) {
@@ -36,10 +36,24 @@ func (w *Watcher) Run(ctx context.Context) {
 }
 
 func (w *Watcher) Look(ctx context.Context) {
-	total, err := w.court.TotalFaults(ctx)
-	if err != nil {
-		w.log.WarnContext(ctx, "the court could not be read", "kind", notary.KindOf(err).String(), "err", err.Error())
-		return
+	var total uint64
+
+	for _, court := range w.courts {
+		faults, err := court.TotalFaults(ctx)
+		if err != nil {
+			w.log.WarnContext(
+				ctx,
+				"the court could not be read",
+				"kind",
+				notary.KindOf(err).String(),
+				"err",
+				err.Error(),
+			)
+
+			return
+		}
+
+		total += faults
 	}
 
 	w.observer.ProvenFaults(total)

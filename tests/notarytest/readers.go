@@ -5,14 +5,19 @@ import (
 )
 
 type Readers struct {
-	Ledgers map[notary.Address]notary.Ledger
-	Courts  map[notary.Address]notary.Court
+	Ledgers       map[notary.Address]notary.Ledger
+	Confidentials map[notary.Address]notary.ConfidentialLedger
+	Courts        map[notary.Address]notary.Court
 }
 
 var _ notary.GenerationReaders = (*Readers)(nil)
 
 func (r *Readers) Ledger(generation notary.Generation) notary.Ledger {
 	return r.Ledgers[generation.Ledger]
+}
+
+func (r *Readers) Confidential(generation notary.Generation) notary.ConfidentialLedger {
+	return r.Confidentials[generation.Ledger]
 }
 
 func (r *Readers) Court(generation notary.Generation) notary.Court {

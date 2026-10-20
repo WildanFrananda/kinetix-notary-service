@@ -1,0 +1,1568 @@
+{
+  "scheme": 2,
+  "empty": "0x09c68ab1fed14354a4441268bedfd12fd5d2200429fce0418c681c5c772f885a",
+  "compressionCount": 24,
+  "compressions": [
+    {
+      "left": "0x0000000000000000000000000000000000000000000000000000000000000000",
+      "right": "0x0000000000000000000000000000000000000000000000000000000000000000",
+      "out": "0x292c3a4b9343aec63e584aefa8bedeaefae44e6d718451a75736def795109dfb"
+    },
+    {
+      "left": "0x30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000000",
+      "right": "0x30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000000",
+      "out": "0x0fbef2e10ba2026e48bfdaf86421918320e57e9ae7c387afcd68aa92dba9c2f1"
+    },
+    {
+      "left": "0x0000000000000000000000000000000000000000000000000000000000000000",
+      "right": "0x30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000000",
+      "out": "0x145946dcade70c8cb9f1644814e3342fef9c01cee2e791360c8ead8ae9221635"
+    },
+    {
+      "left": "0x30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000000",
+      "right": "0x0000000000000000000000000000000000000000000000000000000000000000",
+      "out": "0x11460626066b8e88ffd145b58838d01cd79754d25719dc39392cf36809548e6c"
+    },
+    {
+      "left": "0x130a9d72e746a5ca0ed0eea09d456f13e0294f860a4b798eeb7513d8cb74cef3",
+      "right": "0x00d48deb515486c2fd3183711a998868e5008b8cded93804900518fc9741d752",
+      "out": "0x1db17ed5c3f9d7887e890a17d1dc611618c920ebbbed4bf0dec585b2f76acd67"
+    },
+    {
+      "left": "0x0b01b55652138ae741f59a2c282a8272b44e7bf3b5d3b1e074c2b93740dd868a",
+      "right": "0x0b4902ac5c56a3c5f22d53120f59866e8c45f2b98839d5e9e9d1a2cdcbf9602f",
+      "out": "0x1b4f468c1dbf3156e5c9cd59492346d0f0a968694c59d8fc3edf7c9f1f2420f8"
+    },
+    {
+      "left": "0x1b48c2580464828baa207259cba3c370d67f8d3e6b539c6eff671b5ba5b783a1",
+      "right": "0x14591a3f4169920ab84aaad9ae23cd428ed14ddeab8810ed512f493ae3a81daf",
+      "out": "0x08034d4f5ac3c70b9c8fbf73ebc3d1108ce13c117f40284884ea5c7ad5e4f52c"
+    },
+    {
+      "left": "0x11637e26a72aadeeadb3a61d08020826d50746c5cddc60912aaab0dc16926a2c",
+      "right": "0x09fb18faec0ee51ae28d764b4efbb3a78d8971877a8beb7f12ff2a1037e9feb9",
+      "out": "0x0be9c19ce9b41dc3b6e18320013b55f1e099e9883a9ec534e37aae226ecb91c0"
+    },
+    {
+      "left": "0x189ee2a891380ebaf8582b5d11929c4aa647cb46b2056fec312f52e17e219a6f",
+      "right": "0x12f5a283945d74e11b9782f41ff45d07dd8c87dbdfc76526527ac91bf9963796",
+      "out": "0x0163d12d9f554a113ae40c2f479629342051a18562f872685a716dde7f25e2d3"
+    },
+    {
+      "left": "0x0f42794c9c73669435a97a632ea68da450f575394f43f1ac82e61d3460d6b95d",
+      "right": "0x05181648c93c15e2b703e482ad0eed0cdf3d0aad48ec295191a1ecad3a61738c",
+      "out": "0x3013916664d39f8093de4a9de5100393cb9c1b8a876073b15eed583c6fbf0832"
+    },
+    {
+      "left": "0x1e6e323cb5d0241d442d855224700c69b7618e651a16ec272d7ad3d046f323a0",
+      "right": "0x101c65c69aee9672917f2c063e35a11b331c9d8b37173222f0a46a8dea27d044",
+      "out": "0x03c1c22f91e8ac1e8a28c214eae27e77d6c3d6cc64530e0f7614e9eb69ab2261"
+    },
+    {
+      "left": "0x2155cb67c281860098543d4dae3363b486f2c6bcd017603b9a27705460e6aeb7",
+      "right": "0x176e87044e545a7d473b7aaa1e3779cf4f3add5c430e64983b8ae4c27d6734e4",
+      "out": "0x20c5a607f349248294433ce575754f6e358460b8a47bd6c54cf85ee8d3307f3e"
+    },
+    {
+      "left": "0x07cb59d05c6aaa1770fa960342f933067e85effdc35fe8ba5dd8bad91a4ffa1f",
+      "right": "0x002c147a8edacfd95a27c4f9a995f5438a3ac59cd162e1ab785bf2ae44992a37",
+      "out": "0x21298cc1b2849c336b5f49191757a87b9965c7ee7533faaab93e60e3d7dfb0b3"
+    },
+    {
+      "left": "0x04facb1865ea7474911e53db3bb23463f56e80a50f27301a8197ed8155deeaa7",
+      "right": "0x0526ce9d49e82c98716a7716903f88686a93c486176793b24ef4e9d4edc5b558",
+      "out": "0x0abc2adaf9e33ae24cc54330d7ec23bddc03c4da69827f8afc0f2974f33ca44c"
+    },
+    {
+      "left": "0x135eafb6b9d5340412275c4ed55e7358e59a1a459a8a8cf7fd33f55ca72f273d",
+      "right": "0x2b2be7caf3b9abd5dfb8c687ee27bbfb2958f50f927c2fa058553bc96210abcc",
+      "out": "0x229638bc5e6236e466f9de80a9dd261bd69cfd84dcc387f3acc3c93011bab1e1"
+    },
+    {
+      "left": "0x15f9653de27b26e3b3aeee8e8bf3ab9a3ff0ccd42153571d30e16e5a7272923a",
+      "right": "0x0d5a24526b01ac290268eb8d30a9fd447deceeb0c8bed95073bdbd8d478e9c8d",
+      "out": "0x0e233384fbd8af602090dc262dc0e456fc70f64b0def634321138ae0f5596736"
+    },
+    {
+      "left": "0x0f523e58ac558dc6be11d88664b7757bd2d1c7590a00f0e7c11db836ca5f8ced",
+      "right": "0x1cf38ba2253433de729426042ae0096f1892eec0dbcf08f2990d27e9f38bdbbd",
+      "out": "0x0d3ebe2cbc6ed617cd3ae78bc2faccadadcaba8a22d422449c25d0ed92ab7f7b"
+    },
+    {
+      "left": "0x2658294e66db5aa1f3bd9039fc2d1b7642a66d2f26aee5c16a571476c7f4e7de",
+      "right": "0x128ccbbb1b510719f6faeb5f4e0e4dcf4f5c20f8d667ba10c541c6fc46a308ac",
+      "out": "0x0eb34f6a22fc531c45b126667863971a6b536646c10fdf9965ea0d38da0382c9"
+    },
+    {
+      "left": "0x2cdd8ac51f9f8cf7da233b4723c07e28226407c847ee924a3b93f5e15c89b9d3",
+      "right": "0x2bb59063dd0d0be21d55438c888a3a5c74b3fc85bbd77e7d52e08a803a2a3d67",
+      "out": "0x281a66094c948653494284e9a9770159767b09808ecd4efad8164670a93628d7"
+    },
+    {
+      "left": "0x03bf0f81c639c8e9abb248f3ea73e698cd5d4dd581efa01b9e2875d008509b0c",
+      "right": "0x09b5fb935c49d88b9a86bb269cebb0975354ccf8726119b4c30f9b0ef0b30acd",
+      "out": "0x0300ce6babe3218c8bbc4d0a8eee423627d789cb9f6cf2876dff64969cd9c976"
+    },
+    {
+      "left": "0x291fc1abe2832b68ad821bb7ae6216ed559341a253fb3ffdd23704595f8b5017",
+      "right": "0x1434a4349dd2ba4055ec5f3596617d9ff13164eac1c51be2d02483b282d4a232",
+      "out": "0x055785818722a9930903a5b3d951efb63604037f30089f4d9becaf0380dad245"
+    },
+    {
+      "left": "0x0dae2d2c744864f8c90107ea722df7eddb2bd1bb5f761bafe7ca6905f257ca95",
+      "right": "0x0423298b2e7676c5148d79cc6621f1813755456a06d48147ca75184608334766",
+      "out": "0x2258fae071be141f3538a487b9975a7f3f856f0677ea3ed8cc134243bf49bd01"
+    },
+    {
+      "left": "0x074628aa02e33cd6584af999d8b9f4c4dc87ceffc7d0f9109f6a357f32c66022",
+      "right": "0x00baa47ff57694d7d358078ca8455b5af7eba194dfede3e52d9ef241a77b1404",
+      "out": "0x04336e2648085a716254c343762d65f1eb636925d77c5802e30c8946c6d05a08"
+    },
+    {
+      "left": "0x24f8942d6959e58ead9dd0f0debd53c7742b356324446b05a3320d211d2140d8",
+      "right": "0x149fe055c5e77e85cac7e72f5ea63fcc8ec573aa78ebc7283cffd5927d636f72",
+      "out": "0x14f61ef59c0a42049eff38b858e7790dc7d2e3d6b60613ced57af2bddbb93eb1"
+    }
+  ],
+  "leafCount": 20,
+  "leaves": [
+    {
+      "epoch": "0",
+      "commitment": "0x9cde0b4a952d8788804f730306ae857f80957653e1f4e1f8863c6bc63bbb83e9",
+      "amount": "0",
+      "hash": "0x0c210a75bea079de9688c7a024c9315a8f3439287910218af1e959a288580f87"
+    },
+    {
+      "epoch": "0",
+      "commitment": "0xdc3105ff624b97bfbb819f7c612433f53cd87965c071ca25c3358f5265c094bc",
+      "amount": "1",
+      "hash": "0x2d6c668ab05a4576820b51426131a9bfc1a59dd64aadfc787c19f7efb9ebf3a6"
+    },
+    {
+      "epoch": "0",
+      "commitment": "0x7c2400254d8d1096c90e33bfbd806ee45948883b4127f045f10dac7a202397b7",
+      "amount": "1000000",
+      "hash": "0x1a0ce116e542170498ace3e1fb9cab93151d1e9bac9a2b6b5e71e50dc278b0b6"
+    },
+    {
+      "epoch": "0",
+      "commitment": "0x7b9e27e7344c995bccee686eaf31678352e40197b49cef4ede5455a8ac3efbf1",
+      "amount": "18446744073709551615",
+      "hash": "0x119c00399f164ac0baa595b2febde1ec44d25a0ec07997553aef4bbdc50b6558"
+    },
+    {
+      "epoch": "1",
+      "commitment": "0x9babc86e28bc772df17a2aefb1587cfa3f98b1b292eade13175bf56b9259e0c5",
+      "amount": "0",
+      "hash": "0x2e279162f4d5f1417e8a6c64aeb077846f23222add2d07faf27ea0fc1d05a7a9"
+    },
+    {
+      "epoch": "1",
+      "commitment": "0x7effbc6ad083120a88f11a1e5bbd0fa0c1df48062e4a4971a213963310ea909a",
+      "amount": "1",
+      "hash": "0x0867b40dd1449c99122404b95fcd8f30c2203467077d93a5da2c3912fcb42496"
+    },
+    {
+      "epoch": "1",
+      "commitment": "0x5db0e01df998c843d1ce615a6cbd9392799c15a30c842270a117039c0a879d4d",
+      "amount": "1000000",
+      "hash": "0x1066dccb09587b7df3b84c4c4155e7c2561c7345a63b40d7f81dfa745c223b88"
+    },
+    {
+      "epoch": "1",
+      "commitment": "0x9bdef2ec64802b5efea7202a3d1e5d1a08d84607c8ac3700f0529454be554c79",
+      "amount": "18446744073709551615",
+      "hash": "0x0d440b8aa6c244f154b1515641c6589268fafb223055c786c8e7c1ce0eeca67c"
+    },
+    {
+      "epoch": "7",
+      "commitment": "0x1bb61b9b439acb40ce142a3bf7a8fb810fa5bb78a7683031fb331a884c807822",
+      "amount": "0",
+      "hash": "0x199723ebbfc7370f5fcb5aab83767ac33b3224eae8d6ae35a23cd2cdf709c0ef"
+    },
+    {
+      "epoch": "7",
+      "commitment": "0x4a2806b29a69e7b62173ee2cf41fee2e249429c26a08df77a93057eea7a240a3",
+      "amount": "1",
+      "hash": "0x20d96d462e45d6073db98defbfe0f3adfd62adf7c9f010f72b17ab3ad543138b"
+    },
+    {
+      "epoch": "7",
+      "commitment": "0x1ff03ede6c45531f76ab8065c32b6b51a3c9ae2c82ecc3baa9694243c55b2a06",
+      "amount": "1000000",
+      "hash": "0x1fe59cf372dccce5385f92ad9cd8bb3950113467fa290fca3c6c77678898aac2"
+    },
+    {
+      "epoch": "7",
+      "commitment": "0xde58804495b68f546ed44e4a3b74ca063df9540964cafb95ea16d831a4c6034e",
+      "amount": "18446744073709551615",
+      "hash": "0x2eb1b93a73c015359f6705a46b973229134b4f33e11fc7b3a37c4bf5dc528ea6"
+    },
+    {
+      "epoch": "1099511627776",
+      "commitment": "0x5b4220b546748417237542f902918162de72952ff18a625a94fbec9c52cdf888",
+      "amount": "0",
+      "hash": "0x0bd428858be4566be1d6df2d2f93bd13fbabdbb95c4161e56eaa14b7e04848ca"
+    },
+    {
+      "epoch": "1099511627776",
+      "commitment": "0x48cfff231fee887f59225fff01c196e4d420235e75d1b884076929030fc16fce",
+      "amount": "1",
+      "hash": "0x1f70492857bc7b1f0e030e0b5d9448d0354f926d9011182b69b7be800c230e00"
+    },
+    {
+      "epoch": "1099511627776",
+      "commitment": "0x4751b3450989c375dfa7f0a85eac5ffbfc6f01a081853c31dc28ac9c19d43c76",
+      "amount": "1000000",
+      "hash": "0x027e0b5b96183bb17d49ca567ebecb4a3693e6a6d425125720d4d513c519582f"
+    },
+    {
+      "epoch": "1099511627776",
+      "commitment": "0xb3fc667e19979d6fbedc9c5ac38df05df0112cc0e28094e787ef12c38950a0fe",
+      "amount": "18446744073709551615",
+      "hash": "0x2cf8d3297db0339f47a17f66a1a77acdf73d4196ccfbbfab4e8e41e4ace35638"
+    },
+    {
+      "epoch": "18446744073709551615",
+      "commitment": "0x10b930d8bb04d802246f1065ba9ca8ecba2d0b5ca75a78f6706de8f9f5b90042",
+      "amount": "0",
+      "hash": "0x2dc5c731052b18780bd87c899e72134bf87e2e28f64a1951b4517a634c92a9ba"
+    },
+    {
+      "epoch": "18446744073709551615",
+      "commitment": "0x638d23bf048279029ec9e28e40a37d891ec25735d000467c3147bda2709fa9b4",
+      "amount": "1",
+      "hash": "0x2cac5cbba69c515baea85916801ffcb57fd9f192c87a6b5188c063e6386ca55d"
+    },
+    {
+      "epoch": "18446744073709551615",
+      "commitment": "0xb2d818fb05f421dcc409c7d1621fa62f136da9e9cc8294c539ca5d7982737f5c",
+      "amount": "1000000",
+      "hash": "0x0f4074a8fb2c6b282e1451e7f8d812ebf16aa5e6e7e1529686fcc2bca74ad6c8"
+    },
+    {
+      "epoch": "18446744073709551615",
+      "commitment": "0xf2b60e2ed8772992c73aeb575254dc97807e352429478ca4d489fa4613e47171",
+      "amount": "18446744073709551615",
+      "hash": "0x0ac592576147a4f7975e19e5874b52d412e053e6dbd8e5d8890527a5c361b0cb"
+    }
+  ],
+  "bindingCount": 6,
+  "bindings": [
+    {
+      "treeRoot": "0x1ec8b6d3aff72c4f995b50b36e46bc92c6485f3264f0d912cd94f89411b611d2",
+      "totalCommitment": "0x296aaf6dd23091efd76cf7e64485509cbccbd68d7f58f7f68790e829e9951b00",
+      "root": "0x0af1e09e3705fe21bbae64f59cf8dc0628807d7ed8b52907d4042f2395bba313"
+    },
+    {
+      "treeRoot": "0x1a1c6e27eff8fbb5959f525e7c9f9ce9a7f5e2859540a3971b7ddd9a8543ee26",
+      "totalCommitment": "0x1cc97534ecd9114735f559e872b682f1c083746eb79cd8fd0db3797f7418a3fe",
+      "root": "0x272c2eb2a57fa811e00d20e1be1ade552c0a895d49bf5d2412e09db7fde44be8"
+    },
+    {
+      "treeRoot": "0x1f20cbf20c1024453d83ff8f2e1e4fdd2bd2b1fa0654fa5e4260add37daa6138",
+      "totalCommitment": "0x20fa4ccce23060798791943c389a948dbc09ff433123effd0ecb880d747bd67f",
+      "root": "0x6e684bd26ca16022f2e441daa71c117a952aff6655ce4cac3993139a54086722"
+    },
+    {
+      "treeRoot": "0x0a551427033c797ff5b444fce72d34fe515f0ddd994b1de5718effc7b7984fa4",
+      "totalCommitment": "0x0340e55d817e071caeff3faff9b1dc116026818ce36d4e9a476e8076ae68cfb4",
+      "root": "0x0e727b4c485c747ffc699a7c5a61739b8c2a8664a06713c7ffcf87db9098282c"
+    },
+    {
+      "treeRoot": "0x06d110a224f3edd99da0d2118aed00598a50dc93d40a52dd144a7115011bcdeb",
+      "totalCommitment": "0x2960a625e0a720df8912aef9ca8aae9a995f0a44260bf9dcd4a8af979890283d",
+      "root": "0xc5fbcc537f83e75adf4892174e699468e86fae8c377af211d09805e2aa7fe54d"
+    },
+    {
+      "treeRoot": "0x136e7dab58699657c1801ed44d6f14470bddf918b26a6bc353ed2108b9f74c5d",
+      "totalCommitment": "0x0fc79732efe6b6f5c8e21216f77c807376c4ba1ad2e59eeb6048cdee72405e4b",
+      "root": "0x8574664bbb5bc6c91c4d39a839d0de52fca7d249217fc113f3462f6002bddf19"
+    }
+  ],
+  "treeCount": 10,
+  "trees": [
+    {
+      "epoch": "0",
+      "leafCount": "0",
+      "depth": 0,
+      "treeRoot": "0x09c68ab1fed14354a4441268bedfd12fd5d2200429fce0418c681c5c772f885a",
+      "commitments": [],
+      "amounts": [],
+      "proofs": []
+    },
+    {
+      "epoch": "1",
+      "leafCount": "1",
+      "depth": 0,
+      "treeRoot": "0x019ab6791bf40cf14e20c60ada9d63b1a3b940232859c16f6ae6e2a1465b024d",
+      "commitments": [
+        "0x42d2d341faf81549d366ea693c67454eaf033009dca7def507ea93836262a30c"
+      ],
+      "amounts": [
+        "5882252843535475406"
+      ],
+      "proofs": [
+        {
+          "index": "0",
+          "siblingHashes": [],
+          "siblingSums": []
+        }
+      ]
+    },
+    {
+      "epoch": "2",
+      "leafCount": "1",
+      "depth": 2,
+      "treeRoot": "0x18a1d12ef3e366da7a5b1fe5adaf93a3a86418730abd47b72da6dc48ea50561d",
+      "commitments": [
+        "0xc21a57362d5cb758ec6b7a3c050ec156f43b88ca768f06c5d39032e4031f7421"
+      ],
+      "amounts": [
+        "1709548027166591575"
+      ],
+      "proofs": [
+        {
+          "index": "0",
+          "siblingHashes": [
+            "0x09c68ab1fed14354a4441268bedfd12fd5d2200429fce0418c681c5c772f885a",
+            "0x2124c6eef93f5355944fb06f2254dc0ff5290412e8a0ab23d6854ef3dcb1b146"
+          ],
+          "siblingSums": [
+            "0",
+            "0"
+          ]
+        }
+      ]
+    },
+    {
+      "epoch": "3",
+      "leafCount": "3",
+      "depth": 2,
+      "treeRoot": "0x2602efad85d2bb99ba73a41c426db44bb2d98c6eb45653676698d0af9bcb49fd",
+      "commitments": [
+        "0xc58f88e764d54ae314f7b2644821b2533352985a26f76c3577f498b06e314b70",
+        "0xba8132eb813d96f1733ba7bfdd4b83e57c0ddf28df2424a385440d8defa2f0f2",
+        "0xf076c496e643bd84956f277a39b3756d496f6aa9ad46a3aa1c654e17658e7144"
+      ],
+      "amounts": [
+        "280387646133527564",
+        "4532921810571881521",
+        "3903805770533835045"
+      ],
+      "proofs": [
+        {
+          "index": "0",
+          "siblingHashes": [
+            "0x074489c3421a24a69f1c0e7491c120574c84dc4202a2ac0e38bc4507f65bc168",
+            "0x1dd9136b8e8396135930df851b07c4989267b79de41d005219f8552c829f2ab5"
+          ],
+          "siblingSums": [
+            "0",
+            "0"
+          ]
+        },
+        {
+          "index": "1",
+          "siblingHashes": [
+            "0x1dc365003826ae8f2d24bd37d835fd3fadb1e76f23d77c6e728b6cd3c8c31f60",
+            "0x1dd9136b8e8396135930df851b07c4989267b79de41d005219f8552c829f2ab5"
+          ],
+          "siblingSums": [
+            "0",
+            "0"
+          ]
+        },
+        {
+          "index": "2",
+          "siblingHashes": [
+            "0x09c68ab1fed14354a4441268bedfd12fd5d2200429fce0418c681c5c772f885a",
+            "0x00f97267457c066e5ff8ca3dc4c819a651e27dda5826a4c60e7bd32225ee2391"
+          ],
+          "siblingSums": [
+            "0",
+            "0"
+          ]
+        }
+      ]
+    },
+    {
+      "epoch": "4",
+      "leafCount": "4",
+      "depth": 2,
+      "treeRoot": "0x2072d429b9393f7f6b7f259ba0b86abbe992c02b8d8408787202bfc69ab58472",
+      "commitments": [
+        "0x07273aca22816fb8e4511c51ea1d4c19dd9a97739991a3ba7a434a8fcacf0824",
+        "0x612779d1422ef27de49a7a73fddbf266eee207568d24a28452a4c35a652aef9a",
+        "0x1e46e3663651e1e9714fc230ac006ba127f877c8780c5112afe785ecfee79c66",
+        "0x98a7d416e6ef134b8fcc4d8a178364b78fe58343b1142dc1cf8dfe4b58113dd6"
+      ],
+      "amounts": [
+        "3338156475992682257",
+        "482830261378676812",
+        "1556363916341159131",
+        "4352036936974974738"
+      ],
+      "proofs": [
+        {
+          "index": "0",
+          "siblingHashes": [
+            "0x1f95e009ee77701eb3a24f47fb5259486a935aea6696bb0d192d4c0159bcec3f",
+            "0x196ad0ba81deaeedd4ca6ae0c72c5e8a1ba169044aae58fae244ee67828f6d1f"
+          ],
+          "siblingSums": [
+            "0",
+            "0"
+          ]
+        },
+        {
+          "index": "1",
+          "siblingHashes": [
+            "0x0067c3344521bb3c2547c59f4eda6baf9782507f9a1f36279b2cbdedfa1cfe00",
+            "0x196ad0ba81deaeedd4ca6ae0c72c5e8a1ba169044aae58fae244ee67828f6d1f"
+          ],
+          "siblingSums": [
+            "0",
+            "0"
+          ]
+        },
+        {
+          "index": "2",
+          "siblingHashes": [
+            "0x08c97c3e11526c5e245c699138d0c52472ff537282ebef3a2aa9a36d21d7942b",
+            "0x0cd09ec49b4ee449e8931ff4c173173b8af6dd7e4e9cbdcecd6cd905c6ea4416"
+          ],
+          "siblingSums": [
+            "0",
+            "0"
+          ]
+        },
+        {
+          "index": "3",
+          "siblingHashes": [
+            "0x264b0ace971be1ac9f34604b1245043cf22179cb3cffe8c0c8a3068bec5420d2",
+            "0x0cd09ec49b4ee449e8931ff4c173173b8af6dd7e4e9cbdcecd6cd905c6ea4416"
+          ],
+          "siblingSums": [
+            "0",
+            "0"
+          ]
+        }
+      ]
+    },
+    {
+      "epoch": "5",
+      "leafCount": "5",
+      "depth": 3,
+      "treeRoot": "0x10c898b5f3a53e93f393766a81d85e83f272b08ae59e0834bfaeb468e98b40b4",
+      "commitments": [
+        "0xeaa75b88bf696d4104cbb966b955fe9626b8b7cf8338b2f919cc6bd97ee4411b",
+        "0x0304f6d02bde8400ae7bc5ff267005ead8a8074dc74768640d3f263d1853e7ee",
+        "0xcb2f14e936ad6e5a591972b2ca3c668f87e7a6c9dc6f15c39dcb5bd7717f3ab6",
+        "0x88d860d2cd97f1474b244e98502dbc607eef77ad61ffccece06abf62c6b6d741",
+        "0xa19944dd4948d2a9541e080e4d5ccad705bd86e4b5cea370082a98e16e8f609f"
+      ],
+      "amounts": [
+        "1074535772078392122",
+        "1461313491083975649",
+        "2745307712883306827",
+        "1910996515660054542",
+        "182696736378493452"
+      ],
+      "proofs": [
+        {
+          "index": "0",
+          "siblingHashes": [
+            "0x11992d316caa081ac4410459705973f517c3f9ec4a7781cef34db3822a81dd81",
+            "0x02ae6292a32cdca3ad6f347acb090fdd1a799ef3b7599a3e5660bf7b44a39416",
+            "0x107de0cc532e576b06f751221d6f5f8ca02093860c650a8d1aec64cee0c416cc"
+          ],
+          "siblingSums": [
+            "0",
+            "0",
+            "0"
+          ]
+        },
+        {
+          "index": "1",
+          "siblingHashes": [
+            "0x245e7cfd5056893aaf2eb046ae6e1febe8c118f1ac2577d8503f7b0dc9de3902",
+            "0x02ae6292a32cdca3ad6f347acb090fdd1a799ef3b7599a3e5660bf7b44a39416",
+            "0x107de0cc532e576b06f751221d6f5f8ca02093860c650a8d1aec64cee0c416cc"
+          ],
+          "siblingSums": [
+            "0",
+            "0",
+            "0"
+          ]
+        },
+        {
+          "index": "2",
+          "siblingHashes": [
+            "0x005fc6d42a0ecf670e6e88d38db6d7fcabd70c649de46af71a5f37a551c66973",
+            "0x2c749bd8e9f6d13a879ae1301facc6f169c28ac80e28f9fc4a81eddff6d6e7c1",
+            "0x107de0cc532e576b06f751221d6f5f8ca02093860c650a8d1aec64cee0c416cc"
+          ],
+          "siblingSums": [
+            "0",
+            "0",
+            "0"
+          ]
+        },
+        {
+          "index": "3",
+          "siblingHashes": [
+            "0x0f92dffb00e60be4ec4dbbb1577486c297b8f5b78001ed580689336b66c18eaa",
+            "0x2c749bd8e9f6d13a879ae1301facc6f169c28ac80e28f9fc4a81eddff6d6e7c1",
+            "0x107de0cc532e576b06f751221d6f5f8ca02093860c650a8d1aec64cee0c416cc"
+          ],
+          "siblingSums": [
+            "0",
+            "0",
+            "0"
+          ]
+        },
+        {
+          "index": "4",
+          "siblingHashes": [
+            "0x09c68ab1fed14354a4441268bedfd12fd5d2200429fce0418c681c5c772f885a",
+            "0x2124c6eef93f5355944fb06f2254dc0ff5290412e8a0ab23d6854ef3dcb1b146",
+            "0x056a828b20627022157e9bee5e4b2875cbed6e711b8b5ada784ffae10d371993"
+          ],
+          "siblingSums": [
+            "0",
+            "0",
+            "0"
+          ]
+        }
+      ]
+    },
+    {
+      "epoch": "6",
+      "leafCount": "8",
+      "depth": 3,
+      "treeRoot": "0x072d63fa976a0c3da3a7613a82901ccf2f307db88b00449eaf6bd6fe1311d5af",
+      "commitments": [
+        "0x55354f1713665eba4980186af33d8194b5f6edd1fe7454e129ab5aed9086f817",
+        "0x88644435c0b997ed6ec7bcf5afdb0994672c33eb3c8f3296c243cb966316707d",
+        "0x3be4377a238b02f0b780f7e969dcb0a30e2926fe2ef7dff132fd435ab5d25b7f",
+        "0xe75e80bd22a6079cae23414d1ff8d66ffbdbab9e766688d1f39206e32b333449",
+        "0x238f87a2620e0c23b94436bce2d0c4695caedf5b263769d627a40d82b9eacabb",
+        "0x1c345bb2afc8c2f5dcd1a4149146e11c31fa8ffc1bf9294f3b28a196557d8f0a",
+        "0x038a06436216a333c04b7fcd51b0c0b32e3b754206aaeea7846959d7697bf26b",
+        "0x779901ff033fdbcb714f61033e5e2a674fe265a85b4fccc74e08655290816713"
+      ],
+      "amounts": [
+        "1891962291001461762",
+        "700687105865937892",
+        "1986321791264014214",
+        "1345425226291617410",
+        "2186719760408224257",
+        "1963231080296225567",
+        "667100827329837626",
+        "1370788652734683779"
+      ],
+      "proofs": [
+        {
+          "index": "0",
+          "siblingHashes": [
+            "0x0bd865df13ff914e729b9c7e42983a6c169746471c031d3c47f67bb59b5ffeba",
+            "0x08e00a8a14150cd62ef478d2ddd2fecca606ecf9ffc1bcf9d863215866fad0ae",
+            "0x16544be04dd0dc1af88c1d286ccab697c7cf72c667c8ab1ddc29fcc299dde33e"
+          ],
+          "siblingSums": [
+            "0",
+            "0",
+            "0"
+          ]
+        },
+        {
+          "index": "1",
+          "siblingHashes": [
+            "0x145778ab0115be9b17c428526ff67c74e1ed2fd000a21423c52039652ce18d60",
+            "0x08e00a8a14150cd62ef478d2ddd2fecca606ecf9ffc1bcf9d863215866fad0ae",
+            "0x16544be04dd0dc1af88c1d286ccab697c7cf72c667c8ab1ddc29fcc299dde33e"
+          ],
+          "siblingSums": [
+            "0",
+            "0",
+            "0"
+          ]
+        },
+        {
+          "index": "2",
+          "siblingHashes": [
+            "0x04670a52b6255ab7079819e664bdb061aba42aa4f931f7b4311decaad3710de8",
+            "0x0740a36020c6ec9939c6f9f1513c0aa996580b0cfef5cfa0b0623bbc558a6332",
+            "0x16544be04dd0dc1af88c1d286ccab697c7cf72c667c8ab1ddc29fcc299dde33e"
+          ],
+          "siblingSums": [
+            "0",
+            "0",
+            "0"
+          ]
+        },
+        {
+          "index": "3",
+          "siblingHashes": [
+            "0x1c9ea0915153c3fc15749c9a6e64b193921434acf8a36a8c475a7292fe68aa16",
+            "0x0740a36020c6ec9939c6f9f1513c0aa996580b0cfef5cfa0b0623bbc558a6332",
+            "0x16544be04dd0dc1af88c1d286ccab697c7cf72c667c8ab1ddc29fcc299dde33e"
+          ],
+          "siblingSums": [
+            "0",
+            "0",
+            "0"
+          ]
+        },
+        {
+          "index": "4",
+          "siblingHashes": [
+            "0x192cb162e5c19413dd81ffbabf01dc0b9f62ae9693b3b3d60a06922441025493",
+            "0x02275a187c11e0da68085709e67cd729ab33ea24088338b1f28143559f98a2e8",
+            "0x027eea3f6130ae1d596c7dc067041ff1dbacc78e5e1c90ba9f0c43e77c9d5a98"
+          ],
+          "siblingSums": [
+            "0",
+            "0",
+            "0"
+          ]
+        },
+        {
+          "index": "5",
+          "siblingHashes": [
+            "0x0cf47390d225f6027b7d1f020f199d3e2adfade05c0322e1444ffc121659183e",
+            "0x02275a187c11e0da68085709e67cd729ab33ea24088338b1f28143559f98a2e8",
+            "0x027eea3f6130ae1d596c7dc067041ff1dbacc78e5e1c90ba9f0c43e77c9d5a98"
+          ],
+          "siblingSums": [
+            "0",
+            "0",
+            "0"
+          ]
+        },
+        {
+          "index": "6",
+          "siblingHashes": [
+            "0x27a52634a0052d35444735107c95c2e0dd78db33714a4a06f998cdfd0724443e",
+            "0x1570bd0b9be42a163d89331192d6b7c82cbcba46478869b3174a162c79006ef3",
+            "0x027eea3f6130ae1d596c7dc067041ff1dbacc78e5e1c90ba9f0c43e77c9d5a98"
+          ],
+          "siblingSums": [
+            "0",
+            "0",
+            "0"
+          ]
+        },
+        {
+          "index": "7",
+          "siblingHashes": [
+            "0x177e6d280552fdf0dea3783b40712da25ec71a14cb1b579aa56add4f0e2db17f",
+            "0x1570bd0b9be42a163d89331192d6b7c82cbcba46478869b3174a162c79006ef3",
+            "0x027eea3f6130ae1d596c7dc067041ff1dbacc78e5e1c90ba9f0c43e77c9d5a98"
+          ],
+          "siblingSums": [
+            "0",
+            "0",
+            "0"
+          ]
+        }
+      ]
+    },
+    {
+      "epoch": "7",
+      "leafCount": "9",
+      "depth": 4,
+      "treeRoot": "0x1f8049c5fce915c8383683077dbd017f076ac47cecbed31c237e1c94576929d5",
+      "commitments": [
+        "0x8c9618f680723676f5cd0cb89808e4910259eff4546a898f46f5bcf70314f001",
+        "0xaddb8c54fe981d00896a910aee97b2291134ad3cf717c1dd5d2b03d55370d2ae",
+        "0xabb1d6f913295824c930f18e0b3e0e6d460cb8176426e252738de4e7f7db7e65",
+        "0x2f08807c252008a34849a8ec18934919c61216c5c1cedc6f50c9ba64f09d2875",
+        "0xa110218015a54180a90a742d27e1b5e7e0dbf52bf1974c7c23aba4eb2e234175",
+        "0x8495d9458ac0b1b6c2d03d85b45ad53b5ffbfaac376baacc277fb8d081669d4e",
+        "0x26e68767d8ac7b6a905124af496ecebb965637a3289fbf696c4563039395217b",
+        "0x3acda25cb190e79c188e7cc61f9b14996ac38749449d71a094a2085dced6fbae",
+        "0xa60f0baf7cacd6ef8ea816a4ff149f72f64f252aa6770b64ab27d413685938fb"
+      ],
+      "amounts": [
+        "337365230439081729",
+        "1757560790274909276",
+        "1266149367774642918",
+        "883344362991336856",
+        "1271657085880458204",
+        "1839036606464411538",
+        "1414611264513999340",
+        "1701104416318599537",
+        "578976915341982450"
+      ],
+      "proofs": [
+        {
+          "index": "0",
+          "siblingHashes": [
+            "0x2d0f6f8fbcfef3b070dddc205f9452fe490896513b5597ce9b5993dde62e43e9",
+            "0x00eb3a63005ee15b736931a14dc693b36dd5c67dbfac1f4e527b49a24ddb9d1b",
+            "0x29040518715bf3330917e873bc104d86f0d2c05de612c0541852b9e4b8f09ee0",
+            "0x08c77106ca11f23467e1dcf4457e34120000428bfa258114d7259aa321d03f2f"
+          ],
+          "siblingSums": [
+            "0",
+            "0",
+            "0",
+            "0"
+          ]
+        },
+        {
+          "index": "1",
+          "siblingHashes": [
+            "0x23ad071f8b1265e12319c3d38621adfb118e896d958e3173f0414efcd02e1961",
+            "0x00eb3a63005ee15b736931a14dc693b36dd5c67dbfac1f4e527b49a24ddb9d1b",
+            "0x29040518715bf3330917e873bc104d86f0d2c05de612c0541852b9e4b8f09ee0",
+            "0x08c77106ca11f23467e1dcf4457e34120000428bfa258114d7259aa321d03f2f"
+          ],
+          "siblingSums": [
+            "0",
+            "0",
+            "0",
+            "0"
+          ]
+        },
+        {
+          "index": "2",
+          "siblingHashes": [
+            "0x02ceff6152b429b9bfd1012ba3d428eb8ce55f668f1e3c576ef639b69ea4a655",
+            "0x19e25548dd10c8e4590813f241d97732fbff8c1e5f2d9617b0681daf5f831f7d",
+            "0x29040518715bf3330917e873bc104d86f0d2c05de612c0541852b9e4b8f09ee0",
+            "0x08c77106ca11f23467e1dcf4457e34120000428bfa258114d7259aa321d03f2f"
+          ],
+          "siblingSums": [
+            "0",
+            "0",
+            "0",
+            "0"
+          ]
+        },
+        {
+          "index": "3",
+          "siblingHashes": [
+            "0x25484693161b375354dedb35de63ccb498b147f418a5fa4c114539903477636a",
+            "0x19e25548dd10c8e4590813f241d97732fbff8c1e5f2d9617b0681daf5f831f7d",
+            "0x29040518715bf3330917e873bc104d86f0d2c05de612c0541852b9e4b8f09ee0",
+            "0x08c77106ca11f23467e1dcf4457e34120000428bfa258114d7259aa321d03f2f"
+          ],
+          "siblingSums": [
+            "0",
+            "0",
+            "0",
+            "0"
+          ]
+        },
+        {
+          "index": "4",
+          "siblingHashes": [
+            "0x1719dd05aec8dd84e2368774578bfc4631f67135082e90c24e4aef54e391642d",
+            "0x167f2c7aeb6fa86f9546ebfb639c085fee6bd80deba91d60fe3f6281c994179f",
+            "0x2e5639bfa8aae869fe29d54f2c571ee64c2d7ed81a01f21786a960fc3122238e",
+            "0x08c77106ca11f23467e1dcf4457e34120000428bfa258114d7259aa321d03f2f"
+          ],
+          "siblingSums": [
+            "0",
+            "0",
+            "0",
+            "0"
+          ]
+        },
+        {
+          "index": "5",
+          "siblingHashes": [
+            "0x2ea58c7cb462ec5e842b8166d9a1f77faa8c14a93d4a61237c853a25e627bf3c",
+            "0x167f2c7aeb6fa86f9546ebfb639c085fee6bd80deba91d60fe3f6281c994179f",
+            "0x2e5639bfa8aae869fe29d54f2c571ee64c2d7ed81a01f21786a960fc3122238e",
+            "0x08c77106ca11f23467e1dcf4457e34120000428bfa258114d7259aa321d03f2f"
+          ],
+          "siblingSums": [
+            "0",
+            "0",
+            "0",
+            "0"
+          ]
+        },
+        {
+          "index": "6",
+          "siblingHashes": [
+            "0x2391e3a8b90ae9f4b2f0d0379bc1d53c7c0aa0f8b545d7e09d298fd5d998bd3c",
+            "0x12a0a3a10244e43192311ef19305f4e4df45d5da881c7449baee7273b981bc79",
+            "0x2e5639bfa8aae869fe29d54f2c571ee64c2d7ed81a01f21786a960fc3122238e",
+            "0x08c77106ca11f23467e1dcf4457e34120000428bfa258114d7259aa321d03f2f"
+          ],
+          "siblingSums": [
+            "0",
+            "0",
+            "0",
+            "0"
+          ]
+        },
+        {
+          "index": "7",
+          "siblingHashes": [
+            "0x0ed62e1197dfa9738d3e70cc48d7b5a5b3e9eb2eaa1c52d7ae81e95693750403",
+            "0x12a0a3a10244e43192311ef19305f4e4df45d5da881c7449baee7273b981bc79",
+            "0x2e5639bfa8aae869fe29d54f2c571ee64c2d7ed81a01f21786a960fc3122238e",
+            "0x08c77106ca11f23467e1dcf4457e34120000428bfa258114d7259aa321d03f2f"
+          ],
+          "siblingSums": [
+            "0",
+            "0",
+            "0",
+            "0"
+          ]
+        },
+        {
+          "index": "8",
+          "siblingHashes": [
+            "0x09c68ab1fed14354a4441268bedfd12fd5d2200429fce0418c681c5c772f885a",
+            "0x2124c6eef93f5355944fb06f2254dc0ff5290412e8a0ab23d6854ef3dcb1b146",
+            "0x0b5e535c982cbc7c2ff718c3870d363f5ec6c33ee7c08bac41dbb435751b214d",
+            "0x1d3a971350c8d63f9df0cfd9a3158183c03d4c05b9329d2f9efcb59612320fad"
+          ],
+          "siblingSums": [
+            "0",
+            "0",
+            "0",
+            "0"
+          ]
+        }
+      ]
+    },
+    {
+      "epoch": "1099511627776",
+      "leafCount": "16",
+      "depth": 4,
+      "treeRoot": "0x02bded527e26e655a1550b5288c797c6780d46c5df0408d4d6a02be252c1586e",
+      "commitments": [
+        "0xefd684c8c0f97c5df011493bba78aa981bb77e876339b6a17187656c2ccd843d",
+        "0x09c97489ead852c724564b3fe5a63f32d0c14632c67792560515b641ef7b0187",
+        "0x02e0a3eaa408120d69d3005fe0f818e87ffda2f6a57f9ed4e09c3c13f1764394",
+        "0xc04ca63866bbfd86045bd3917c8eddcd24c37b88f60e74d7cdc483e73c646f60",
+        "0x06d1c255500e34394cf0a4e2c88a1649a5e62c7384439aae6f0b91280f81f00c",
+        "0xaf8b47706bf1f35645e61eb95a09063eb9a88c347a38c73e768a18ef9e74f832",
+        "0x2a3ecba740a2f7c405006f0d5aa08a325c8e3dc0c789c9b7f524a80b7ad6b669",
+        "0xe7de386b9851111deee9e418d33d2af7e0e0efab8fcb63ccf7f95192783fcd7e",
+        "0x6ed5072fca6c97707f3ced4bde838f9a3f5784c69c052fad425069f8501fa80c",
+        "0xe27442cd018c5e1ae1433bf9385a64f42e1d14db0e72a70b2c3f0053a87d2c75",
+        "0x9b70725218745ca311ff4c2dabde9f71fedca3d9b79cd4a57169732624c9777d",
+        "0xeaea318aa17582828a8bdb57693fc3375798025681be932a0e0c7f3ed9792d37",
+        "0x75dd70d062e6ab1b60b5f33c7dcd5abb66218759b6e342a9b0a6ef74b64e6cc2",
+        "0x87d8674fa9e67285fde5316828c5da5306977d433c24e7b996354afb75dc15fa",
+        "0x7f5dc5bdf5c9ed1acb40a807928981479d4b9a8f288ac273f26dcd2d600fc79c",
+        "0x9ea0d5f6dec6113f48bb4bc94732ce8a60ac3b94736beb6b00429a69f605ebc4"
+      ],
+      "amounts": [
+        "534068481712253524",
+        "349314807375770738",
+        "287486961741086374",
+        "1125747382289620014",
+        "773947247896683096",
+        "683928608647822481",
+        "1147111572970055142",
+        "563997478927362710",
+        "829649633096337886",
+        "11273556670122184",
+        "1104101861993496183",
+        "710482184315712290",
+        "699344945970423294",
+        "679771078923979259",
+        "620036006779537923",
+        "980798992908476737"
+      ],
+      "proofs": [
+        {
+          "index": "0",
+          "siblingHashes": [
+            "0x1a94c38d28ef80463f2ff2e6424a3f018e453dc3a0d4e6d1ad877bc8bce58595",
+            "0x27d67db77abf0c75b24261c86bd2ea3286230e5711ead3596147f01adc54130d",
+            "0x0a054c9688b35e6626428bc6331af2d831d3f8f6f3954d1665bf9e2a2ed67ea3",
+            "0x1e02b8e208477800f767b0178f636cb228bd6c54e7b87ea71216dccd372f7e72"
+          ],
+          "siblingSums": [
+            "0",
+            "0",
+            "0",
+            "0"
+          ]
+        },
+        {
+          "index": "1",
+          "siblingHashes": [
+            "0x15a1f3b0824146ea89d7b21ae34e2d22099f2aec6124e1da83cb3766ec4222e3",
+            "0x27d67db77abf0c75b24261c86bd2ea3286230e5711ead3596147f01adc54130d",
+            "0x0a054c9688b35e6626428bc6331af2d831d3f8f6f3954d1665bf9e2a2ed67ea3",
+            "0x1e02b8e208477800f767b0178f636cb228bd6c54e7b87ea71216dccd372f7e72"
+          ],
+          "siblingSums": [
+            "0",
+            "0",
+            "0",
+            "0"
+          ]
+        },
+        {
+          "index": "2",
+          "siblingHashes": [
+            "0x1821c13c5dd1364b7c1a228320c9337896f31855223719f92680e0a8f8955d68",
+            "0x042193cd8a2559965d2d7f9d7ea502cb4bba96173435edc8e9b10522cca67f9e",
+            "0x0a054c9688b35e6626428bc6331af2d831d3f8f6f3954d1665bf9e2a2ed67ea3",
+            "0x1e02b8e208477800f767b0178f636cb228bd6c54e7b87ea71216dccd372f7e72"
+          ],
+          "siblingSums": [
+            "0",
+            "0",
+            "0",
+            "0"
+          ]
+        },
+        {
+          "index": "3",
+          "siblingHashes": [
+            "0x269f181a78e5a4d12b00108b9515361509ab9401476bb845fde8db6fad9ac949",
+            "0x042193cd8a2559965d2d7f9d7ea502cb4bba96173435edc8e9b10522cca67f9e",
+            "0x0a054c9688b35e6626428bc6331af2d831d3f8f6f3954d1665bf9e2a2ed67ea3",
+            "0x1e02b8e208477800f767b0178f636cb228bd6c54e7b87ea71216dccd372f7e72"
+          ],
+          "siblingSums": [
+            "0",
+            "0",
+            "0",
+            "0"
+          ]
+        },
+        {
+          "index": "4",
+          "siblingHashes": [
+            "0x22e35f0d96791cca05d4f66ff226207f6ca298e613703af39aaacd8d929a7639",
+            "0x0d8931d993fbb878578154742f7d01fda343f5c248ec9fb5bcf6b7a6b73d2202",
+            "0x29ac22c1831688f585a750133642cc90d761577782c26e63c1540ac17594e140",
+            "0x1e02b8e208477800f767b0178f636cb228bd6c54e7b87ea71216dccd372f7e72"
+          ],
+          "siblingSums": [
+            "0",
+            "0",
+            "0",
+            "0"
+          ]
+        },
+        {
+          "index": "5",
+          "siblingHashes": [
+            "0x026c2379772c915f6903c052a0314ceea30a71c5e6599acebf33e06c75b8d896",
+            "0x0d8931d993fbb878578154742f7d01fda343f5c248ec9fb5bcf6b7a6b73d2202",
+            "0x29ac22c1831688f585a750133642cc90d761577782c26e63c1540ac17594e140",
+            "0x1e02b8e208477800f767b0178f636cb228bd6c54e7b87ea71216dccd372f7e72"
+          ],
+          "siblingSums": [
+            "0",
+            "0",
+            "0",
+            "0"
+          ]
+        },
+        {
+          "index": "6",
+          "siblingHashes": [
+            "0x2d1960979e50934fbdedfd8c8fcfed53d17da14f16fd4f6dbd62e412040357b6",
+            "0x1be687e2dd49980a3571980c18536c07f29e778ab81d2400d49213459fd6bde2",
+            "0x29ac22c1831688f585a750133642cc90d761577782c26e63c1540ac17594e140",
+            "0x1e02b8e208477800f767b0178f636cb228bd6c54e7b87ea71216dccd372f7e72"
+          ],
+          "siblingSums": [
+            "0",
+            "0",
+            "0",
+            "0"
+          ]
+        },
+        {
+          "index": "7",
+          "siblingHashes": [
+            "0x0c9490f3543ffed35cbf8d8f4645aa0eb4f259d47ee05bbd66186cdc4e141a9c",
+            "0x1be687e2dd49980a3571980c18536c07f29e778ab81d2400d49213459fd6bde2",
+            "0x29ac22c1831688f585a750133642cc90d761577782c26e63c1540ac17594e140",
+            "0x1e02b8e208477800f767b0178f636cb228bd6c54e7b87ea71216dccd372f7e72"
+          ],
+          "siblingSums": [
+            "0",
+            "0",
+            "0",
+            "0"
+          ]
+        },
+        {
+          "index": "8",
+          "siblingHashes": [
+            "0x2f1db0876290ec1e7376750ffda61c53edc77569c1350503f258baeec5e82ced",
+            "0x2f32e56998322eb6fdc6383c894e55c1024e9f8d0b0008b6c42b80e3294c0bb7",
+            "0x0954c41f8dcb2e6780c0113bded01d6adb027f69bccaefb8eb2d89073c347071",
+            "0x06766a1b86f2d56d1868cb385b1ed87fe9783317fab1c1e810eba7f62c6aec1e"
+          ],
+          "siblingSums": [
+            "0",
+            "0",
+            "0",
+            "0"
+          ]
+        },
+        {
+          "index": "9",
+          "siblingHashes": [
+            "0x20b28954702b413ffd639260b41d2de4a633962a9f9e78f463faedaa976ae118",
+            "0x2f32e56998322eb6fdc6383c894e55c1024e9f8d0b0008b6c42b80e3294c0bb7",
+            "0x0954c41f8dcb2e6780c0113bded01d6adb027f69bccaefb8eb2d89073c347071",
+            "0x06766a1b86f2d56d1868cb385b1ed87fe9783317fab1c1e810eba7f62c6aec1e"
+          ],
+          "siblingSums": [
+            "0",
+            "0",
+            "0",
+            "0"
+          ]
+        },
+        {
+          "index": "10",
+          "siblingHashes": [
+            "0x1b6c3bb1e0fd3efb1e43c72a34e1b0d7bea9b2f1918ae16820564a8198daf986",
+            "0x19f49fe664ffb22a1654d0e85b0db8bbe19a5562992165f31692ad2affd77b1e",
+            "0x0954c41f8dcb2e6780c0113bded01d6adb027f69bccaefb8eb2d89073c347071",
+            "0x06766a1b86f2d56d1868cb385b1ed87fe9783317fab1c1e810eba7f62c6aec1e"
+          ],
+          "siblingSums": [
+            "0",
+            "0",
+            "0",
+            "0"
+          ]
+        },
+        {
+          "index": "11",
+          "siblingHashes": [
+            "0x1f36547a06471d31348f90c687b07427845a2098dc3f9005b873922688cad015",
+            "0x19f49fe664ffb22a1654d0e85b0db8bbe19a5562992165f31692ad2affd77b1e",
+            "0x0954c41f8dcb2e6780c0113bded01d6adb027f69bccaefb8eb2d89073c347071",
+            "0x06766a1b86f2d56d1868cb385b1ed87fe9783317fab1c1e810eba7f62c6aec1e"
+          ],
+          "siblingSums": [
+            "0",
+            "0",
+            "0",
+            "0"
+          ]
+        },
+        {
+          "index": "12",
+          "siblingHashes": [
+            "0x2f999f19396a1bbb3134888350c6094ceb130e86ba28f45e6fae62640dd381f4",
+            "0x16ad705081523678976fc7b687d36eaf258f81c6e8a8fcec38885d19631148bc",
+            "0x27875c4f120b174235a83f0f958152b4f2a064575194c9d174f0b9d71e268cb6",
+            "0x06766a1b86f2d56d1868cb385b1ed87fe9783317fab1c1e810eba7f62c6aec1e"
+          ],
+          "siblingSums": [
+            "0",
+            "0",
+            "0",
+            "0"
+          ]
+        },
+        {
+          "index": "13",
+          "siblingHashes": [
+            "0x01fb429e31682ed7f653b3ddee276f8cb5fa5b3509721bba0ff25755fad4a85b",
+            "0x16ad705081523678976fc7b687d36eaf258f81c6e8a8fcec38885d19631148bc",
+            "0x27875c4f120b174235a83f0f958152b4f2a064575194c9d174f0b9d71e268cb6",
+            "0x06766a1b86f2d56d1868cb385b1ed87fe9783317fab1c1e810eba7f62c6aec1e"
+          ],
+          "siblingSums": [
+            "0",
+            "0",
+            "0",
+            "0"
+          ]
+        },
+        {
+          "index": "14",
+          "siblingHashes": [
+            "0x0f78c89a4f56d1a2386cdd27edf1a4b797767ee28f1262091634ad20f0a900a3",
+            "0x1dae010c345b670c7d34decb317177b91ddcb847b115408f5587c6b143598ff4",
+            "0x27875c4f120b174235a83f0f958152b4f2a064575194c9d174f0b9d71e268cb6",
+            "0x06766a1b86f2d56d1868cb385b1ed87fe9783317fab1c1e810eba7f62c6aec1e"
+          ],
+          "siblingSums": [
+            "0",
+            "0",
+            "0",
+            "0"
+          ]
+        },
+        {
+          "index": "15",
+          "siblingHashes": [
+            "0x1d52bd641681b5c6fb3fb69a325d44990f397e84818be2f00b0b0d9f2c352158",
+            "0x1dae010c345b670c7d34decb317177b91ddcb847b115408f5587c6b143598ff4",
+            "0x27875c4f120b174235a83f0f958152b4f2a064575194c9d174f0b9d71e268cb6",
+            "0x06766a1b86f2d56d1868cb385b1ed87fe9783317fab1c1e810eba7f62c6aec1e"
+          ],
+          "siblingSums": [
+            "0",
+            "0",
+            "0",
+            "0"
+          ]
+        }
+      ]
+    },
+    {
+      "epoch": "18446744073709551614",
+      "leafCount": "11",
+      "depth": 4,
+      "treeRoot": "0x13304cf5e38d53e5612c136fbeffc123e4f9cf61d6152029b74a8aa67c698d91",
+      "commitments": [
+        "0xf2d6251ac6a11c268d1a9bbbf5ebcd5a1aa4043f2e5a5f31a24be7026bf7c545",
+        "0x70f14f5c5f94cdb0ac5912bd80c70ec8830457664ceb6b90f5b75b2c32c1ed99",
+        "0x1bb9ce715ce1d30e28aec2757e2ba1d501f1501ded5a325af2dc6f623cde28b5",
+        "0xcecae4f4dfac2eb13c904cd7835a4302360c94f2cbd3fb079d13aa17fcce32e0",
+        "0xaf6929fb2f668f6dde95aa53595edab7f8b56c9381cbf33360ee2b77bb631e97",
+        "0xb9367d3a3f449c162fc3095e3f4f2a1d9e95783515194ef0ecd82b4ecfc1b3e0",
+        "0xe376eeaaabd755459a09cb1502577cf589d68fdcbc6f5bd370e448cb7e4417e0",
+        "0xab39abd2a4d0892c3400862c00cb6c2cfea167a8eb2df25dff08b767f7d6ebaf",
+        "0x0d5d496d9a714ce18d1e31f4c7b04da92aa7019d70ff2ca5add730f869114c7a",
+        "0xd3da8ec29c1e9bb8e51eee56f7a4631585ca1a167ed53d83805fb9cd56451ad7",
+        "0xf7a7cbd11b70bd9976dac13f612b84c7b392c9d1024f2e7bd8cd90216557286a"
+      ],
+      "amounts": [
+        "1563316827956298063",
+        "742561792886782690",
+        "119020759855892461",
+        "630355284181590769",
+        "1413880562273730996",
+        "560670797355750174",
+        "1656033261899458226",
+        "1543506974388430044",
+        "40533742474168413",
+        "599252375690550246",
+        "186348053188994909"
+      ],
+      "proofs": [
+        {
+          "index": "0",
+          "siblingHashes": [
+            "0x0d0c77652a57b2f40ff04192dbebfed2fe3a287d5099108150364c852ce63cc6",
+            "0x04d09f2f79368f72adc604341ec49bc48d53a6af4ea3d6d9c27592cea4b69d56",
+            "0x223d82bb89b5ce507cbf88eed6dd42a70ae6f5945538c0859e25be85a0c53ba7",
+            "0x03cd92d6befcbb2b9cd6535a1dfcbb7d9b4958ae112ad9e15889b40d1792d7a1"
+          ],
+          "siblingSums": [
+            "0",
+            "0",
+            "0",
+            "0"
+          ]
+        },
+        {
+          "index": "1",
+          "siblingHashes": [
+            "0x1493ea9a9f133770c94796db380839b0c0ce67d1e03aefb1c6fdf12070aa31fa",
+            "0x04d09f2f79368f72adc604341ec49bc48d53a6af4ea3d6d9c27592cea4b69d56",
+            "0x223d82bb89b5ce507cbf88eed6dd42a70ae6f5945538c0859e25be85a0c53ba7",
+            "0x03cd92d6befcbb2b9cd6535a1dfcbb7d9b4958ae112ad9e15889b40d1792d7a1"
+          ],
+          "siblingSums": [
+            "0",
+            "0",
+            "0",
+            "0"
+          ]
+        },
+        {
+          "index": "2",
+          "siblingHashes": [
+            "0x0a71fb4ea0c9316f309ff270a66c5372c41784a64c77081235d79178adf30fe4",
+            "0x0be0d74767c6d2aa5f814e1776f29dcf2935c587061be658fc034fdece232bc9",
+            "0x223d82bb89b5ce507cbf88eed6dd42a70ae6f5945538c0859e25be85a0c53ba7",
+            "0x03cd92d6befcbb2b9cd6535a1dfcbb7d9b4958ae112ad9e15889b40d1792d7a1"
+          ],
+          "siblingSums": [
+            "0",
+            "0",
+            "0",
+            "0"
+          ]
+        },
+        {
+          "index": "3",
+          "siblingHashes": [
+            "0x04ed54acf1501ac909b841830ab0622f58d08d88ea6e091a1c69e39ce6993337",
+            "0x0be0d74767c6d2aa5f814e1776f29dcf2935c587061be658fc034fdece232bc9",
+            "0x223d82bb89b5ce507cbf88eed6dd42a70ae6f5945538c0859e25be85a0c53ba7",
+            "0x03cd92d6befcbb2b9cd6535a1dfcbb7d9b4958ae112ad9e15889b40d1792d7a1"
+          ],
+          "siblingSums": [
+            "0",
+            "0",
+            "0",
+            "0"
+          ]
+        },
+        {
+          "index": "4",
+          "siblingHashes": [
+            "0x246c51798d81431f581bb90355222701ebe6606fe004a4f9fc30b5597f3c7cb0",
+            "0x19904d0b12c7c5f6502ebb73b126d21c9692728063e4eb17fcaf13321c958318",
+            "0x1dbdda9205820079b4c1875266f8bae4bc5cc8bd7d12cbfd8ddfb32d99f8ebcd",
+            "0x03cd92d6befcbb2b9cd6535a1dfcbb7d9b4958ae112ad9e15889b40d1792d7a1"
+          ],
+          "siblingSums": [
+            "0",
+            "0",
+            "0",
+            "0"
+          ]
+        },
+        {
+          "index": "5",
+          "siblingHashes": [
+            "0x1327ecf2a1c2fbc1807667a51697049ccd7b25e429d404ee306f4d99fb3f39fa",
+            "0x19904d0b12c7c5f6502ebb73b126d21c9692728063e4eb17fcaf13321c958318",
+            "0x1dbdda9205820079b4c1875266f8bae4bc5cc8bd7d12cbfd8ddfb32d99f8ebcd",
+            "0x03cd92d6befcbb2b9cd6535a1dfcbb7d9b4958ae112ad9e15889b40d1792d7a1"
+          ],
+          "siblingSums": [
+            "0",
+            "0",
+            "0",
+            "0"
+          ]
+        },
+        {
+          "index": "6",
+          "siblingHashes": [
+            "0x23986cc522839cec93f0cd1422094eee749f0a9fc40479dd90de8f0802f21b25",
+            "0x0f858a7dae79356082714c53b4b9972918f3264f1e70315c7167652992ce0a55",
+            "0x1dbdda9205820079b4c1875266f8bae4bc5cc8bd7d12cbfd8ddfb32d99f8ebcd",
+            "0x03cd92d6befcbb2b9cd6535a1dfcbb7d9b4958ae112ad9e15889b40d1792d7a1"
+          ],
+          "siblingSums": [
+            "0",
+            "0",
+            "0",
+            "0"
+          ]
+        },
+        {
+          "index": "7",
+          "siblingHashes": [
+            "0x270228ae59580216185a6cd87c5c302c918c72dd91af2fce5eb4d08b5736d6e3",
+            "0x0f858a7dae79356082714c53b4b9972918f3264f1e70315c7167652992ce0a55",
+            "0x1dbdda9205820079b4c1875266f8bae4bc5cc8bd7d12cbfd8ddfb32d99f8ebcd",
+            "0x03cd92d6befcbb2b9cd6535a1dfcbb7d9b4958ae112ad9e15889b40d1792d7a1"
+          ],
+          "siblingSums": [
+            "0",
+            "0",
+            "0",
+            "0"
+          ]
+        },
+        {
+          "index": "8",
+          "siblingHashes": [
+            "0x22644a0139da73a93f3fbd98028bd93a39fa8661b93a19a25fa462c8120fad87",
+            "0x1a3dd9c54dc30286a8756732eca67ee8822f46c8c6f20ae65ac2fc49c2cda6e0",
+            "0x0b5e535c982cbc7c2ff718c3870d363f5ec6c33ee7c08bac41dbb435751b214d",
+            "0x1fbec78e9d0d3eb3c6c7e92a496057ea1dd73fd52d25791e4628c7e94b3f421e"
+          ],
+          "siblingSums": [
+            "0",
+            "0",
+            "0",
+            "0"
+          ]
+        },
+        {
+          "index": "9",
+          "siblingHashes": [
+            "0x27d4770253b45492f2e4880e414452423c3bf75787e5927d830e0d9ab619225e",
+            "0x1a3dd9c54dc30286a8756732eca67ee8822f46c8c6f20ae65ac2fc49c2cda6e0",
+            "0x0b5e535c982cbc7c2ff718c3870d363f5ec6c33ee7c08bac41dbb435751b214d",
+            "0x1fbec78e9d0d3eb3c6c7e92a496057ea1dd73fd52d25791e4628c7e94b3f421e"
+          ],
+          "siblingSums": [
+            "0",
+            "0",
+            "0",
+            "0"
+          ]
+        },
+        {
+          "index": "10",
+          "siblingHashes": [
+            "0x09c68ab1fed14354a4441268bedfd12fd5d2200429fce0418c681c5c772f885a",
+            "0x1e99da106154b9073e6746db5d787086456c8a2b2121384bf4d7e034c9444432",
+            "0x0b5e535c982cbc7c2ff718c3870d363f5ec6c33ee7c08bac41dbb435751b214d",
+            "0x1fbec78e9d0d3eb3c6c7e92a496057ea1dd73fd52d25791e4628c7e94b3f421e"
+          ],
+          "siblingSums": [
+            "0",
+            "0",
+            "0",
+            "0"
+          ]
+        }
+      ]
+    }
+  ],
+  "rejectionCount": 9,
+  "rejections": [
+    {
+      "reason": "inflated amount",
+      "tree": 7,
+      "commitment": "0xabb1d6f913295824c930f18e0b3e0e6d460cb8176426e252738de4e7f7db7e65",
+      "amount": "1266149367774642919",
+      "proof": {
+        "index": "2",
+        "siblingHashes": [
+          "0x02ceff6152b429b9bfd1012ba3d428eb8ce55f668f1e3c576ef639b69ea4a655",
+          "0x19e25548dd10c8e4590813f241d97732fbff8c1e5f2d9617b0681daf5f831f7d",
+          "0x29040518715bf3330917e873bc104d86f0d2c05de612c0541852b9e4b8f09ee0",
+          "0x08c77106ca11f23467e1dcf4457e34120000428bfa258114d7259aa321d03f2f"
+        ],
+        "siblingSums": [
+          "0",
+          "0",
+          "0",
+          "0"
+        ]
+      }
+    },
+    {
+      "reason": "foreign commitment",
+      "tree": 7,
+      "commitment": "0x54b1d6f913295824c930f18e0b3e0e6d460cb8176426e252738de4e7f7db7e65",
+      "amount": "1266149367774642918",
+      "proof": {
+        "index": "2",
+        "siblingHashes": [
+          "0x02ceff6152b429b9bfd1012ba3d428eb8ce55f668f1e3c576ef639b69ea4a655",
+          "0x19e25548dd10c8e4590813f241d97732fbff8c1e5f2d9617b0681daf5f831f7d",
+          "0x29040518715bf3330917e873bc104d86f0d2c05de612c0541852b9e4b8f09ee0",
+          "0x08c77106ca11f23467e1dcf4457e34120000428bfa258114d7259aa321d03f2f"
+        ],
+        "siblingSums": [
+          "0",
+          "0",
+          "0",
+          "0"
+        ]
+      }
+    },
+    {
+      "reason": "forged sibling hash",
+      "tree": 7,
+      "commitment": "0xabb1d6f913295824c930f18e0b3e0e6d460cb8176426e252738de4e7f7db7e65",
+      "amount": "1266149367774642918",
+      "proof": {
+        "index": "2",
+        "siblingHashes": [
+          "0x02ceff6152b429b9bfd1012ba3d428eb8ce55f668f1e3c576ef639b69ea4a655",
+          "0x19e25548dd10c8e4590813f241d97732fbff8c1e5f2d9617b0681daf5f831f7c",
+          "0x29040518715bf3330917e873bc104d86f0d2c05de612c0541852b9e4b8f09ee0",
+          "0x08c77106ca11f23467e1dcf4457e34120000428bfa258114d7259aa321d03f2f"
+        ],
+        "siblingSums": [
+          "0",
+          "0",
+          "0",
+          "0"
+        ]
+      }
+    },
+    {
+      "reason": "wrong index",
+      "tree": 7,
+      "commitment": "0xabb1d6f913295824c930f18e0b3e0e6d460cb8176426e252738de4e7f7db7e65",
+      "amount": "1266149367774642918",
+      "proof": {
+        "index": "3",
+        "siblingHashes": [
+          "0x02ceff6152b429b9bfd1012ba3d428eb8ce55f668f1e3c576ef639b69ea4a655",
+          "0x19e25548dd10c8e4590813f241d97732fbff8c1e5f2d9617b0681daf5f831f7d",
+          "0x29040518715bf3330917e873bc104d86f0d2c05de612c0541852b9e4b8f09ee0",
+          "0x08c77106ca11f23467e1dcf4457e34120000428bfa258114d7259aa321d03f2f"
+        ],
+        "siblingSums": [
+          "0",
+          "0",
+          "0",
+          "0"
+        ]
+      }
+    },
+    {
+      "reason": "index in the padding",
+      "tree": 7,
+      "commitment": "0xabb1d6f913295824c930f18e0b3e0e6d460cb8176426e252738de4e7f7db7e65",
+      "amount": "1266149367774642918",
+      "proof": {
+        "index": "9",
+        "siblingHashes": [
+          "0x02ceff6152b429b9bfd1012ba3d428eb8ce55f668f1e3c576ef639b69ea4a655",
+          "0x19e25548dd10c8e4590813f241d97732fbff8c1e5f2d9617b0681daf5f831f7d",
+          "0x29040518715bf3330917e873bc104d86f0d2c05de612c0541852b9e4b8f09ee0",
+          "0x08c77106ca11f23467e1dcf4457e34120000428bfa258114d7259aa321d03f2f"
+        ],
+        "siblingSums": [
+          "0",
+          "0",
+          "0",
+          "0"
+        ]
+      }
+    },
+    {
+      "reason": "proof one level short",
+      "tree": 7,
+      "commitment": "0xabb1d6f913295824c930f18e0b3e0e6d460cb8176426e252738de4e7f7db7e65",
+      "amount": "1266149367774642918",
+      "proof": {
+        "index": "2",
+        "siblingHashes": [
+          "0x02ceff6152b429b9bfd1012ba3d428eb8ce55f668f1e3c576ef639b69ea4a655",
+          "0x19e25548dd10c8e4590813f241d97732fbff8c1e5f2d9617b0681daf5f831f7d",
+          "0x29040518715bf3330917e873bc104d86f0d2c05de612c0541852b9e4b8f09ee0"
+        ],
+        "siblingSums": [
+          "0",
+          "0",
+          "0"
+        ]
+      }
+    },
+    {
+      "reason": "sibling carrying a sum",
+      "tree": 7,
+      "commitment": "0xabb1d6f913295824c930f18e0b3e0e6d460cb8176426e252738de4e7f7db7e65",
+      "amount": "1266149367774642918",
+      "proof": {
+        "index": "2",
+        "siblingHashes": [
+          "0x02ceff6152b429b9bfd1012ba3d428eb8ce55f668f1e3c576ef639b69ea4a655",
+          "0x19e25548dd10c8e4590813f241d97732fbff8c1e5f2d9617b0681daf5f831f7d",
+          "0x29040518715bf3330917e873bc104d86f0d2c05de612c0541852b9e4b8f09ee0",
+          "0x08c77106ca11f23467e1dcf4457e34120000428bfa258114d7259aa321d03f2f"
+        ],
+        "siblingSums": [
+          "1",
+          "0",
+          "0",
+          "0"
+        ]
+      }
+    },
+    {
+      "reason": "sibling that is not a field element",
+      "tree": 7,
+      "commitment": "0xabb1d6f913295824c930f18e0b3e0e6d460cb8176426e252738de4e7f7db7e65",
+      "amount": "1266149367774642918",
+      "proof": {
+        "index": "2",
+        "siblingHashes": [
+          "0x02ceff6152b429b9bfd1012ba3d428eb8ce55f668f1e3c576ef639b69ea4a655",
+          "0x19e25548dd10c8e4590813f241d97732fbff8c1e5f2d9617b0681daf5f831f7d",
+          "0x30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001",
+          "0x08c77106ca11f23467e1dcf4457e34120000428bfa258114d7259aa321d03f2f"
+        ],
+        "siblingSums": [
+          "0",
+          "0",
+          "0",
+          "0"
+        ]
+      }
+    },
+    {
+      "reason": "sibling aliased by the modulus",
+      "tree": 7,
+      "commitment": "0xabb1d6f913295824c930f18e0b3e0e6d460cb8176426e252738de4e7f7db7e65",
+      "amount": "1266149367774642918",
+      "proof": {
+        "index": "2",
+        "siblingHashes": [
+          "0x33334dd433e5c9e3782146e225558148b51947af08d7ace8b2d82f4a8ea4a656",
+          "0x19e25548dd10c8e4590813f241d97732fbff8c1e5f2d9617b0681daf5f831f7d",
+          "0x29040518715bf3330917e873bc104d86f0d2c05de612c0541852b9e4b8f09ee0",
+          "0x08c77106ca11f23467e1dcf4457e34120000428bfa258114d7259aa321d03f2f"
+        ],
+        "siblingSums": [
+          "0",
+          "0",
+          "0",
+          "0"
+        ]
+      }
+    }
+  ],
+  "chainLength": 6,
+  "chain": [
+    {
+      "number": "0",
+      "previousDigest": "0x0000000000000000000000000000000000000000000000000000000000000000",
+      "root": "0x4a6adcef2eb4051fbdab7aa13a046a3e0fdab44a2f0054625eea5e4084fdc308",
+      "total": "0",
+      "leafCount": "1",
+      "asOf": "1790000000",
+      "digest": "0xa92bf8f6999b0ce18d28d8bbd3e8590982b4847ba8560151201d2cb3e9962385"
+    },
+    {
+      "number": "1",
+      "previousDigest": "0xa92bf8f6999b0ce18d28d8bbd3e8590982b4847ba8560151201d2cb3e9962385",
+      "root": "0x020a2730000b03a45431ad22e44a19aa637ec22532c176468a490c2ea0c89a93",
+      "total": "0",
+      "leafCount": "2",
+      "asOf": "1790003600",
+      "digest": "0x470fcfd214cf7f0bd032c1bd5e85dffa88ccab427aab7c110fe81535e818fa73"
+    },
+    {
+      "number": "2",
+      "previousDigest": "0x470fcfd214cf7f0bd032c1bd5e85dffa88ccab427aab7c110fe81535e818fa73",
+      "root": "0xb7a948336c6cc7552e1c2df481273d942b643bb67975e80ad73dded7630ca280",
+      "total": "0",
+      "leafCount": "3",
+      "asOf": "1790007200",
+      "digest": "0x89ef006253ea05263f88f541256a908981c64d49cd65eeb80b72872b14c3f8b9"
+    },
+    {
+      "number": "3",
+      "previousDigest": "0x89ef006253ea05263f88f541256a908981c64d49cd65eeb80b72872b14c3f8b9",
+      "root": "0x458d8ca11dca35c49a3400f93eb5d112d1124a3530711e5dfa80293855af68c9",
+      "total": "0",
+      "leafCount": "4",
+      "asOf": "1790010800",
+      "digest": "0xf94b1dbd50fb36fc28f50387ab922ebc666839a129e08684a763cf4e096ef616"
+    },
+    {
+      "number": "4",
+      "previousDigest": "0xf94b1dbd50fb36fc28f50387ab922ebc666839a129e08684a763cf4e096ef616",
+      "root": "0x3182340d2ef88596c65f992cd4fa0a8f82820114f8aa3f608c8bbedc0d266668",
+      "total": "0",
+      "leafCount": "5",
+      "asOf": "1790014400",
+      "digest": "0x26d579ef524c51368958ebe6d6104af1ffee54b788cf20b09ab6660c6cd8413d"
+    },
+    {
+      "number": "5",
+      "previousDigest": "0x26d579ef524c51368958ebe6d6104af1ffee54b788cf20b09ab6660c6cd8413d",
+      "root": "0x36bc72d32ffbd7f2617e3c2d29f8574a5314499f19cacea4e56984f2ea29dc33",
+      "total": "0",
+      "leafCount": "6",
+      "asOf": "1790018000",
+      "digest": "0xb7c485fdb09999985c1b96c356421c9dc90835a6f4a87be3581053fa0da2b676"
+    }
+  ]
+}

@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math/big"
 	"time"
 
 	"github.com/ethereum/go-ethereum/accounts/abi/bind/v2"
@@ -24,6 +25,8 @@ type Directory struct {
 	interfaceID [4]byte
 	timeout     time.Duration
 }
+
+const maxGenerations = 64
 
 var _ notary.Directory = (*Directory)(nil)
 
@@ -138,6 +141,54 @@ func (d *Directory) GenerationOf(ctx context.Context, epoch uint64) (notary.Gene
 	}
 
 	return d.generation(op, found.Arg1)
+}
+
+func (d *Directory) Lineage(ctx context.Context) ([]notary.Generation, error) {
+	const op = "ethereum.Directory.Lineage"
+
+	ctx, cancel := context.WithTimeout(ctx, d.timeout)
+	defer cancel()
+
+	opts := &bind.CallOpts{Context: ctx}
+
+	count, err := bind.Call(d.contract, opts, d.binding.PackGenerationCount(), d.binding.UnpackGenerationCount)
+	if err != nil {
+		return nil, d.classify(op, err)
+	}
+
+	if !count.IsUint64() || count.Uint64() == 0 || count.Uint64() > maxGenerations {
+		return nil, notary.Errf(
+			notary.KindWrongDirectory,
+			op,
+			nil,
+			"%s counts %s generations",
+			d.expected.Address.Hex(),
+			count,
+		)
+	}
+
+	lineage := make([]notary.Generation, 0, count.Uint64())
+
+	for i := range count.Uint64() {
+		raw, err := bind.Call(
+			d.contract,
+			opts,
+			d.binding.PackGeneration(new(big.Int).SetUint64(i)),
+			d.binding.UnpackGeneration,
+		)
+		if err != nil {
+			return nil, d.classify(op, err)
+		}
+
+		generation, err := d.generation(op, raw)
+		if err != nil {
+			return nil, err
+		}
+
+		lineage = append(lineage, generation)
+	}
+
+	return lineage, nil
 }
 
 func (d *Directory) generation(op string, raw directory.Generation) (notary.Generation, error) {

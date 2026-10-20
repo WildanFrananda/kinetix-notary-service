@@ -29,7 +29,7 @@ func AnchoredClaim(t *testing.T, epochNumber uint64, count int, index uint64) (n
 		AsOf:       Unix(t, 1760000000),
 		AnchoredAt: Unix(t, 1760000060),
 	}
-	claim := notary.Claim{Ledger: LedgerIdentity, Epoch: epochNumber, Entry: entries[index], Proof: proof}
+	claim := notary.Claim{Ledger: LedgerIdentity, Scheme: 1, Epoch: epochNumber, Entry: entries[index], Proof: proof}
 
 	return epoch, claim
 }

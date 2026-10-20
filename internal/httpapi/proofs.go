@@ -73,7 +73,12 @@ func (h *ProofHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	for _, claim := range bundle.Claims {
-		document, err := prooffile.Marshal(claim, h.scheme)
+		scheme := h.scheme
+		if claim.Scheme != 0 {
+			scheme = claim.Scheme
+		}
+
+		document, err := prooffile.Marshal(claim, scheme)
 		if err != nil {
 			h.fail(w, r, err)
 

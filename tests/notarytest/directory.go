@@ -29,6 +29,14 @@ func (d *Directory) Current(context.Context) (notary.Generation, error) {
 	return d.Generations[len(d.Generations)-1], nil
 }
 
+func (d *Directory) Lineage(context.Context) ([]notary.Generation, error) {
+	if d.Err != nil {
+		return nil, d.Err
+	}
+
+	return append([]notary.Generation(nil), d.Generations...), nil
+}
+
 func (d *Directory) GenerationOf(_ context.Context, epoch uint64) (notary.Generation, error) {
 	if d.Err != nil {
 		return notary.Generation{}, d.Err

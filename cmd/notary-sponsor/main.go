@@ -41,7 +41,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 
 	err = container.Invoke(func(
 		client *ethclient.Client,
-		scheme notary.Scheme,
+		newest notary.ConfidentialScheme,
 		statements notary.StatementScheme,
 		directory notary.Directory,
 		verifier *verifying.DirectoryVerifier,
@@ -57,7 +57,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 				Directory:  directory,
 				Verifier:   verifier,
 				Statements: statements,
-				Scheme:     scheme.Version(),
+				Scheme:     newest.Version(),
 			},
 			stdout,
 		)

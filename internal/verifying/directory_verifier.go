@@ -7,19 +7,27 @@ import (
 )
 
 type DirectoryVerifier struct {
-	directory  notary.Directory
-	readers    notary.GenerationReaders
-	scheme     notary.Scheme
-	statements notary.StatementScheme
+	directory    notary.Directory
+	readers      notary.GenerationReaders
+	scheme       notary.Scheme
+	confidential notary.ConfidentialScheme
+	statements   notary.StatementScheme
 }
 
 func NewDirectoryVerifier(
 	directory notary.Directory,
 	readers notary.GenerationReaders,
 	scheme notary.Scheme,
+	confidential notary.ConfidentialScheme,
 	statements notary.StatementScheme,
 ) *DirectoryVerifier {
-	return &DirectoryVerifier{directory: directory, readers: readers, scheme: scheme, statements: statements}
+	return &DirectoryVerifier{
+		directory:    directory,
+		readers:      readers,
+		scheme:       scheme,
+		confidential: confidential,
+		statements:   statements,
+	}
 }
 
 func (v *DirectoryVerifier) Verify(ctx context.Context, claim notary.Claim) (notary.Verification, error) {
@@ -48,7 +56,36 @@ func (v *DirectoryVerifier) Verify(ctx context.Context, claim notary.Claim) (not
 		)
 	}
 
-	verifier := NewVerifier(v.readers.Ledger(generation), v.scheme, v.statements, v.readers.Court(generation))
+	scheme := claim.Scheme
+	if scheme == 0 {
+		scheme = v.scheme.Version()
+	}
 
-	return verifier.Verify(ctx, claim)
+	if scheme != generation.Scheme {
+		return notary.Verification{}, notary.Errf(
+			notary.KindWrongLedger,
+			op,
+			nil,
+			"the proof is scheme %d, and epoch %d is held by a scheme-%d generation",
+			scheme,
+			claim.Epoch,
+			generation.Scheme,
+		)
+	}
+
+	ledger, court := v.readers.Ledger(generation), v.readers.Court(generation)
+	if v.confidential != nil && generation.Scheme == v.confidential.Version() {
+		verifier := NewConfidentialVerifier(
+			ledger,
+			v.readers.Confidential(generation),
+			v.scheme,
+			v.confidential,
+			v.statements,
+			court,
+		)
+
+		return verifier.Verify(ctx, claim)
+	}
+
+	return NewVerifier(ledger, v.scheme, v.statements, court).Verify(ctx, claim)
 }

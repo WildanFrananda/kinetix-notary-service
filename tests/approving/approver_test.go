@@ -12,6 +12,7 @@ import (
 	"github.com/WildanFrananda/kinetix-notary-service/internal/approving"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/keccak"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/notary"
+	"github.com/WildanFrananda/kinetix-notary-service/internal/poseidon"
 	"github.com/WildanFrananda/kinetix-notary-service/tests/notarytest"
 )
 
@@ -28,6 +29,8 @@ type rig struct {
 	observer *notarytest.ApprovalObserver
 	plan     notary.EpochPlan
 	proposal notary.EpochProposal
+	proofs   *notarytest.Proofs
+	two      notary.ConfidentialScheme
 }
 
 func newRig(t *testing.T) *rig {
@@ -72,6 +75,8 @@ func newRig(t *testing.T) *rig {
 		observer: &notarytest.ApprovalObserver{},
 		plan:     plan,
 		proposal: notary.EpochProposal{SnapshotID: plan.SnapshotID, Header: plan.Header, Accounts: proposed},
+		proofs:   &notarytest.Proofs{},
+		two:      poseidon.NewScheme(),
 	}
 }
 
@@ -86,6 +91,8 @@ func (r *rig) approver() *approving.Approver {
 		r.council,
 		r.signer,
 		keccak.NewScheme(),
+		r.two,
+		r.proofs,
 		keccak.NewScheme(),
 		notarytest.CouncilIdentity,
 		ledger,

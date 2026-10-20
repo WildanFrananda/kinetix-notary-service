@@ -74,6 +74,7 @@ timestamped record that no single party controls.
 | 40 | MinIO (2026-10-16) | **Built from source by our CI and published to GHCR.** quay.io now refuses `minio/minio` and `minio/mc`, Docker Hub has no such tag, and upstream is archived. The build takes the last upstream release, `RELEASE.2025-10-15T17-29-55Z`, reproducibly. No security fixes will follow; replacing MinIO is later work, owned by infrastructure. **2026-10-17:** the user chose to replace it after step 12 is released, by a lab spike of SeaweedFS, RustFS and VersityGW against decision 38's seven cases (infra `docs/OBJECT-STORAGE.md` §8). |
 | 41 | Who anchors evidence (2026-10-17) | **A seventh key, the evidence anchorer**, in the SOPS store like the anchorer, funded by the deployer like the answerer. It holds the registry's anchorer role and nothing else. Chosen over the existing anchorer key, which judges its own epochs by its nonce (decision 16, `anchoring/anchorer.go`), and over the council, whose watch would have to read all three feeds. |
 | 42 | How often evidence is anchored (2026-10-17) | **Daily, per stream, only when the stream has new records**: at most three transactions a day. Chosen over hourly (the recommendation): a proof is available the day after the event, and gas is a twenty-fourth. |
+| 43–48 | Scheme v2 (2026-10-20, on my recommendation: *"pake rekomendasi kamu"*) | **gnark PLONK on Base**, inside the v1 interfaces the immutable directory requires; Aztec Ignition SRS; 256 accounts per generation pending the VPS measurement; the blinding kept for auditors; the watch re-checks the proof. Full table in §10 step 13. |
 
 ## 3. What the proof does and does not prove
 
@@ -1279,7 +1280,7 @@ Decisions 31–35 (2026-10-16). Work order:
 | CI | the first PR run went red in Gate go: the browser test was the suite's first `go build`, and git refused the runner-owned checkout. The same cause had emptied `bin/check-boundaries`' import rules on GitHub since CI began (CLAUDE.md, Traps). Fixed before the merge; the merged run has no `error obtaining VCS status` line |
 | docs pin | `kinetix-docs` pins `v1.4.0`, downloads it from the release and checks the bytes; every notary permalink moved to `7d292fa` (the linked files are unchanged since `1beede1`), and the entry point, `RunDocument`, `bin/build-verifier-wasm` and the release job are linked. All docs gates green against the downloaded release |
 
-### Step 12 — phase 2: evidence anchoring
+### Step 12 — phase 2: evidence anchoring. **Live 2026-10-18** (notary v1.5.0, `EvidenceRegistry` 0xbF1F…F480).
 
 Decisions 36–40 (2026-10-16). Three evidence streams, each built in the service that owns the records and
 anchored by one registry here. Nothing goes live until all three are coherent.
@@ -1584,27 +1585,702 @@ evidence anchorer was funded with 0.001 ETH and the `EvidenceRegistry` was deplo
 `0xbF1F15F40cA8Dd63c070d223243febf6731EF480`, block 48260906. `bin/inspect-evidence-registry` passed every
 line: interface, scheme 1, streams `[1, 2, 3]`, the admin and its delay, the evidence anchorer holding the role
 and the liabilities anchorer not, unsealed, and Sourcify `match`. The address is in
-`deploy/base-sepolia.env` and infrastructure's `compose.prod.yaml`. Left: commit this tree, commit
-infrastructure, then tag v1.5.0.
+`deploy/base-sepolia.env` and infrastructure's `compose.prod.yaml`. v1.5.0 was released on 2026-10-18 at
+03:46 UTC, green, and its registry check passed. Order and matching then refused its feeds on every tick:
+their containers predate step 12's infrastructure, which carries the notary's grants, and `bin/prod-deploy`
+recreates only what it deploys. Review's feed was up. The fix is to re-run order's and matching's v1.1.0
+releases; infrastructure's `docs/NOTARY-EVIDENCE-DEPLOY.md` now lists it in the sequence.
 
-### Step 13 — scheme v2: zero-knowledge proof of liabilities
+**Step 12 complete, checked in production on 2026-10-19 at 14:54 UTC.**
+- Order and matching were re-released at their live digests on 2026-10-18, and since then all three feeds have
+  answered: `kinetix_notary_evidence_feed_up` is 1 for `order_lifecycle`, `delivery` and `review`.
+- The first order-lifecycle batch (0) was finalized after closing at 2026-10-18 03:58 UTC.
+- Delivery and review have no batch yet. Neither has produced a record since its log began: no delivery with a
+  hashed photo, and no review, has been made in production. A batch closes as soon as one exists.
+- The evidence anchorer holds 0.000999 ETH, about 282 days of runway. The liabilities ledger is final through
+  epoch 161, with about 685 days of runway.
+- 12-7 is done: the Verify section's evidence pages were deployed in `kinetix-docs` `ea16b63`.
 
-The total stops being public, and the proof gets stronger.
+Production now runs order v1.2.0 and matching v1.3.0, after the shipping-fee release, and review v1.1.1. The public
+Verify pages link the owners' logs at those tags.
 
-- **gnark** (Consensys, Go) — the same language as this service; PLONK over BN254 with a KZG
-  structured reference string from a public ceremony, so there is no per-circuit trusted setup.
-- The circuit proves: every leaf amount is in `[0, 2^64)`; the tree's root is built from those
-  leaves with **Poseidon2** (cheap inside a circuit, unlike keccak); the leaves sum to a total `T`;
-  and the ledger stores only `C = Poseidon(T, blinding)`.
-- gnark exports a Solidity verifier. The handwritten part is `LiabilityLedgerV2` (scheme 2) around it,
-  registered in the directory as a new generation and judged by a court that speaks scheme 2, tested
-  in Foundry the same way v1 is, with differential fixtures from the Go prover. The generated
-  verifier is not counted as this repository's own Solidity.
-- Account holders still verify inclusion with a Merkle path — Poseidon instead of keccak — in the
-  browser (WASM) or the CLI.
-- Beyond one circuit's capacity: recursive aggregation of per-batch proofs.
-- Budget to measure before committing: proving time and memory per 2^16 and 2^20 accounts on the
-  production VPS, which shares 16 GB with the whole estate.
+### Step 13 — scheme v2: zero-knowledge proof of liabilities. **Design 2026-10-20; 13-1 to 13-7 built (uncommitted), the cutover proven end to end on anvil; 13-8 is the user's.**
+
+The total stops being public, and the proof gets stronger. Built with gnark on Base, decided on 2026-10-20
+after a research round on Midnight/Compact (report: `reports/Notary ZK di Midnight Compact.md` in the estate
+root). The user accepted the recommendation and asked that Compact be remembered for a future service.
+
+**What the deployed contracts force (read 2026-10-20).** `LedgerDirectory` is immutable. `registerSuccessor`
+accepts a same-chain successor only when:
+- the current ledger is sealed;
+- the successor reports `type(ILiabilityLedger).interfaceId` through ERC-165, and `genesisEpoch`/`genesisDigest`
+  equal to the sealed head;
+- its court reports `IStatementCourt` and judges that ledger;
+- its withholding court reports `IWithholdingCourt` and stands beside that court.
+
+A directory cannot be replaced on the same chain: a foreign successor needs another chain id and is one-way.
+So generation 2 implements the v1 interfaces, **with scheme-2 meaning carried by the same signatures**:
+- **`verifyInclusion(number, commitment, amount, index, SumNode[] siblings)`** keeps its meaning exactly ("this
+  commitment with this amount is at this index of this epoch"). In scheme 2 every `SumNode.sum` must be 0,
+  because sums are hidden, and `hash` is a Poseidon2 node. A sibling carrying a sum is `false`.
+- **The courts are scheme-agnostic.** `StatementCourt` and `WithholdingCourt` only call `verifyInclusion`, read
+  epochs and check signatures. Generation 2 deploys **new instances of their unchanged source**, bound to the
+  new ledger, so the audited logic and its tests carry over.
+- **`AnchorCouncil` hashes with `SumTree.SCHEME` (1)**, a constant, and passes only an `EpochHeader`, with no room
+  for a proof or a 32-byte commitment. Generation 2 has a council whose digest is scheme 2's. The directory does
+  not check councils (decision 22).
+- **`NotaryPaymaster` is bound to its courts**, so generation 2 needs a new instance, with its own stake and
+  deposit (13-8, the user's).
+
+**Scheme v2.** Hashes inside the tree use gnark-crypto's Poseidon2 for BN254 (width 2, 6 full and 50 partial
+rounds, S-box x^5). `Compress(l, r) = P(l, r)[1] + r`, and `MD(x₁…xₙ)` is its Merkle–Damgård hasher (state 0,
+one 32-byte block per field element), exactly as `ecc/bn254/fr/poseidon2` v0.22.0 defines them. The digest
+chain stays keccak.
+
+| Item | Definition | Permutations |
+| --- | --- | --- |
+| leaf | `MD(1·2^128 + epoch·2^64 + amount, commitment.hi128, commitment.lo128)` | 3 |
+| node | `Compress(left, right)`. No sums: they are proven inside the circuit and never published | 1 |
+| empty (padding) | `MD(2·2^128)` | 1 |
+| total commitment | `C = MD(5·2^128 + total, blinding)`, with a fresh 248-bit blinding per epoch, kept in the notary's database for disclosure to an auditor | 2 |
+| binding root | `root = keccak256(0x04 ‖ treeRoot ‖ C)`, the value an `EpochHeader.root` carries in scheme 2 | — |
+| epoch digest | v1's preimage with scheme 2 and `total = 0`: `0x03 ‖ 2:u16 ‖ number ‖ previousDigest ‖ root ‖ 0 ‖ leafCount ‖ asOf` | — |
+
+- **Packing:**
+  - The tag, epoch and amount share one field element (136 bits). The account commitment stays v1's keccak
+    `bytes32`, in two 128-bit limbs.
+  - Withholding's second derivation (decision 15) therefore carries over unchanged, and the deployed courts'
+    source works as it is.
+- **A node needs no tag, unlike v1's**, because depth is fixed per generation. v1 tags nodes because its
+  canonical depth varies with the leaf count, so a node could otherwise pass for a leaf one level down. Here every
+  proof carries exactly `D` siblings, so a node can never be presented as a leaf. Leaf and empty are still
+  separated from each other by their tags.
+- **Cost:** 256 leaves are 3·256 + 255 = 1,023 permutations, about 0.31M constraints before range checks, against
+  about 0.56M with a tag in every node.
+- **Depth is fixed per generation**, unlike v1's canonical depth. The circuit has a fixed capacity of `2^D`
+  leaves, every proof carries exactly `D` siblings, and leaves at `index ≥ leafCount` must be the empty leaf.
+  `leafCount > 2^D` is refused when building (`TooManyLeaves`). Growing past it is a new generation.
+
+**The circuit (gnark PLONK on BN254).**
+- Public inputs: epoch number, `treeRoot`, `C`, `leafCount`.
+- Private inputs: each leaf's commitment limbs and amount, the total, the blinding.
+- It proves:
+  - every amount is a 64-bit unsigned integer;
+  - every leaf at `index ≥ leafCount` is empty with amount 0;
+  - the leaves hash to `treeRoot`;
+  - their sum is the total, with no wrap: the total is range-checked to 64 bits, as v1 refuses a sum that does
+    not fit;
+  - `C` opens to that total.
+- **The SRS comes from the Aztec Ignition ceremony** (176 participants, ~100.8M points), read and checked with
+  Consensys's `gnark-ignition-verifier` (Apache-2.0), so there is no per-circuit trusted setup.
+  - The proving and verifying keys are derived deterministically from the circuit and that SRS.
+  - The verifying key's hash is pinned in the repository.
+- **gnark exports the Solidity verifier.** It is committed, because it is deployed and source-verified.
+  - `bin/ci` regenerates it and fails on any difference.
+  - It is generated, not written here, so it is not counted as this repository's Solidity.
+  - Proofs are made with `solidity.WithProverTargetSolidityVerifier`: without it they verify in Go and revert on
+    chain (measured in the research).
+
+**LiabilityLedgerV2.** It implements `ILiabilityLedger` with scheme 2's meaning, plus:
+- **`proveEpoch(number, treeRoot, C, leafCount, proof)`**: anyone may call it, because the proof authenticates
+  itself.
+  - It runs the generated verifier and records `binding root ↔ (treeRoot, C, leafCount)` for that epoch number.
+  - `anchor(header)` (anchorer role, the council) then accepts the next epoch only if its `root` and
+    `leafCount` were proven for its number, and `total` is 0.
+  - Two steps keep the v1 selector honest. A header can never be anchored without a proof.
+- **`treeRootOf(number)` and `totalCommitmentOf(number)`**, the two values scheme 2 adds.
+- **`epochAt` returns `total = 0`** for every scheme-2 epoch. A verifier reads `scheme()` first and never reads
+  that zero as a total; the v1 verifier already refuses a ledger whose scheme it does not speak (`wrong_ledger`).
+- **Poseidon2 in Solidity** (`Poseidon2.sol`, BN254 `mulmod`), held to gnark-crypto by a differential fixture
+  (`scheme-v2.json`), the same way `scheme-v1.json` holds keccak.
+
+**Measured in the research (gnark v0.16.4, laptop arm64, 6 cores, 7 GiB limit; to be re-measured on the x86-64
+VPS):**
+- Poseidon2 costs 302 PLONK constraints, and the whole tree about 630 per leaf.
+- 8 leaves prove in 0.155 s with 35 MiB. 1,024 leaves take 14–16 s and 1.77 GiB.
+- The PLONK verifier costs 273,855 gas on chain.
+- BN254 recursion costs 8.21M constraints per inner proof, so it is **not** how a large tree is split: this
+  replaces the "recursive aggregation" line this step used to carry.
+- The VPS has about 1.1 GiB free (`MemTotal` 11,960 MiB, 10.6 GiB allowed to containers). One proof there fits
+  about 256 leaves.
+
+**Decisions taken 2026-10-20 on my recommendation (the user: *"pake rekomendasi kamu"*):**
+
+| # | Question | Decision |
+| --- | --- | --- |
+| 43 | Where v2 lives | **Base, gnark PLONK.** Midnight was researched and rejected for now: no verifier outside Midnight, resetting testnets, two critical advisories. Compact is noted for a future service. |
+| 44 | How v2 meets the immutable directory | **The v1 interfaces with scheme-2 meaning**, as above. New instances of the unchanged courts, a scheme-2 council and a new paymaster. No new directory. |
+| 45 | Trusted setup | **Aztec Ignition through `gnark-ignition-verifier`**. No per-circuit ceremony, so Groth16 is out. |
+| 46 | Capacity of generation 2 | **`D = 8` (256 accounts)**, settled 2026-10-20 by the VPS measurement in 13-2: 36.9 s and 1.21 GiB under a 1.5 GB, 2-CPU cap. Production holds about five accounts. More is a later generation with a dedicated prover host or commitment-chained chunk proofs, never recursion. |
+| 47 | Disclosing the total | **Kept by the notary**: the blinding stays in its database, so an auditor can be shown `(total, blinding)` opening `C`. No public reveal. |
+| 48 | How the watch approves | **It recomputes `treeRoot` and `C`** from the rows payment recorded plus the salts and blinding notaryd forwards over the mesh. It verifies the proof with the same verifying key before it signs, so a council approval always means two parties checked the proof. |
+
+**13-1, 2026-10-20: built and green (`bin/ci` both halves, Go coverage 85.2%), uncommitted.**
+- **Core (`internal/notary`, standard library only):** `ConfidentialScheme`, `ConfidentialTree` (fixed depth,
+  `MaxConfidentialDepth = 16`, sums kept private), `ConfidentialHeader`, `ConfidentialEpoch`,
+  `VerifyConfidentialInclusion` (refuses a sibling with a sum and a non-canonical sibling), `Blinding` and
+  `BlindingSource`.
+- **`internal/poseidon`:** its own Poseidon2 permutation on gnark-crypto's `fr` and round keys, so there is no panic
+  and no unchecked error, held to gnark-crypto's `Compress` and Merkle–Damgård hasher on random inputs.
+  - Known answers are pinned: `Compress(0, 0) = 0x292c…9dfb`, empty leaf `0x09c6…885a`.
+  - A one-line mutation of the internal matrix turned five tests red.
+- **Solidity:**
+  - `confidential/Poseidon2.sol` is MIT and fully unrolled; its 62 round keys were printed once from gnark-crypto.
+  - `ConfidentialTree.sol` provides `wellFormed` and `computeRoot`, split because forge-lint's `boolean-cst`
+    refuses a constant inside a tuple.
+  - `ConfidentialEpochChain.sol` holds the scheme-2 digest.
+- **The differential fixture:**
+  - `tests/fixtures` writes `scheme-v2.json`: 24 compressions including `p−1`, 20 leaves, 6 binding roots, 10
+    trees of depth 0–4 with every proof, 9 rejections and a 6-link digest chain.
+  - `ConfidentialDifferential.t.sol` re-checks all of it: 9/9.
+  - **The decisive rejection is a sibling aliased as `x + p`.** `mulmod` would silently accept it, and only the
+    explicit `< PRIME` check refuses it, on both sides.
+- **Dependencies:** gnark-crypto v0.18.1 → v0.22.0 (2026-10-02), go-ethereum v1.17.8 still builds, and the `go`
+  directive moved 1.26.4 → 1.26.8 (the image is 1.26.9). `bin/check-boundaries` now keeps gnark and gnark-crypto
+  in `internal/poseidon`, `internal/plonk` and the composition root; a planted import in `internal/keccak` was
+  caught.
+
+**The SRS, found while preparing 13-2.** Verifying all of Aztec Ignition means downloading every one of the 176
+contributions, about 1 TB, which this laptop and its link cannot do. The circuit needs about 2^20 points, all in
+the first transcript of the final contribution (~322 MB). The plan:
+- that transcript, checked against Aztec's published hash;
+- pairing consistency over every point used, which proves a powers-of-tau structure;
+- `Follows` against the previous contribution's first transcript;
+- `gnark-ignition-verifier`'s KZG sanity check.
+
+What remains trusted, and is to be written down as such: that τ is unknown, which rests on the ceremony. The full
+1 TB check can be run once on a cloud machine if the user wants it.
+
+**Revised 2026-10-20 after reading the bucket (range reads of a few hundred bytes, nothing stored):**
+- **The SRS the world uses is `MAIN IGNITION/sealed/transcript00.dat`**, not the last participant's transcript.
+  - Its τ in G2 equals the manifest's `crs.t2`, the point barretenberg pins.
+  - The last participant's (position 197) does not equal it: a sealing step multiplied τ once more.
+  - `monomial/transcript00.dat` is the same points with the generator in front.
+- **Every contribution can be checked, not only the last one**, because `Follows` reads only a transcript's
+  first G1 point and its two G2 points. Two range reads per transcript (92 + 256 bytes) give all 176
+  participants and the seal, about 60 KB in all.
+- Only the sealed transcript is read whole (322,560,348 bytes): its BLAKE2b checksum, and the powers of τ for
+  the points the SRS uses.
+- The ceremony's file layout is confirmed on the real files: the header reads `(0, 20, 100800000, 1, 5040000,
+  2, 0)`, each coordinate is four big-endian words with the least significant first, and the G1 points start at
+  `τ·[1]`, so the importer puts the generator in front.
+
+**`internal/ignition` and `cmd/notary-srs` (built 2026-10-20).**
+- **Checks, in this order:**
+  - the manifest names `MAIN IGNITION` with its point counts, and positions that strictly increase;
+  - every transcript header is the first transcript's;
+  - every coordinate is canonical (`< p`), and no point is at infinity or outside its group;
+  - each contribution follows the one before it, the first following the generator: `e(Gᵢ, [1]₂) = e(Gᵢ₋₁, [zᵢ]₂)`;
+  - each contribution's τ in G2 is its τ in G1;
+  - the seal's τ is the manifest's `crs.t2`;
+  - the sealed file matches its own checksum, and nothing follows the checksum;
+  - its first point and τ are the ones its range reads gave;
+  - its points are successive powers of τ (a random linear combination, one pairing);
+  - a KZG commitment made with the result opens and verifies.
+- **Failure mode:** a 404 is a refusal (the manifest names a transcript nobody published). Every other HTTP
+  failure, and a file that ends early, is `source_unavailable`, never a verdict on the ceremony.
+- **The tool:** `notary-srs -depth D -srs out.bin [-verifier PlonkVerifier.sol]`. It sizes the SRS from the
+  compiled circuit (domain + 3), writes it with `O_EXCL`, and prints its SHA-256. With `-verifier` it also derives
+  the Lagrange basis, runs the setup and writes the Solidity verifier for that depth. Both hashes are what gets
+  pinned.
+- **Tests (`tests/ignition`)** run against a synthetic ceremony served over HTTP with ranges:
+  - an honest ceremony gives exactly the powers of its τ;
+  - an imported SRS proves a depth-0 epoch end to end;
+  - 11 forgeries are refused: a broken chain, a τ that disagrees with itself, a seal that is not the manifest's,
+    a point that is not the next power, a bad checksum, a coordinate aliased by `p`, a point at infinity,
+    another ceremony, participants out of order, a missing transcript, a transcript of another size;
+  - 2 outages are never read as refusals.
+- **Controls:** with the chain check off, its case went red. The powers check and the KZG sanity check each catch
+  a wrong power alone: with both off it went red, with either one on it stayed green.
+- **The real import, 2026-10-20 04:19–04:22 UTC** (the user said yes; `notary-srs -depth 8 -srs`):
+  - every check held: the chain of all 176 participants and the seal, the sealed file's checksum, the powers of τ,
+    the KZG opening;
+  - the SRS is 524,291 points, 16.0 MB, SHA-256 `63cdfe7a…f784d`, kept in `dist/srs/` (ignored by git);
+  - `notary-srs -from` then derived the depth-8 verifier twice, byte-identical: SHA-256 `79568558…64c9`,
+    verifying key `9d9d7335…4ce0`, circuit `cd63b6b8…8944`;
+  - the four hashes are pinned in `internal/plonk/production.go`, and the verifier is
+    `contracts/src/confidential/PlonkVerifier.sol`;
+  - how the image gets the SRS is open, for 13-7. A release asset fetched with a pinned checksum is the likely
+    answer.
+
+**13-2, 2026-10-20: done, uncommitted.** The circuit, the prover, on-chain verification, the Ignition importer, the
+real import, the production verifier with its pins, and the VPS measurement that settled `D = 8`.
+- **The circuit (`internal/plonk.LiabilityCircuit`).**
+  - Public inputs, in this order: `Epoch`, `TreeRoot`, `TotalCommitment`, `LeafCount`. The order is the
+    Solidity verifier's `public_inputs`, and the fixture holds it.
+  - Range checks: epoch, every amount and the total to 64 bits, every commitment limb to 128.
+  - Padding: a chained `IsZero` product marks the leaves at `index ≥ leafCount`, which must be empty with amount
+    0. `leafCount ≤ 2^D` is asserted.
+- **Tests (`tests/plonk`).**
+  - Every honest epoch of depth 0–3 at every leaf count is solved.
+  - Eight forgeries are refused: another tree root, another `C`, another epoch, a −1 that cancels another
+    amount, a total that overflows, a limb wider than 128 bits, an amount hidden in the padding, and more
+    accounts than the capacity.
+  - A control proves the forgery builder agrees with the circuit when it is honest.
+  - Each added account costs about 1,417 constraints, held under 1,500 by a test.
+- **The prover.**
+  - `Compile`, then `NewProver(depth, system, canonical, lagrange)`.
+  - `Prove` returns the proof in the verifier's byte layout. It verifies the proof itself before returning it,
+    and returns `disagreement` if that fails.
+  - `ExportVerifier` writes the Solidity verifier with `pragma solidity 0.8.37`.
+- **Measured on the laptop (arm64; `KINETIX_NOTARY_MEASURE_DEPTHS`, peak RSS from `VmHWM`):**
+
+  | D | accounts | constraints | prove | peak RSS |
+  | --- | --- | --- | --- | --- |
+  | 6 | 64 | 92,857 | 1.9 s | 314 MB |
+  | 7 | 128 | 183,546 | 4.1 s | 617 MB |
+  | 8 | 256 | 359,789 | 6.8 s | 1.12 GB |
+
+  **Measured on the VPS, 2026-10-20 04:15 UTC** (the same test binary, amd64, inside the live notary image with
+  `--memory 1500m --memory-swap 1500m --cpus 2 --network none --read-only`, one container per depth, then
+  removed; the host had 8.3 GB available before and after):
+
+  | D | accounts | compile | setup | prove + verify | peak RSS |
+  | --- | --- | --- | --- | --- | --- |
+  | 6 | 64 | 0.2 s | 2.3 s | 9.1 s | 357 MiB |
+  | 7 | 128 | 0.3 s | 6.8 s | 17.5 s | 589 MiB |
+  | 8 | 256 | 0.6 s | 8.7 s | 36.9 s | 1.21 GiB |
+
+  The "1.1 GiB free" above was the sum of the containers' memory limits, not their use. notaryd itself runs at
+  27 MiB of its 192 MiB.
+
+  **Decision 46 settled: `D = 8`.** It fits under a 1.5 GB cap with 0.3 GB to spare, and costs about 47 s of
+  two cores per hourly epoch.
+
+  **For 13-5, my recommendation: a one-shot prover process.** notaryd starts `notary-prove` for each epoch, and
+  the child compiles, sets up, proves, writes the proof and exits.
+  - Between epochs notaryd stays at its 27 MiB. The 1.3 GB is held only for those 47 s, and is returned in full.
+  - An OOM kills the child, not notaryd, which reports the failure as one.
+  - notaryd's `mem_limit` must still cover the child, because a cgroup counts its children: about 1.6 GB.
+  - A limit is a ceiling, not a reservation.
+- **On chain, against a proof made in Go.**
+  - `tests/fixtures` builds a depth-3 prover over a fixed test SRS: τ = sha256(`kinetix.notary.plonk.test-srs`)
+    mod r, through `unsafekzg.WithToxicValue`. It writes:
+    - `contracts/test/support/TestPlonkVerifier.sol`, gnark's verifier renamed;
+    - `plonk-v2.json`: the statement, the public inputs read from gnark's public witness, and a proof.
+  - The check compares the verifier byte for byte, and the statement. A PLONK proof is randomized, so its bytes
+    are left to Foundry.
+  - `PlonkVerifier.t.sol`, 7/7:
+    - the Go proof verifies, for **275,464 gas**, with an 864-byte proof (27 words);
+    - it is refused for any other statement, any input aliased by `+ p`, a missing or an extra input, each of
+      its 27 words with one bit flipped, and a proof one word short or long.
+  - Controls: one flipped digit in the committed proof turned Foundry red (`error ec operation`); a 64 → 63 range
+    check on the total turned the Go check red (`TestPlonkVerifier.sol is stale`).
+- **Found: a malformed point burns all the gas it is given.**
+  - gnark's verifier calls the ecMul and ecAdd precompiles with `gas()`. A point off the curve makes the precompile
+    fail, which consumes everything forwarded, and only then does it revert `error ec operation`.
+  - Uncapped, the first tamper test exhausted Foundry's 1.07 billion gas; the tests now give each call 1M.
+  - For 13-3: `LiabilityLedgerV2` does **not** cap the verifier's gas. A cap in an immutable contract breaks the
+    day a fork reprices the precompiles, and the burn falls only on whoever sent the bad proof. The ledger treats
+    a revert and `false` alike: not proven. notaryd estimates before it sends (13-5), so its own bad proof never
+    leaves the host.
+
+**The production proof, 2026-10-20.**
+- `tests/fixtures` proves an epoch of 5 accounts at `D = 8` with the Ignition SRS (85 s on the laptop, setup
+  included) into `plonk-production.json`, with `KINETIX_NOTARY_IGNITION_SRS` set and `-update`.
+- With the variable set, the same test also derives everything again and checks the four pins and the committed
+  verifier byte for byte. Without it, CI compares the statement and the pins, and Foundry verifies the committed
+  proof.
+- `ProductionPlonkVerifier.t.sol`, 5/5:
+  - the proof verifies with the production verifier: 275,464 gas, the same as at depth 3, because PLONK
+    verification does not grow with the circuit;
+  - it is refused for any other statement;
+  - the test verifier's code is not the production one's;
+  - a depth-8 ledger proves the epoch (388,774 gas), anchors it, and closes it to a second proof.
+- Controls: one byte appended to the production verifier turned its pin test red.
+
+**13-3, 2026-10-20: `LiabilityLedgerV2` built and green, uncommitted.**
+- **Proofs are keyed by statement, not by epoch number.** `proveEpoch` is open to anyone, and anyone can prove a
+  well-formed tree of their own. A slot per number could therefore be overwritten, blocking the notary's anchor.
+  The ledger records `keccak(number, bindingRoot, leafCount)`, and `anchor(header)` accepts only a header whose
+  number, `root` and `leafCount` were proven. A stranger's proof for the same number is stored beside the
+  notary's, and never in its place.
+- **Other rules:**
+  - `header.total` must be 0 (`TotalNotHidden`);
+  - `leafCount ≤ 2^D` on both calls (`TooManyLeaves`);
+  - `treeRoot` and `C` must be field elements (`NotAFieldElement`);
+  - an epoch below `nextEpoch` cannot be proven any more (`EpochClosed`), and a statement cannot be proven twice
+    (`StatementAlreadyProven`);
+  - an epoch ahead of its turn can be proven, so notaryd may prove before the previous anchor lands;
+  - a verifier that reverts and one that answers `false` are the same `ProofRejected`;
+  - the verifier is called without a gas cap, as decided in 13-2;
+  - the constructor refuses a verifier with no code, a depth above 16, and a role grant that does not happen.
+- **The verifier is held as gnark's generated `PlonkVerifier` type, with no interface of ours.** Slither calls
+  an interface method named `Verify` a naming violation, and the name is gnark's selector. `verifier()` returns
+  its address.
+- **Size** (`forge build --sizes`): 15,749 bytes of runtime code, under EIP-170's 24,576, and 16,884 of initcode.
+- **Tests:**
+  - 40 unit tests on a scripted verifier, which accepts only the exact `(proof, inputs)` it was given, so the
+    order of the public inputs is checked;
+  - 5 against the depth-3 test verifier and a real Go proof: Go's scheme-2 digest equals Solidity's, every
+    account's inclusion verifies, any other statement is refused, a broken point is refused rather than
+    panicking, and a valid proof on file anchors no other header;
+  - 4 fuzz tests, 1,024 runs each;
+  - 6 invariants over 16,384 calls: every anchored epoch is a proven statement with its total hidden, the chain
+    recomputes, the head is the last digest, sealing is permanent, and no action had an outcome the rules
+    forbid.
+- **Controls:**
+  - keying by number alone, plus no total check, turned 4 unit tests red;
+  - no proof check in `anchor` turned 5 invariants red.
+- **Gas** (depth 3, real proof): `proveEpoch` about 355,000, `anchor` 183,399, `verifyInclusion` 121,320.
+- **Analysis:**
+  - Slither 0;
+  - Aderyn accepts `centralization-risk` on the admin's seal and the anchorer's anchor, as for v1;
+  - the generated verifier is left out of both analysers, as `dependencies/` is;
+  - the three `unchecked-return` findings were fixed in code.
+
+**13-4, 2026-10-20: the generation's contracts, built and green, uncommitted. The operator scripts remain.**
+- **`ConfidentialAnchorCouncil` is `AnchorCouncil` with only its digest and its ledger check changed.**
+  - It hashes with `ConfidentialEpochChain`, and its constructor also requires `IConfidentialLedger`.
+  - `AnchorCouncil.sol` cannot be edited, because it is the verified source of the live council.
+  - `tests/sources` rebuilds the copy from the original by its four substitutions, and fails on any other
+    difference. A planted `MIN_THRESHOLD = 1` turned it red.
+  - The same test holds `DeployConfidentialAnchorCouncil.s.sol` to `DeployAnchorCouncil.s.sol`: only the council's
+    type differs.
+  - It keeps `IAnchorCouncil`, so notaryd's and the watch's bindings serve generation 2 unchanged.
+  - Its 6 tests cover what differs:
+    - it refuses a scheme-1 ledger;
+    - its digest is the ledger's;
+    - two approvals anchor a proven epoch;
+    - approvals of the scheme-1 digest are refused;
+    - it cannot anchor what nobody proved.
+  - Everything else is `AnchorCouncil`'s suite, by construction.
+- **The unchanged courts and paymaster judge generation 2** (`GenerationTwo.t.sol`, 7/7):
+  - the directory registers it at the sealed head with scheme 2, and routes epochs on either side of it;
+  - a new `StatementCourt` records a false statement, refuses to fault a true one, and treats a sibling carrying a
+    sum as a fault;
+  - a new `WithholdingCourt` takes a scheme-2 answer, refuses a wrong one and records a silence;
+  - a new `NotaryPaymaster` sponsors only what its court would take, and refuses generation 1's court.
+- **Deploy scripts:**
+  - `DeployLiabilityLedgerV2` deploys the production verifier and the ledger in one broadcast, both through the
+    CREATE2 factory. It reads the genesis (next epoch, head, last snapshot) from the predecessor on chain, and
+    refuses unless the predecessor is sealed (`PredecessorNotSealed`).
+  - The genesis can only be read after the seal, so the order on the real chain is: seal v1, deploy generation
+    2, hand anchoring to its council, register it. Anchoring stops between the seal and the first generation-2
+    anchor.
+  - The courts and the paymaster use their existing scripts.
+  - `DeployGenerationTwo.t.sol`, 6/6: the predicted addresses, the genesis from the sealed head, the verifier's
+    code, refusing an unsealed predecessor, a taken address, a missing factory, and a scheme-2 council beside a
+    scheme-1 ledger.
+- **Rehearsed on a Base Sepolia fork** (`fork/GenerationTwoFork.t.sol`, block 48352128, pinned as
+  `KINETIX_NOTARY_FORK_GENERATION_BLOCK`), 2/2:
+  - the real v1 ledger was sealed at its real head (epoch 176 next) by the real admin, impersonated;
+  - generation 2 was deployed through its scripts and the real CREATE2 factory;
+  - the live, immutable `LedgerDirectory` registered it;
+  - the production verifier accepted an Ignition proof of epoch 176: `plonk-production.json` is proven for the
+    fork's next epoch for exactly this reason;
+  - the scheme-2 council anchored it on two approvals;
+  - every account's inclusion verified through the directory's generation 1.
+- **The operator layer, 2026-10-20:**
+  - **`deploy/base-sepolia-2.env` is generation 2, one file per generation.** It holds only what a generation owns:
+    `KINETIX_NOTARY_SCHEME=2`, the predecessor, `D`, fresh salts, the same admin, keys and council members, and
+    empty addresses that fill in as each part lands. The directory, the evidence registry and the fork pins stay
+    in generation 1's file. Every existing `deploy-*`, `inspect-*`, `fund-*`, `hand-over-anchoring` and
+    `retire-anchorer` serves it unchanged.
+  - **`bin/seal-ledger <network> <head> [--broadcast]`** is new. It is the admin's, a dry run by default, and takes
+    the head to seal at, which must still be the head. It prints the successor's genesis and waits for `latest` to
+    show the seal.
+  - **`bin/deploy-ledger`** with scheme 2 runs `DeployLiabilityLedgerV2`. It refuses while the predecessor still
+    anchors, and prints the genesis it will use.
+  - **`bin/deploy-council`** picks the council by the ledger's own `scheme()`, and refuses when the file and the
+    ledger disagree.
+  - **`bin/inspect-ledger`** with scheme 2 checks:
+    - the predecessor is sealed, and the genesis is its head;
+    - `D`;
+    - the verifier's code is `forge inspect PlonkVerifier deployedBytecode`.
+  - **`bin/inspect-council`** checks that the council hashes a sample header with its ledger's scheme. That catches
+    a scheme-1 council beside a scheme-2 ledger, which a scheme-1 constructor would accept. It was run against the
+    live council: ok.
+  - **`bin/rehearse-deploy`** rehearses a scheme-2 file on anvil:
+    - a throwaway predecessor, sealed by its admin;
+    - two CREATE2s for the verifier and the ledger;
+    - the courts, the scheme-2 council and the staked paymaster;
+    - the council's digest scheme is checked, for both files.
+
+    A planted scheme-1 council turned it red.
+  - **Read-only runs against the live chain:**
+    - `deploy-ledger base-sepolia-2` refused: the predecessor still anchors;
+    - `seal-ledger base-sepolia <head>` simulated the admin's seal and sent nothing;
+    - a stale head was refused.
+
+**Decision 48 revised, 2026-10-20, on my recommendation.**
+- **The watch does not verify the PLONK proof in Go.** It recomputes `treeRoot` and `C` from payment's rows plus
+  the salts, secrets and blinding notaryd forwards. Before it signs, it requires
+  `isProven(number, root, leafCount)` on chain.
+- **Two parties still check every anchored epoch.**
+  - The watch checks that the statement is payment's.
+  - The chain's verifier, the canonical check, checks the proof. The ledger refuses to anchor what it did not verify.
+- **What this avoids:**
+  - shipping the verifying key to the watch;
+  - parsing gnark's Solidity proof layout back in Go;
+  - a second verifier that could disagree with the deployed one.
+- **It fixes the order:**
+  1. prove;
+  2. `proveEpoch` lands;
+  3. the watch approves;
+  4. the council anchors.
+
+**13-5 work order (off chain), each slice gated by `bin/ci`:**
+- **13-5a Core:**
+  - `PlanConfidentialEpoch`: the same account opening as v1, with keccak commitments, then a `ConfidentialTree` of
+    depth `D` and a fresh blinding;
+  - the plan carries `treeRoot`, `C`, the blinding and `D`.
+- **13-5b Prover:**
+  - `notary.EpochProver`, implemented by `cmd/notary-prove`, a one-shot child (input on stdin, proof on stdout);
+  - the child loads the SRS file, checks it against the pin, and exits;
+  - an in-process prover serves the tests.
+- **13-5c Store and state machine:**
+  - migration 00006: the scheme-2 columns (scheme, tree root, C, blinding, depth, proof) and an attempt kind
+    (`proof` or `anchor`);
+  - states: `built`, then `proved` (proof stored), then `proof_sent`, then `proven` (seen at latest), then the
+    existing `submitted`, `mined` and `finalized`;
+  - a proof that leaves the chain sends the epoch back to `proved`;
+  - `proveEpoch` and the anchor share the anchorer key's nonce sequence, one transaction in flight at a time.
+- **13-5d Watch:**
+  - `watch.proto` gains the blinding, an additive field in `kinetix-contracts`, which the user publishes;
+  - the watch rebuilds the scheme-2 tree, compares `treeRoot`, `C` and the root, requires `isProven`, and signs the
+    scheme-2 digest.
+- **13-5e Proof API and format:**
+  - `inclusion.v3`: siblings without sums, the epoch's depth, no total;
+  - the proof API serves it for scheme-2 epochs.
+- **13-5f Verifiers:**
+  - `internal/verifying` picks the scheme by the generation the directory names;
+  - scheme 2 checks against `treeRootOf` and `depth()` in Go and through `verifyInclusion` on chain;
+  - `notary-verify` and the browser build follow, compared case by case as today.
+
+**13-5 progress, 2026-10-20 (uncommitted; gate green, Go coverage 84.8%):**
+- **13-5a, done:**
+  - `notary.PlanConfidentialEpoch`, with the same account opening and ordering as v1, now shared;
+  - `ConfidentialPlan` holds the scheme, `treeRoot`, `C`, the blinding, `D` and the proof;
+  - `notary.RebuildEpochTree` rebuilds either scheme from stored accounts and checks it against the anchored
+    statement: root and total for scheme 1, `treeRoot`, `C` and the binding root for scheme 2. The proof API and the
+    withholding answerer both use it.
+- **13-5b, done:**
+  - `notary.EpochProver`, implemented in process by `plonk.EpochProver`, and one shot by `cmd/notary-prove`;
+  - `notary-prove` reads a JSON request on stdin, loads the SRS (`KINETIX_NOTARY_SRS_PATH`, checked against
+    `KINETIX_NOTARY_SRS_SHA256`) and writes the proof on stdout. Exit codes: 65 unprovable, 78 misconfigured.
+  - `internal/proverproc` runs it from `PATH`; a fixed binary name keeps gosec G204 satisfied in code;
+  - the tests build the real binary over a test SRS;
+  - a child that dies is `unknown`, never a verdict;
+  - the image carries `notary-prove`.
+- **13-5c, done, without a new state:**
+  - the epoch is proven while it is built, and stored with its proof;
+  - whether the proof is on chain is read from the chain (`isProven` at latest), not kept as a state;
+  - `submit` sends `proveEpoch` until the statement is proven, and only then asks the watch and anchors;
+  - `keepAlive` and `replace` work per attempt kind, so a proof is outbid, re-broadcast and resent exactly as an
+    anchor is;
+  - after proving, the writer takes the lease again, because a proof outlasts the 30 s lease: the fence still holds,
+    and another writer's lease aborts the save;
+  - migration 00006 adds the scheme-2 columns, CHECKs that a scheme-2 row is whole and hides its total, and an
+    attempt `kind`;
+  - recent costs are summed per epoch, so the runway counts both transactions;
+  - `ethereum.ProofWriter` signs `proveEpoch` with the anchorer key, sharing its nonce sequence;
+  - `EpochNotProven` on an anchor is `deferred`; `ProofRejected`, `EpochClosed` and the other proof refusals abandon
+    the epoch;
+  - `StatementAlreadyProven` counts as done;
+  - metrics `kinetix_notary_proving_seconds` and `kinetix_notary_proving_failures_total`.
+- **Tests:**
+  - 7 state-machine cases on fakes, including a stuck proof outbid, a refused proof, a failing prover, a proof
+    reorged out before any approval, a proof longer than the lease, and a lease taken while proving;
+  - 4 store cases on Postgres;
+  - 3 proof-writer cases on anvil, a real Go proof landing on the test verifier;
+  - 2 proof-API cases.
+- **Controls:**
+  - without the lease renewal, its test went red;
+  - without the `isProven` gate, 6 cases went red.
+- **13-5d, done in the notary; the contract is the user's to publish:**
+  - `kinetix-contracts` `notary/v1/watch.proto` gains `EpochProposal.confidential` (field 8), a
+    `ConfidentialProposal` with the scheme, `D`, `tree_root`, `total_commitment` and the blinding. It is additive:
+    `buf breaking` against `main` is clean and `buf format` passes.
+  - The notary builds against the edited proto in its ignored `.contracts` copy until the user publishes, and
+    GitHub CI stays red on the missing field until the pin moves, as in step 12.
+  - The anchorer sends the statement and the blinding, never the proof.
+  - The watch rebuilds with `AssembleConfidentialEpoch` and compares the header, `treeRoot` and `C`. It reads `D`
+    and `isProven` through a keyless `ethereum.ProofReader`, and signs the scheme-2 digest.
+  - A statement not yet proven is `deferred`, not refused.
+  - 3 cases: approval over the scheme-2 digest, recovered; waiting for an unproven statement; 7 refusals (another
+    tree root, commitment, blinding or depth, a total shown, another ledger depth, a watch without scheme 2).
+  - 2 wire cases: the confidential part crosses gRPC whole, and a zero blinding never reaches the watch.
+- **13-5e, decided: no `inclusion.v3`.**
+  - A scheme-2 document is `kinetix.notary.inclusion.v2` with `"scheme": 2` and every sibling's sum `"0"`, because
+    the document already names its scheme. The browser verifier's format and the docs' pin do not move.
+  - `notary.Claim` carries its scheme. The proof API stamps it from the record and encodes each document with it.
+  - `prooffile.Decode` takes the newest scheme the caller speaks, accepts 1 up to it, and limits siblings by the
+    scheme's depth (64 for scheme 1, 16 for scheme 2).
+  - Every caller still passes 1, except `notary-verify`, the browser build and `notary-sponsor`, which pass 2.
+- **13-5f, done:**
+  - `DirectoryVerifier` refuses a proof whose scheme is not its generation's (`wrong_ledger`), and verifies a
+    scheme-2 generation with `ConfidentialVerifier`;
+  - `ConfidentialVerifier` checks the proof with Poseidon2 against `treeRootOf` and `depth()` at `finalized`, and
+    through `verifyInclusion` on chain. It refuses a verdict when the two disagree, as v1 does;
+  - `ethereum.Ledger` is built for its generation's scheme, so a scheme-2 generation's identity check passes;
+  - 5 cases.
+- **The scheme-2 daemon, done:**
+  - `KINETIX_NOTARY_SCHEME` (1 by default, or 2). With 2, `KINETIX_NOTARY_SRS_PATH` and `KINETIX_NOTARY_SRS_SHA256`
+    are required.
+  - The SRS file is hashed against its pin at start.
+  - `D` is read from the ledger's `depth()`.
+  - The ledger adapter is built for the configured scheme, so a scheme-1 notary refuses a scheme-2 ledger at start
+    (`wrong_ledger`), and the other way round.
+  - Blindings come from `crypto/rand`.
+  - The watch always has a keyless `ProofReader` on its ledger and needs no new setting.
+- **End to end on anvil and Postgres** (`TestTheDaemonProvesAnchorsAndServesASchemeTwoEpochEveryHolderCanVerify`,
+  16 s), through the full dig graph:
+  - the real `notary-prove` child proved epoch 0 over a test SRS;
+  - `proveEpoch` landed on a depth-3 `LiabilityLedgerV2` beside the test verifier;
+  - the watch, over gRPC, rebuilt the tree and required `isProven`;
+  - the scheme-2 council anchored it, and it finalized with a total of 0;
+  - three holders each fetched their proof from the API, a scheme-2 document;
+  - the directory-routed `notary-verify` path found it `included` and `attributable`.
+
+  Control: a proof API that ignored the claim's scheme turned it red.
+- **Left at the end of 13-5:**
+  - 13-6, the lab on the Ignition SRS at `D = 8`;
+  - 13-7, infra and docs;
+  - the user's contracts release that carries `ConfidentialProposal` — done: contracts v1.6.0, commit
+    `563391d4`, pinned in `bin/sync-contracts`; the full gate passed on it (Go coverage 84.9%).
+
+**13-6, 2026-10-20: the cutover rehearsed off chain found that it could not happen.** Every test so far had
+started generation 2 on a fresh database. Production cuts over with the database it has, and three parts of
+notaryd assumed one ledger for life:
+- **The anchorer refused its own history.** A database whose newest final epoch is on another ledger was
+  `ledger_diverged`, so notaryd pointed at generation 2 would never have anchored again. It now accepts that
+  database when the configured ledger's genesis is exactly that epoch's successor and digest
+  (`Anchorer.succeeds`), and refuses anything else with "does not start where it ends".
+- **The proof API signed every statement for the current court.** A proof of a generation-1 epoch would have
+  carried a statement for generation 2's court, which the verifier calls unattributable and generation 1's
+  court cannot judge. The prover now holds a `Venue` per generation, `{ledger, court, identity}`. It signs each
+  epoch for the court of the ledger that holds it, and refuses an epoch on a ledger outside the lineage.
+  `CheckCourt` checks every venue's identity, digest and newest signer at start.
+- **The answerer read only the current withholding court.** Holders registered before the cutover can request
+  statements about old epochs for 7 days. Unanswered, each becomes a recorded silence: a public fault. The
+  answerer now serves a list of venues, one per local generation. Earlier courts are scanned from the lookback
+  alone, because a request older than 100,000 blocks is past its 24-hour answer period. Silences are summed
+  over all of them. One answer writer serves every court through `AnswerWriter.At`, sharing one nonce state,
+  because two writers on one key would fight over a nonce.
+- **The court watcher** counts proven faults over every generation's court.
+
+The lineage comes from the directory at start (`Directory.Lineage`, the generations before the configured
+ledger on this chain), in `provideEarlierGenerations`.
+
+**Proof.**
+- Unit tests, each with a control that turned it red:
+  - the anchorer accepts a successor and refuses a wrong genesis epoch or digest;
+  - an earlier epoch is signed for its own court and recovers to its signer there, not under the current court;
+  - a stray ledger is refused;
+  - every earlier court is checked;
+  - an old court's request is answered on that court's writer;
+  - faults and silences are summed.
+- **End to end** (`TestTheDaemonCarriesItsHistoryIntoAConfidentialSuccessor`, 33 s, anvil and Postgres, full dig
+  graph):
+  - a scheme-1 notaryd finalized epoch 0, and a holder registered;
+  - the ledger was sealed, and a scheme-2 generation was deployed and registered;
+  - notaryd restarted on scheme 2 with the same database and finalized epoch 1;
+  - both epochs verify through the directory as `included` and `attributable`, with totals 21,000,000 and 0;
+  - the old registration's request about epoch 0 on the old withholding court was answered by the new notaryd;
+  - a new registration names the new court, and `/metrics` shows 6 accounts against a capacity of 8.
+
+  Controls: a prover without the earlier venues failed the epoch-0 proof, and an answerer without them left the
+  request open.
+
+**Found while rehearsing, now in the runbook:**
+- **An epoch in flight at the seal blocks generation 2.** The sealed ledger refuses it (`LedgerIsSealed` is
+  `anchor_refused`), and it is abandoned. Its row keeps the number, and generation 2's first epoch has the same
+  number. So the cutover stops notaryd between two epochs, after an `epoch final`, and checks that nothing is in
+  flight before the seal.
+- **The paymaster must exist before the first anchor,** because notaryd refuses to start (`not_sponsored`)
+  without it. The earlier order — first council anchor, then the paymaster — could not run.
+- **`bin/inspect-directory` compared a file with the current generation,** so generation 1's own file would
+  have read `WRONG` from the cutover on. It now finds the generation that holds the file's ledger, checks its
+  courts and scheme, and shows whether it is current. Run read-only against the live directory:
+  `base-sepolia` passes as generation 0, current; `base-sepolia-2` is refused, because its ledger is still
+  empty.
+- **The admin holds 0.010 ETH**, and generation 2's paymaster needs a 1 ETH stake. The generation-1 stake must
+  stay locked while the old courts can still be used. This is the user's, in "Waiting on the user".
+
+**The lab** (`kinetix-infrastructure/scripts/lab/notary-ledger.sh`):
+- it seals the lab ledger at its genesis and deploys generation 2 at fixed CREATE2 addresses: the ledger
+  `0x3C51…6Dd0`, the verifier `0xb049…b3b4`, the courts `0x967b…71a6` and `0x845a…0a33`, the council
+  `0xc774…E940` and the paymaster `0x1100…393C`;
+- the generation-1 steps became functions, which generation 2 calls again;
+- on a throwaway chain, all thirteen contracts landed at their constants, the second run changed nothing, and
+  a lab whose first ledger had anchored was refused with the reset instruction.
+
+**13-7.**
+- **The image** takes the SRS by `ADD --checksum` from the release `srs-ignition-d8` into
+  `/usr/local/share/kinetix-notary/ignition-d8.srs`, read-only to everyone. `docker buildx build --check`
+  passes with the built-in frontend.
+- **Compose:** the lab runs scheme 2 with the SRS path and pin. Production stays on scheme 1, with
+  `mem_limit: 192m`, until its cutover release.
+- **Two new gauges,** `kinetix_notary_accounts` and `kinetix_notary_account_capacity` (`2^D`, 0 on scheme 1).
+- **Three alert rules** (critical, warning, warning):
+  - the prover failing three times in an hour;
+  - a proof over five minutes;
+  - accounts over three quarters of capacity.
+- **`docs/ALERTS.md`** lists all 22 rules; seven were missing.
+- **The runbook is `kinetix-infrastructure/docs/NOTARY-GENERATION-TWO.md`.**
+
+**The production combination, through notaryd.** This is the part of 13-6 that runs without the lab.
+`TestTheDaemonAnchorsAnEpochProvenOnTheIgnitionSRSAtProductionDepth` is skipped unless
+`KINETIX_NOTARY_IGNITION_SRS` is set. It ran on 2026-10-20 on the laptop with:
+- the real Ignition SRS at `D = 8`;
+- the production `PlonkVerifier` (a test-only binding, `plonkverifier`);
+- the real `notary-prove` child, the watch and the scheme-2 council.
+
+The epoch was proven, its proof landed and its anchor was mined within 1 min 5 s. Two holders verified it
+`included` and `attributable`, with a total of 0, and `/metrics` showed a capacity of 256 with no proving failure.
+
+**Not run:** the full compose lab, with notaryd built from the image. It waits for the release asset
+`srs-ignition-d8`, the user's to upload.
+
+**Gate, 2026-10-20:** `bin/ci` green.
+- Contracts: 424 + 45 + 20 tests, the deploy rehearsal, Slither and Aderyn.
+- Go: lint 0 issues, coverage 85.0%.
+- The first run was red on three lines over 120 columns and five `wsl_v5` blank lines; both were fixed in code.
+
+**The Verify pages for scheme 2 wait for the release.** `kinetix-docs` links code by permalink at the commit
+production runs, and none runs scheme 2 yet.
+
+**Work order.**
+- **13-1 Scheme v2:** Poseidon2 in Go, through gnark-crypto behind `notary.Scheme`, and in Solidity, with
+  known-answer vectors and the differential fixture.
+- **13-2 Circuit:**
+  - the circuit itself;
+  - tests: honest, overflow, padding, wrong sum, wrong commitment, wrong epoch;
+  - constraint counts, the Ignition SRS import and check, the pinned keys;
+  - the generated verifier with its CI check;
+  - the x86-64 VPS measurement that settles `D`.
+- **13-3 Ledger:** `LiabilityLedgerV2` with unit, fuzz, invariant and differential tests, gas, Slither and Aderyn.
+- **13-4 Generation suite:**
+  - the scheme-2 council;
+  - court and withholding instances re-tested against the new ledger;
+  - the paymaster instance;
+  - the deploy scripts with `bin/rehearse-deploy`, and a seal → register rehearsal on a fork.
+- **13-5 Off chain:**
+  - notaryd's prove → `proveEpoch` → council anchor, as one state machine with its own metrics;
+  - the watch's checks;
+  - proof format `inclusion.v3`;
+  - `notary-verify` and the browser build for scheme 2;
+  - migrations: blinding, tree root, C, proof, proof transaction.
+- **13-6 Lab:** end to end on anvil: seal v1, deploy generation 2, register, anchor, a holder verifies, both
+  courts judge.
+- **13-7 Infrastructure and docs:**
+  - compose and memory limits;
+  - Grafana rules for proving time and failures;
+  - the Verify pages for scheme 2.
+- **13-8 The user**, once 13-5 to 13-7 have released a notaryd that anchors scheme 2. The sequence, with its checks,
+  is `kinetix-infrastructure/docs/NOTARY-GENERATION-TWO.md`. In short, after the SRS release asset and the
+  funds exist:
+  0. stop notaryd after an `epoch final`, with nothing in flight;
+  1. `bin/seal-ledger base-sepolia <head> --broadcast`;
+  2. `bin/deploy-ledger base-sepolia-2 --broadcast`, its address into the file, `bin/inspect-ledger base-sepolia-2`;
+  3. the court, the withholding court (and its `FROM_BLOCK`) and the council on `base-sepolia-2`, each inspected;
+  4. `bin/register-successor`, then `bin/inspect-directory` on both files;
+  5. `bin/hand-over-anchoring base-sepolia-2 --broadcast`;
+  6. the paymaster deployed, staked, funded and inspected on `base-sepolia-2`;
+  7. the infra release: generation 2's contracts, no scheme override, `mem_limit: 1600m`;
+  8. the first council anchor, then `bin/retire-anchorer base-sepolia-2 <tx> --broadcast` and
+     `KINETIX_NOTARY_ANCHORER_ROLE_HOLDERS`.
 
 ### Step 14 — the next service: product passport
 

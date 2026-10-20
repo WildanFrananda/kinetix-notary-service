@@ -16,32 +16,45 @@ import (
 
 	"github.com/WildanFrananda/kinetix-notary-service/internal/contractgen/ledger"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/contractgen/ledgerinterface"
+	"github.com/WildanFrananda/kinetix-notary-service/internal/contractgen/ledgertwo"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/notary"
 )
 
 type Ledger struct {
-	client      *ethclient.Client
-	binding     *ledger.LiabilityLedger
-	contract    *bind.BoundContract
-	expected    notary.LedgerIdentity
-	interfaceID [4]byte
-	scheme      uint16
-	timeout     time.Duration
+	client       *ethclient.Client
+	binding      *ledger.LiabilityLedger
+	contract     *bind.BoundContract
+	confidential *ledgertwo.LiabilityLedgerV2
+	statements   *bind.BoundContract
+	expected     notary.LedgerIdentity
+	interfaceID  [4]byte
+	scheme       uint16
+	timeout      time.Duration
 }
 
-var _ notary.Ledger = (*Ledger)(nil)
+var (
+	_ notary.Ledger             = (*Ledger)(nil)
+	_ notary.ConfidentialLedger = (*Ledger)(nil)
+)
 
 func NewLedger(client *ethclient.Client, settings Settings, scheme notary.Scheme) *Ledger {
+	return NewLedgerOfScheme(client, settings, scheme.Version())
+}
+
+func NewLedgerOfScheme(client *ethclient.Client, settings Settings, scheme uint16) *Ledger {
 	binding := ledger.NewLiabilityLedger()
+	confidential := ledgertwo.NewLiabilityLedgerV2()
 
 	return &Ledger{
-		client:      client,
-		binding:     binding,
-		contract:    binding.Instance(client, common.Address(settings.Ledger.Address)),
-		expected:    settings.Ledger,
-		interfaceID: ledgerInterfaceID(),
-		scheme:      scheme.Version(),
-		timeout:     settings.Timeout,
+		client:       client,
+		binding:      binding,
+		contract:     binding.Instance(client, common.Address(settings.Ledger.Address)),
+		confidential: confidential,
+		statements:   confidential.Instance(client, common.Address(settings.Ledger.Address)),
+		expected:     settings.Ledger,
+		interfaceID:  ledgerInterfaceID(),
+		scheme:       scheme,
+		timeout:      settings.Timeout,
 	}
 }
 

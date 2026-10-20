@@ -9,16 +9,18 @@ import (
 )
 
 type Approver struct {
-	records  notary.SnapshotRecords
-	heads    notary.LedgerHeads
-	council  notary.Council
-	signer   notary.ApprovalSigner
-	scheme   notary.Scheme
-	approval notary.ApprovalScheme
-	identity notary.CouncilIdentity
-	ledger   notary.Address
-	observer Observer
-	log      *slog.Logger
+	records      notary.SnapshotRecords
+	heads        notary.LedgerHeads
+	council      notary.Council
+	signer       notary.ApprovalSigner
+	scheme       notary.Scheme
+	confidential notary.ConfidentialScheme
+	proofs       notary.ProofReader
+	approval     notary.ApprovalScheme
+	identity     notary.CouncilIdentity
+	ledger       notary.Address
+	observer     Observer
+	log          *slog.Logger
 }
 
 func NewApprover(
@@ -27,6 +29,8 @@ func NewApprover(
 	council notary.Council,
 	signer notary.ApprovalSigner,
 	scheme notary.Scheme,
+	confidential notary.ConfidentialScheme,
+	proofs notary.ProofReader,
 	approval notary.ApprovalScheme,
 	identity notary.CouncilIdentity,
 	ledger notary.Address,
@@ -34,16 +38,18 @@ func NewApprover(
 	log *slog.Logger,
 ) *Approver {
 	return &Approver{
-		records:  records,
-		heads:    heads,
-		council:  council,
-		signer:   signer,
-		scheme:   scheme,
-		approval: approval,
-		identity: identity,
-		ledger:   ledger,
-		observer: observer,
-		log:      log,
+		records:      records,
+		heads:        heads,
+		council:      council,
+		signer:       signer,
+		scheme:       scheme,
+		confidential: confidential,
+		proofs:       proofs,
+		approval:     approval,
+		identity:     identity,
+		ledger:       ledger,
+		observer:     observer,
+		log:          log,
 	}
 }
 
@@ -237,12 +243,46 @@ func (a *Approver) approve(ctx context.Context, proposal notary.EpochProposal) (
 		)
 	}
 
+	if plan.Confidential != nil {
+		if err := a.checkProven(ctx, op, plan); err != nil {
+			return notary.Approval{}, err
+		}
+	}
+
 	signature, err := a.signer.Sign(a.approval.ApprovalDigest(a.identity, a.ledger, plan.Header.Number, plan.Digest))
 	if err != nil {
 		return notary.Approval{}, err
 	}
 
 	return notary.Approval{Member: a.signer.Member(), Signature: signature}, nil
+}
+
+func (a *Approver) checkProven(ctx context.Context, op string, plan notary.EpochPlan) error {
+	depth, err := a.proofs.Depth(ctx)
+	if err != nil {
+		return err
+	}
+
+	if depth != plan.Confidential.Depth {
+		return refuse(op, "the proposal is a tree of depth %d, the ledger's is %d", plan.Confidential.Depth, depth)
+	}
+
+	proven, err := a.proofs.IsProven(ctx, plan.Header.Number, plan.Header.Root, plan.Header.LeafCount)
+	if err != nil {
+		return err
+	}
+
+	if !proven {
+		return notary.Errf(
+			notary.KindAnchorDeferred,
+			op,
+			nil,
+			"epoch %d is not proven on chain yet; the watch approves only a proven statement",
+			plan.Header.Number,
+		)
+	}
+
+	return nil
 }
 
 func (a *Approver) rebuild(
@@ -264,6 +304,10 @@ func (a *Approver) rebuild(
 		accounts[i] = notary.OpenAccount(a.scheme, proposed.Liability, proposed.Salt, proposed.Secret)
 	}
 
+	if proposal.Confidential != nil {
+		return a.rebuildConfidential(op, proposal, record, accounts)
+	}
+
 	plan, err := notary.AssembleEpoch(
 		a.scheme,
 		proposal.Header.Number,
@@ -274,6 +318,45 @@ func (a *Approver) rebuild(
 	)
 	if err != nil {
 		return notary.EpochPlan{}, refuse(op, "the proposed accounts do not make a tree: %v", err)
+	}
+
+	return plan, nil
+}
+
+func (a *Approver) rebuildConfidential(
+	op string,
+	proposal notary.EpochProposal,
+	record notary.SnapshotRecord,
+	accounts []notary.Account,
+) (notary.EpochPlan, error) {
+	claimed := proposal.Confidential
+	if a.confidential == nil || a.proofs == nil || a.confidential.Version() != claimed.Scheme {
+		return notary.EpochPlan{}, refuse(op, "this watch does not approve scheme %d", claimed.Scheme)
+	}
+
+	plan, err := notary.AssembleConfidentialEpoch(
+		a.confidential,
+		claimed.Depth,
+		claimed.Blinding,
+		proposal.Header.Number,
+		proposal.Header.PreviousDigest,
+		record.AsOf,
+		record.Currency,
+		accounts,
+	)
+	if err != nil {
+		return notary.EpochPlan{}, refuse(op, "the proposed accounts do not make a tree: %v", err)
+	}
+
+	if plan.Confidential.TreeRoot != claimed.TreeRoot || plan.Confidential.TotalCommitment != claimed.TotalCommitment {
+		return notary.EpochPlan{}, refuse(
+			op,
+			"the watch rebuilds tree root %s and commitment %s; the proposal claims %s and %s",
+			plan.Confidential.TreeRoot.Hex(),
+			plan.Confidential.TotalCommitment.Hex(),
+			claimed.TreeRoot.Hex(),
+			claimed.TotalCommitment.Hex(),
+		)
 	}
 
 	return plan, nil

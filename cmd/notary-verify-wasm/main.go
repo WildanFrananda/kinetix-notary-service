@@ -96,10 +96,14 @@ func run(ctx context.Context, document string, lookup config.Lookup, stdout, std
 
 	code := verifycli.ExitUnknown
 
-	err = container.Invoke(func(client *ethclient.Client, scheme notary.Scheme, verifier *verifying.DirectoryVerifier) {
+	err = container.Invoke(func(
+		client *ethclient.Client,
+		newest notary.ConfidentialScheme,
+		verifier *verifying.DirectoryVerifier,
+	) {
 		defer client.Close()
 
-		code = verifycli.RunDocument(ctx, strings.NewReader(document), scheme.Version(), verifier, stdout)
+		code = verifycli.RunDocument(ctx, strings.NewReader(document), newest.Version(), verifier, stdout)
 	})
 
 	return settle(code, err, stdout, stderr)

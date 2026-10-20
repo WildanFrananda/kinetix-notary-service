@@ -62,6 +62,7 @@ type anchorerParams struct {
 	Clock    func() time.Time
 	Log      *slog.Logger
 	Policy   anchoring.Policy
+	Two      *anchoring.SchemeTwo
 }
 
 func provideAnchorer(p anchorerParams) *anchoring.Anchorer {
@@ -77,6 +78,7 @@ func provideAnchorer(p anchorerParams) *anchoring.Anchorer {
 		p.Clock,
 		p.Log,
 		p.Policy,
+		p.Two,
 	)
 }
 

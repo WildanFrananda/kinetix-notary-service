@@ -110,6 +110,7 @@ func bundle(t *testing.T) proving.Bundle {
 
 		claims = append(claims, notary.Claim{
 			Ledger: record.Ledger,
+			Scheme: 1,
 			Epoch:  3,
 			Entry:  entries[i],
 			Proof:  proof,

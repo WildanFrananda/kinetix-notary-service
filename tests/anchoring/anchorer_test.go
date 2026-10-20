@@ -29,6 +29,7 @@ type rig struct {
 	signer   notary.ApprovalSigner
 	anchorer *anchoring.Anchorer
 	policy   anchoring.Policy
+	two      *anchoring.SchemeTwo
 }
 
 func newRig(t *testing.T) *rig {
@@ -90,6 +91,7 @@ func (r *rig) build() {
 		r.clock,
 		slog.New(slog.NewTextHandler(io.Discard, nil)),
 		r.policy,
+		r.two,
 	)
 }
 
@@ -123,6 +125,8 @@ func TestAnEpochIsBuiltSentMinedAndFinalized(t *testing.T) {
 	require.Equal(t, []string{"IDR"}, r.source.Asked)
 	require.Len(t, r.store.Stored[0], 12)
 	require.True(t, r.observer.Held)
+	require.Equal(t, uint64(12), r.observer.Accounts)
+	require.Zero(t, r.observer.Capacity)
 
 	r.chain.Mine()
 	require.NoError(t, r.tick(t))
@@ -345,6 +349,39 @@ func TestTheDaemonRefusesALedgerItDidNotBuild(t *testing.T) {
 	err = r.tick(t)
 	require.Equal(t, notary.KindAnchorRefused, notary.KindOf(err))
 	require.Empty(t, r.store.Records)
+}
+
+func TestADatabaseCarriesItsHistoryIntoTheLedgerThatSucceedsItsOwn(t *testing.T) {
+	r := newRig(t)
+	header := notary.EpochHeader{Number: 4, AsOf: notarytest.Unix(t, 1759990000)}
+	digest := keccak.NewScheme().EpochDigest(header)
+	r.store.Records[4] = notary.EpochRecord{
+		Ledger: notary.LedgerIdentity{ChainID: ledgerID.ChainID, Address: notary.Address{9}},
+		Header: header,
+		Digest: digest,
+		State:  notary.StateFinalized,
+	}
+	r.chain.GenesisEpoch = 4
+	r.chain.GenesisDigest = digest
+
+	err := r.tick(t)
+	require.Equal(t, notary.KindLedgerDiverged, notary.KindOf(err))
+	require.ErrorContains(t, err, "does not start where it ends")
+	require.Len(t, r.store.Records, 1)
+
+	r.chain.GenesisEpoch = 5
+	r.chain.GenesisDigest = notary.Digest{1}
+
+	err = r.tick(t)
+	require.Equal(t, notary.KindLedgerDiverged, notary.KindOf(err))
+	require.Len(t, r.store.Records, 1)
+
+	r.chain.GenesisDigest = digest
+
+	require.NoError(t, r.tick(t))
+	require.Equal(t, notary.StateSubmitted, r.state(t, 5))
+	require.Equal(t, ledgerID, r.store.Records[5].Ledger)
+	require.Equal(t, digest, r.store.Records[5].Header.PreviousDigest)
 }
 
 func TestAnEpochAlreadyOnChainIsWatchedNotResent(t *testing.T) {

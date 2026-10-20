@@ -110,12 +110,13 @@ func (s *Store) SaveBuilt(
 	}
 
 	record := notary.EpochRecord{
-		Ledger:     ledger,
-		Header:     plan.Header,
-		Digest:     plan.Digest,
-		Currency:   plan.Currency,
-		State:      notary.StateBuilt,
-		SnapshotID: plan.SnapshotID,
+		Ledger:       ledger,
+		Header:       plan.Header,
+		Digest:       plan.Digest,
+		Currency:     plan.Currency,
+		State:        notary.StateBuilt,
+		SnapshotID:   plan.SnapshotID,
+		Confidential: plan.Confidential,
 	}
 	s.Records[plan.Header.Number] = record
 	s.Stored[plan.Header.Number] = plan.Accounts
@@ -144,7 +145,7 @@ func (s *Store) RecordAttempt(_ context.Context, lease notary.Lease, attempt not
 	}
 
 	s.attempts[attempt.Epoch] = append(s.attempts[attempt.Epoch], attempt)
-	if r := s.Records[attempt.Epoch]; r.State == notary.StateBuilt {
+	if r := s.Records[attempt.Epoch]; r.State == notary.StateBuilt && attempt.Kind == notary.AttemptForAnchor {
 		r.State = notary.StateSubmitted
 		s.Records[attempt.Epoch] = r
 	}
@@ -229,11 +230,20 @@ func (s *Store) RecentCosts(_ context.Context, limit int32) ([]uint64, error) {
 			continue
 		}
 
+		var sum uint64
+
+		included := false
+
 		for _, a := range s.attempts[number-1] {
 			if a.Outcome == notary.AttemptIncluded && a.Receipt != nil {
 				cost, _ := a.Receipt.CostWei()
-				costs = append(costs, cost)
+				sum += cost
+				included = true
 			}
+		}
+
+		if included {
+			costs = append(costs, sum)
 		}
 	}
 

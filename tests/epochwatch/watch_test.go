@@ -125,6 +125,35 @@ func TestAProposalCrossesTheWireWholeAndTheApprovalComesBack(t *testing.T) {
 	require.Equal(t, sent, r.watch.proposals[0])
 }
 
+func TestASchemeTwoProposalCarriesItsStatementAndBlindingButNoProof(t *testing.T) {
+	r := newRig(t, epochwatch.Service)
+	sent := proposal(t, 7)
+	sent.Header.Total = 0
+	sent.Confidential = &notary.ConfidentialPlan{
+		Scheme:          2,
+		TreeRoot:        notary.Digest{0x0c},
+		TotalCommitment: notary.Digest{0x0d},
+		Blinding:        notary.Blinding{0x0e},
+		Depth:           8,
+	}
+
+	_, err := r.client(t, "notary").Approve(context.Background(), sent)
+
+	require.NoError(t, err)
+	require.Equal(t, sent, r.watch.proposals[0])
+}
+
+func TestASchemeTwoProposalWithAZeroBlindingIsRefusedBeforeTheWatchSeesIt(t *testing.T) {
+	r := newRig(t, epochwatch.Service)
+	sent := proposal(t, 2)
+	sent.Confidential = &notary.ConfidentialPlan{Scheme: 2, Depth: 8}
+
+	_, err := r.client(t, "notary").Approve(context.Background(), sent)
+
+	require.Equal(t, notary.KindApprovalRefused, notary.KindOf(err))
+	require.Empty(t, r.watch.proposals)
+}
+
 func TestAnEmptyEpochIsAProposalWithoutAccounts(t *testing.T) {
 	r := newRig(t, epochwatch.Service)
 	sent := proposal(t, 0)

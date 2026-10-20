@@ -11,7 +11,7 @@ echo "== slither"
 slither . --config-file slither.config.json
 
 echo "== aderyn"
-aderyn . -o "$report_dir/aderyn.json" >/dev/null
+aderyn . -x src/confidential/PlonkVerifier.sol -o "$report_dir/aderyn.json" >/dev/null
 python3 - "$report_dir/aderyn.json" analysis-accepted.json <<'PY'
 import json
 import sys

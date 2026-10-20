@@ -13,17 +13,18 @@ rm -rf "$WORK/broadcast" "$WORK/cache" "$WORK/out"
 trap 'if [ -f "$WORK/anvil.pid" ]; then kill "$(cat "$WORK/anvil.pid")" 2>/dev/null || true; fi; rm -rf "$WORK"' EXIT
 
 expect_create2() {
-  python3 - "$WORK/broadcast/$1/$2/run-latest.json" <<'PY'
+  python3 - "$WORK/broadcast/$1/$2/run-latest.json" "${3:-1}" <<'PY'
 import json
 import sys
 
 factory = "0x4e59b44847b379578588920ca78fbf26c0b4956c"
 record = json.load(open(sys.argv[1]))
+count = int(sys.argv[2])
 sent = record["transactions"]
 kinds = [(tx["transactionType"], (tx["transaction"].get("to") or "").lower()) for tx in sent]
 
-if kinds != [("CREATE2", factory)]:
-    print(f"expected one CREATE2 through {factory}, the broadcast was {kinds}", file=sys.stderr)
+if kinds != [("CREATE2", factory)] * count:
+    print(f"expected {count} CREATE2 through {factory}, the broadcast was {kinds}", file=sys.stderr)
     sys.exit(1)
 
 print(record["returns"]["0"]["value"])
@@ -51,14 +52,53 @@ for file in "$HERE"/deploy/*.env; do
     done
 
     cd "$WORK"
-    forge script script/DeployLiabilityLedger.s.sol:DeployLiabilityLedger \
-      --rpc-url "$RPC" \
-      --unlocked \
-      --sender "$SENDER" \
-      --broadcast \
-      --slow > /dev/null
-    ledger="$(expect_create2 DeployLiabilityLedger.s.sol "$KINETIX_NOTARY_CHAIN_ID")"
-    deployed_at "$ledger"
+    scheme="${KINETIX_NOTARY_SCHEME:-1}"
+    if [ "$scheme" = "2" ]; then
+      zero=0x0000000000000000000000000000000000000000000000000000000000000000
+      KINETIX_NOTARY_GENESIS_EPOCH=0 KINETIX_NOTARY_GENESIS_DIGEST="$zero" KINETIX_NOTARY_GENESIS_AS_OF=0 \
+        forge script script/DeployLiabilityLedger.s.sol:DeployLiabilityLedger \
+        --rpc-url "$RPC" \
+        --unlocked \
+        --sender "$SENDER" \
+        --broadcast \
+        --slow > /dev/null
+      predecessor="$(expect_create2 DeployLiabilityLedger.s.sol "$KINETIX_NOTARY_CHAIN_ID")"
+      cast rpc anvil_setBalance "$KINETIX_NOTARY_ADMIN_ADDRESS" 0xde0b6b3a7640000 --rpc-url "$RPC" > /dev/null
+      cast send "$predecessor" 'seal(bytes32)' "$zero" --from "$KINETIX_NOTARY_ADMIN_ADDRESS" --unlocked \
+        --rpc-url "$RPC" > /dev/null
+
+      KINETIX_NOTARY_PREDECESSOR_LEDGER_ADDRESS="$predecessor" \
+        forge script script/DeployLiabilityLedgerV2.s.sol:DeployLiabilityLedgerV2 \
+        --rpc-url "$RPC" \
+        --unlocked \
+        --sender "$SENDER" \
+        --broadcast \
+        --slow > /dev/null
+      ledger="$(expect_create2 DeployLiabilityLedgerV2.s.sol "$KINETIX_NOTARY_CHAIN_ID" 2)"
+      deployed_at "$ledger"
+
+      if [ "$(cast call "$ledger" 'genesisDigest()(bytes32)' --rpc-url "$RPC")" != "$zero" ] \
+        || [ "$(cast call "$ledger" 'scheme()(uint16)' --rpc-url "$RPC")" != "2" ] \
+        || [ "$(cast call "$ledger" 'depth()(uint8)' --rpc-url "$RPC")" != "$KINETIX_NOTARY_LEDGER_DEPTH" ]; then
+        echo "the rehearsed scheme-2 ledger at $ledger does not start at its sealed predecessor $predecessor" >&2
+        exit 1
+      fi
+
+      verifier="$(cast call "$ledger" 'verifier()(address)' --rpc-url "$RPC")"
+      if [ "$(cast code "$verifier" --rpc-url "$RPC" | cast keccak)" != "$(forge inspect PlonkVerifier deployedBytecode | cast keccak)" ]; then
+        echo "the rehearsed ledger's verifier at $verifier is not the production PlonkVerifier" >&2
+        exit 1
+      fi
+    else
+      forge script script/DeployLiabilityLedger.s.sol:DeployLiabilityLedger \
+        --rpc-url "$RPC" \
+        --unlocked \
+        --sender "$SENDER" \
+        --broadcast \
+        --slow > /dev/null
+      ledger="$(expect_create2 DeployLiabilityLedger.s.sol "$KINETIX_NOTARY_CHAIN_ID")"
+      deployed_at "$ledger"
+    fi
 
     KINETIX_NOTARY_LEDGER_ADDRESS="$ledger" forge script script/DeployStatementCourt.s.sol:DeployStatementCourt \
       --rpc-url "$RPC" \
@@ -93,13 +133,17 @@ for file in "$HERE"/deploy/*.env; do
       exit 1
     fi
 
-    KINETIX_NOTARY_LEDGER_ADDRESS="$ledger" forge script script/DeployAnchorCouncil.s.sol:DeployAnchorCouncil \
+    council_script=DeployAnchorCouncil
+    if [ "$scheme" = "2" ]; then
+      council_script=DeployConfidentialAnchorCouncil
+    fi
+    KINETIX_NOTARY_LEDGER_ADDRESS="$ledger" forge script "script/$council_script.s.sol:$council_script" \
       --rpc-url "$RPC" \
       --unlocked \
       --sender "$SENDER" \
       --broadcast \
       --slow > /dev/null
-    council="$(expect_create2 DeployAnchorCouncil.s.sol "$KINETIX_NOTARY_CHAIN_ID")"
+    council="$(expect_create2 "$council_script.s.sol" "$KINETIX_NOTARY_CHAIN_ID")"
     deployed_at "$council"
 
     if [ "$(cast call "$council" 'ledger()(address)' --rpc-url "$RPC")" != "$ledger" ]; then
@@ -107,26 +151,36 @@ for file in "$HERE"/deploy/*.env; do
       exit 1
     fi
 
-    KINETIX_NOTARY_LEDGER_ADDRESS="$ledger" \
-      KINETIX_NOTARY_COURT_ADDRESS="$court" \
-      KINETIX_NOTARY_WITHHOLDING_COURT_ADDRESS="$withholding" \
-      forge script script/DeployLedgerDirectory.s.sol:DeployLedgerDirectory \
-      --rpc-url "$RPC" \
-      --unlocked \
-      --sender "$SENDER" \
-      --broadcast \
-      --slow > /dev/null
-    directory="$(expect_create2 DeployLedgerDirectory.s.sol "$KINETIX_NOTARY_CHAIN_ID")"
-    deployed_at "$directory"
+    sample="(1,0x1111111111111111111111111111111111111111111111111111111111111111,0x2222222222222222222222222222222222222222222222222222222222222222,0,3,4)"
+    preimage="0x03$(printf %04x "$scheme")0000000000000001$(printf "%064d" 0 | tr 0 1)$(printf "%064d" 0 | tr 0 2)000000000000000000000000000000030000000000000004"
+    if [ "$(cast call "$council" 'epochDigest((uint64,bytes32,bytes32,uint64,uint64,uint64))(bytes32)' "$sample" --rpc-url "$RPC")" != "$(cast keccak "$preimage")" ]; then
+      echo "the rehearsed council at $council does not hash epochs with scheme $scheme, as its ledger does" >&2
+      exit 1
+    fi
 
-    generation="$(cast call "$directory" 'current()((uint64,address,address,address,uint64,bytes32,uint16,uint64))' --rpc-url "$RPC")"
-    case "$generation" in
-      *"$ledger, $court, $withholding,"*) ;;
-      *)
-        echo "the rehearsed directory at $directory does not start from the rehearsed ledger and courts: $generation" >&2
-        exit 1
-        ;;
-    esac
+    directory="none: a generation joins the directory by bin/register-successor, rehearsed on a fork"
+    if [ "$scheme" = "1" ]; then
+      KINETIX_NOTARY_LEDGER_ADDRESS="$ledger" \
+        KINETIX_NOTARY_COURT_ADDRESS="$court" \
+        KINETIX_NOTARY_WITHHOLDING_COURT_ADDRESS="$withholding" \
+        forge script script/DeployLedgerDirectory.s.sol:DeployLedgerDirectory \
+        --rpc-url "$RPC" \
+        --unlocked \
+        --sender "$SENDER" \
+        --broadcast \
+        --slow > /dev/null
+      directory="$(expect_create2 DeployLedgerDirectory.s.sol "$KINETIX_NOTARY_CHAIN_ID")"
+      deployed_at "$directory"
+
+      generation="$(cast call "$directory" 'current()((uint64,address,address,address,uint64,bytes32,uint16,uint64))' --rpc-url "$RPC")"
+      case "$generation" in
+        *"$ledger, $court, $withholding,"*) ;;
+        *)
+          echo "the rehearsed directory at $directory does not start from the rehearsed ledger and courts: $generation" >&2
+          exit 1
+          ;;
+      esac
+    fi
 
     for pinned in "$KINETIX_NOTARY_ENTRY_POINT_ADDRESS:EntryPoint" "$KINETIX_NOTARY_7702_ACCOUNT_ADDRESS:Simple7702Account"; do
       cast rpc anvil_setCode "${pinned%%:*}" "$(forge inspect "${pinned#*:}" deployedBytecode)" --rpc-url "$RPC" > /dev/null
@@ -160,33 +214,36 @@ for file in "$HERE"/deploy/*.env; do
       exit 1
     fi
 
-    evidence_anchorer="${KINETIX_NOTARY_EVIDENCE_ANCHORER_ADDRESS:-}"
-    if [ -z "$evidence_anchorer" ]; then
-      evidence_anchorer="$SENDER"
-      echo "deploy/$network.env names no evidence anchorer yet (bin/new-evidence-anchorer-key); rehearsing with $SENDER" >&2
-    fi
-    KINETIX_NOTARY_EVIDENCE_ANCHORER_ADDRESS="$evidence_anchorer" \
-      forge script script/DeployEvidenceRegistry.s.sol:DeployEvidenceRegistry \
-      --rpc-url "$RPC" \
-      --unlocked \
-      --sender "$SENDER" \
-      --broadcast \
-      --slow > /dev/null
-    registry="$(expect_create2 DeployEvidenceRegistry.s.sol "$KINETIX_NOTARY_CHAIN_ID")"
-    deployed_at "$registry"
+    registry="none: the evidence registry is generation one's"
+    if [ "$scheme" = "1" ]; then
+      evidence_anchorer="${KINETIX_NOTARY_EVIDENCE_ANCHORER_ADDRESS:-}"
+      if [ -z "$evidence_anchorer" ]; then
+        evidence_anchorer="$SENDER"
+        echo "deploy/$network.env names no evidence anchorer yet (bin/new-evidence-anchorer-key); rehearsing with $SENDER" >&2
+      fi
+      KINETIX_NOTARY_EVIDENCE_ANCHORER_ADDRESS="$evidence_anchorer" \
+        forge script script/DeployEvidenceRegistry.s.sol:DeployEvidenceRegistry \
+        --rpc-url "$RPC" \
+        --unlocked \
+        --sender "$SENDER" \
+        --broadcast \
+        --slow > /dev/null
+      registry="$(expect_create2 DeployEvidenceRegistry.s.sol "$KINETIX_NOTARY_CHAIN_ID")"
+      deployed_at "$registry"
 
-    if [ "$(cast call "$registry" 'streams()(uint8[])' --rpc-url "$RPC")" != "[1, 2, 3]" ]; then
-      echo "the rehearsed evidence registry at $registry does not carry the three streams" >&2
-      exit 1
-    fi
+      if [ "$(cast call "$registry" 'streams()(uint8[])' --rpc-url "$RPC")" != "[1, 2, 3]" ]; then
+        echo "the rehearsed evidence registry at $registry does not carry the three streams" >&2
+        exit 1
+      fi
 
-    role="$(cast call "$registry" 'ANCHORER_ROLE()(bytes32)' --rpc-url "$RPC")"
-    if [ "$(cast call "$registry" 'hasRole(bytes32,address)(bool)' "$role" "$evidence_anchorer" --rpc-url "$RPC")" != "true" ]; then
-      echo "the rehearsed evidence registry at $registry did not grant $evidence_anchorer its anchorer role" >&2
-      exit 1
+      role="$(cast call "$registry" 'ANCHORER_ROLE()(bytes32)' --rpc-url "$RPC")"
+      if [ "$(cast call "$registry" 'hasRole(bytes32,address)(bool)' "$role" "$evidence_anchorer" --rpc-url "$RPC")" != "true" ]; then
+        echo "the rehearsed evidence registry at $registry did not grant $evidence_anchorer its anchorer role" >&2
+        exit 1
+      fi
     fi
 
     kill "$(cat "$WORK/anvil.pid")"
-    echo "$network (chain $KINETIX_NOTARY_CHAIN_ID): ledger $ledger, court $court, withholding court $withholding, council $council, directory $directory, paymaster $paymaster and evidence registry $registry, all through the CREATE2 factory; the paymaster staked by its admin"
+    echo "$network (chain $KINETIX_NOTARY_CHAIN_ID, scheme $scheme): ledger $ledger, court $court, withholding court $withholding, council $council, directory $directory, paymaster $paymaster and evidence registry $registry, all through the CREATE2 factory; the paymaster staked by its admin"
   )
 done

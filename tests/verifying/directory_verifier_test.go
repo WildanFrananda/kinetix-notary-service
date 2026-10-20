@@ -8,16 +8,29 @@ import (
 
 	"github.com/WildanFrananda/kinetix-notary-service/internal/keccak"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/notary"
+	"github.com/WildanFrananda/kinetix-notary-service/internal/poseidon"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/verifying"
 	"github.com/WildanFrananda/kinetix-notary-service/tests/notarytest"
 )
 
 func generationOf(ledger notary.LedgerIdentity, court notary.Address, genesis uint64) notary.Generation {
-	return notary.Generation{ChainID: ledger.ChainID, Ledger: ledger.Address, Court: court, GenesisEpoch: genesis}
+	return notary.Generation{
+		ChainID:      ledger.ChainID,
+		Ledger:       ledger.Address,
+		Court:        court,
+		GenesisEpoch: genesis,
+		Scheme:       1,
+	}
 }
 
 func directoryVerifier(directory notary.Directory, readers notary.GenerationReaders) *verifying.DirectoryVerifier {
-	return verifying.NewDirectoryVerifier(directory, readers, keccak.NewScheme(), keccak.NewScheme())
+	return verifying.NewDirectoryVerifier(
+		directory,
+		readers,
+		keccak.NewScheme(),
+		poseidon.NewScheme(),
+		keccak.NewScheme(),
+	)
 }
 
 func TestTheDirectoryPicksTheLedgerThatHoldsTheEpoch(t *testing.T) {

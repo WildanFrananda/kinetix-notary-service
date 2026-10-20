@@ -20,7 +20,7 @@ const maxDocumentBytes = 64 << 10
 
 const maxBundleBytes = 4 << 20
 
-func Decode(r io.Reader, scheme uint16) (notary.Claim, error) {
+func Decode(r io.Reader, newest uint16) (notary.Claim, error) {
 	const op = "prooffile.Decode"
 
 	decoder := json.NewDecoder(io.LimitReader(r, maxDocumentBytes+1))
@@ -48,25 +48,26 @@ func Decode(r io.Reader, scheme uint16) (notary.Claim, error) {
 		return notary.Claim{}, notary.Errf(notary.KindInvalidArgument, op, err, "")
 	}
 
-	if doc.Scheme != scheme {
+	if doc.Scheme < 1 || doc.Scheme > newest {
 		return notary.Claim{}, notary.Errf(
 			notary.KindInvalidArgument,
 			op,
 			nil,
-			"the proof uses scheme %d, this verifier speaks scheme %d",
+			"the proof uses scheme %d, this verifier speaks schemes 1 to %d",
 			doc.Scheme,
-			scheme,
+			newest,
 		)
 	}
 
-	if len(doc.Siblings) > notary.MaxDepth {
+	if deepest := depthOf(doc.Scheme); len(doc.Siblings) > deepest {
 		return notary.Claim{}, notary.Errf(
 			notary.KindInvalidArgument,
 			op,
 			nil,
-			"%d siblings exceed the scheme's depth of %d",
+			"%d siblings exceed scheme %d's depth of %d",
 			len(doc.Siblings),
-			notary.MaxDepth,
+			doc.Scheme,
+			deepest,
 		)
 	}
 
@@ -75,7 +76,17 @@ func Decode(r io.Reader, scheme uint16) (notary.Claim, error) {
 		return notary.Claim{}, notary.Errf(notary.KindInvalidArgument, op, err, "")
 	}
 
+	claim.Scheme = doc.Scheme
+
 	return claim, nil
+}
+
+func depthOf(scheme uint16) int {
+	if scheme >= 2 {
+		return notary.MaxConfidentialDepth
+	}
+
+	return notary.MaxDepth
 }
 
 func Encode(w io.Writer, claim notary.Claim, scheme uint16) error {
@@ -98,7 +109,7 @@ func Marshal(claim notary.Claim, scheme uint16) (json.RawMessage, error) {
 	return raw, nil
 }
 
-func DecodeAll(r io.Reader, scheme uint16) ([]notary.Claim, error) {
+func DecodeAll(r io.Reader, newest uint16) ([]notary.Claim, error) {
 	const op = "prooffile.DecodeAll"
 
 	raw, err := io.ReadAll(io.LimitReader(r, maxBundleBytes+1))
@@ -123,7 +134,7 @@ func DecodeAll(r io.Reader, scheme uint16) ([]notary.Claim, error) {
 
 	proofs, isBundle := probe["proofs"]
 	if !isBundle {
-		claim, err := Decode(bytes.NewReader(raw), scheme)
+		claim, err := Decode(bytes.NewReader(raw), newest)
 		if err != nil {
 			return nil, err
 		}
@@ -142,7 +153,7 @@ func DecodeAll(r io.Reader, scheme uint16) ([]notary.Claim, error) {
 
 	claims := make([]notary.Claim, 0, len(documents))
 	for i, doc := range documents {
-		claim, err := Decode(bytes.NewReader(doc), scheme)
+		claim, err := Decode(bytes.NewReader(doc), newest)
 		if err != nil {
 			return nil, notary.Errf(notary.KindInvalidArgument, op, err, "proof %d", i)
 		}

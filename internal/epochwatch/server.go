@@ -75,12 +75,22 @@ func receive(
 		return notary.EpochProposal{}, err
 	}
 
+	confidential, err := confidentialOf(op, message.GetConfidential())
+	if err != nil {
+		return notary.EpochProposal{}, err
+	}
+
 	var accounts []notary.ProposedAccount
 
 	for {
 		part, err := stream.Recv()
 		if errors.Is(err, io.EOF) {
-			return notary.EpochProposal{SnapshotID: id, Header: header, Accounts: accounts}, nil
+			return notary.EpochProposal{
+				SnapshotID:   id,
+				Header:       header,
+				Accounts:     accounts,
+				Confidential: confidential,
+			}, nil
 		}
 
 		if err != nil {

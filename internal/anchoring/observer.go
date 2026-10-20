@@ -13,4 +13,6 @@ type Observer interface {
 	Abandoned(count int64)
 	Funds(balance *big.Int, meanCost uint64, runway time.Duration, known bool)
 	FeeCeilingHit()
+	Proved(elapsed time.Duration, failed bool)
+	Occupancy(accounts, capacity uint64)
 }

@@ -7,10 +7,12 @@ import (
 )
 
 type Verifier struct {
-	ledger     notary.Ledger
-	scheme     notary.Scheme
-	statements notary.StatementScheme
-	court      notary.Court
+	ledger       notary.Ledger
+	scheme       notary.Scheme
+	statements   notary.StatementScheme
+	court        notary.Court
+	confidential notary.ConfidentialScheme
+	trees        notary.ConfidentialLedger
 }
 
 func NewVerifier(
@@ -20,6 +22,24 @@ func NewVerifier(
 	court notary.Court,
 ) *Verifier {
 	return &Verifier{ledger: ledger, scheme: scheme, statements: statements, court: court}
+}
+
+func NewConfidentialVerifier(
+	ledger notary.Ledger,
+	trees notary.ConfidentialLedger,
+	scheme notary.Scheme,
+	confidential notary.ConfidentialScheme,
+	statements notary.StatementScheme,
+	court notary.Court,
+) *Verifier {
+	return &Verifier{
+		ledger:       ledger,
+		scheme:       scheme,
+		statements:   statements,
+		court:        court,
+		confidential: confidential,
+		trees:        trees,
+	}
 }
 
 func (v *Verifier) Verify(ctx context.Context, claim notary.Claim) (notary.Verification, error) {
@@ -65,7 +85,19 @@ func (v *Verifier) Verify(ctx context.Context, claim notary.Claim) (notary.Verif
 		}
 	}
 
-	local := notary.VerifyInclusion(v.scheme, epoch, claim.Entry, claim.Proof)
+	var local error
+
+	if v.confidential == nil {
+		local = notary.VerifyInclusion(v.scheme, epoch, claim.Entry, claim.Proof)
+	} else {
+		statement, err := v.trees.ConfidentialEpoch(ctx, claim.Epoch)
+		if err != nil {
+			return notary.Verification{}, err
+		}
+
+		local = notary.VerifyConfidentialInclusion(v.confidential, statement, claim.Entry, claim.Proof)
+	}
+
 	if local != nil && notary.KindOf(local) != notary.KindProofRejected {
 		return notary.Verification{}, local
 	}

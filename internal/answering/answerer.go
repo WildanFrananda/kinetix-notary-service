@@ -9,49 +9,44 @@ import (
 	"github.com/WildanFrananda/kinetix-notary-service/internal/notary"
 )
 
-type requestKey struct {
-	registration notary.Digest
-	epoch        uint64
-}
-
 type Answerer struct {
-	court         notary.WithholdingCourt
-	chain         notary.AnswerChain
+	venues        []Venue
+	cursors       []cursor
 	source        notary.ProofSource
 	registrations notary.RegistrationStore
 	scheme        notary.Scheme
+	confidential  notary.ConfidentialScheme
 	observer      Observer
 	clock         func() time.Time
 	log           *slog.Logger
 	policy        Policy
-	next          uint64
-	started       bool
-	pending       map[requestKey]notary.WithholdingRequest
+	pending       map[requestKey]waiting
 	unanswerable  map[requestKey]string
 }
 
 func NewAnswerer(
-	court notary.WithholdingCourt,
-	chain notary.AnswerChain,
+	venues []Venue,
 	source notary.ProofSource,
 	registrations notary.RegistrationStore,
 	scheme notary.Scheme,
+	confidential notary.ConfidentialScheme,
 	observer Observer,
 	clock func() time.Time,
 	log *slog.Logger,
 	policy Policy,
 ) *Answerer {
 	return &Answerer{
-		court:         court,
-		chain:         chain,
+		venues:        venues,
+		cursors:       make([]cursor, len(venues)),
 		source:        source,
 		registrations: registrations,
 		scheme:        scheme,
+		confidential:  confidential,
 		observer:      observer,
 		clock:         clock,
 		log:           log,
 		policy:        policy,
-		pending:       map[requestKey]notary.WithholdingRequest{},
+		pending:       map[requestKey]waiting{},
 		unanswerable:  map[requestKey]string{},
 	}
 }
@@ -59,24 +54,26 @@ func NewAnswerer(
 func (a *Answerer) CheckScan(ctx context.Context) error {
 	const op = "answering.Answerer.CheckScan"
 
-	latest, err := a.court.LatestBlock(ctx)
-	if err != nil {
-		return err
-	}
+	for _, venue := range a.venues {
+		latest, err := venue.Court.LatestBlock(ctx)
+		if err != nil {
+			return err
+		}
 
-	from := uint64(0)
-	if latest >= a.policy.Span {
-		from = latest - a.policy.Span + 1
-	}
+		from := uint64(0)
+		if latest >= a.policy.Span {
+			from = latest - a.policy.Span + 1
+		}
 
-	if _, err := a.court.Requests(ctx, from, latest); err != nil {
-		return notary.Errf(
-			notary.KindOf(err),
-			op,
-			err,
-			"the RPC endpoint does not answer one log query over %d blocks",
-			a.policy.Span,
-		)
+		if _, err := venue.Court.Requests(ctx, from, latest); err != nil {
+			return notary.Errf(
+				notary.KindOf(err),
+				op,
+				err,
+				"the RPC endpoint does not answer one log query over %d blocks",
+				a.policy.Span,
+			)
+		}
 	}
 
 	return nil
@@ -94,19 +91,27 @@ func (a *Answerer) serve(ctx context.Context) error {
 		return err
 	}
 
-	total, err := a.court.TotalSilences(ctx)
-	if err != nil {
-		return err
+	var total uint64
+
+	for _, venue := range a.venues {
+		silences, err := venue.Court.TotalSilences(ctx)
+		if err != nil {
+			return err
+		}
+
+		total += silences
 	}
 
 	a.observer.Silences(total)
 
-	if balance, err := a.chain.Balance(ctx); err == nil {
-		a.observer.AnswererBalance(balance)
+	if len(a.venues) > 0 {
+		if balance, err := a.venues[0].Chain.Balance(ctx); err == nil {
+			a.observer.AnswererBalance(balance)
+		}
 	}
 
-	for _, request := range a.ordered() {
-		if err := a.settle(ctx, request); err != nil {
+	for _, open := range a.ordered() {
+		if err := a.settle(ctx, open); err != nil {
 			a.observe()
 
 			return err
@@ -119,55 +124,69 @@ func (a *Answerer) serve(ctx context.Context) error {
 }
 
 func (a *Answerer) scan(ctx context.Context) error {
-	latest, err := a.court.LatestBlock(ctx)
-	if err != nil {
-		return err
-	}
-
-	if !a.started {
-		a.next = a.policy.FromBlock
-		if latest > a.policy.Lookback && latest-a.policy.Lookback > a.next {
-			a.next = latest - a.policy.Lookback
-		}
-
-		a.started = true
-	}
-
-	for a.next <= latest {
-		to := min(a.next+a.policy.Span-1, latest)
-
-		requests, err := a.court.Requests(ctx, a.next, to)
-		if err != nil {
+	for i, venue := range a.venues {
+		if err := a.scanVenue(ctx, i, venue); err != nil {
 			return err
 		}
-
-		for _, request := range requests {
-			a.pending[requestKey{registration: request.Registration, epoch: request.Epoch}] = request
-		}
-
-		a.next = to + 1
 	}
 
 	return nil
 }
 
-func (a *Answerer) ordered() []notary.WithholdingRequest {
-	requests := make([]notary.WithholdingRequest, 0, len(a.pending))
-	for _, request := range a.pending {
-		requests = append(requests, request)
+func (a *Answerer) scanVenue(ctx context.Context, i int, venue Venue) error {
+	latest, err := venue.Court.LatestBlock(ctx)
+	if err != nil {
+		return err
 	}
 
-	sort.Slice(requests, func(i, j int) bool {
-		return requests[i].DueAt.Seconds() < requests[j].DueAt.Seconds()
-	})
+	position := &a.cursors[i]
+	if !position.started {
+		position.next = venue.FromBlock
+		if latest > a.policy.Lookback && latest-a.policy.Lookback > position.next {
+			position.next = latest - a.policy.Lookback
+		}
 
-	return requests
+		position.started = true
+	}
+
+	for position.next <= latest {
+		to := min(position.next+a.policy.Span-1, latest)
+
+		requests, err := venue.Court.Requests(ctx, position.next, to)
+		if err != nil {
+			return err
+		}
+
+		for _, request := range requests {
+			key := requestKey{venue: i, registration: request.Registration, epoch: request.Epoch}
+			a.pending[key] = waiting{venue: i, request: request}
+		}
+
+		position.next = to + 1
+	}
+
+	return nil
 }
 
-func (a *Answerer) settle(ctx context.Context, request notary.WithholdingRequest) error {
-	key := requestKey{registration: request.Registration, epoch: request.Epoch}
+func (a *Answerer) ordered() []waiting {
+	open := make([]waiting, 0, len(a.pending))
+	for _, entry := range a.pending {
+		open = append(open, entry)
+	}
 
-	state, dueAt, err := a.court.RequestOf(ctx, request.Registration, request.Epoch)
+	sort.Slice(open, func(i, j int) bool {
+		return open[i].request.DueAt.Seconds() < open[j].request.DueAt.Seconds()
+	})
+
+	return open
+}
+
+func (a *Answerer) settle(ctx context.Context, open waiting) error {
+	request := open.request
+	venue := a.venues[open.venue]
+	key := requestKey{venue: open.venue, registration: request.Registration, epoch: request.Epoch}
+
+	state, dueAt, err := venue.Court.RequestOf(ctx, request.Registration, request.Epoch)
 	if err != nil {
 		return err
 	}
@@ -205,7 +224,7 @@ func (a *Answerer) settle(ctx context.Context, request notary.WithholdingRequest
 		return a.refuse(ctx, key, request, err)
 	}
 
-	hash, err := a.chain.Answer(ctx, answer)
+	hash, err := venue.Chain.Answer(ctx, answer)
 	if err != nil {
 		return a.refuse(ctx, key, request, err)
 	}
@@ -322,19 +341,9 @@ func (a *Answerer) prepare(ctx context.Context, request notary.WithholdingReques
 		)
 	}
 
-	tree, err := notary.BuildTree(a.scheme, request.Epoch, entries)
+	tree, err := notary.RebuildEpochTree(a.scheme, a.confidential, record, entries)
 	if err != nil {
 		return notary.Answer{}, err
-	}
-
-	if root := tree.Root(); root.Hash != record.Header.Root || root.Sum != record.Header.Total {
-		return notary.Answer{}, notary.Errf(
-			notary.KindDisagreement,
-			op,
-			nil,
-			"the accounts stored for epoch %d do not rebuild the root it anchored",
-			request.Epoch,
-		)
 	}
 
 	proof, err := tree.Prove(uint64(position))
