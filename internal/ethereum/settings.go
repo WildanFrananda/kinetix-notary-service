@@ -14,4 +14,5 @@ type Settings struct {
 	Council     notary.Address
 	Directory   notary.DirectoryIdentity
 	Timeout     time.Duration
+	Rate        int
 }

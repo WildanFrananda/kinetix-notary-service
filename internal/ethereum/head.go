@@ -34,6 +34,22 @@ func (r *HeadReader) Head(ctx context.Context) (notary.LedgerHead, error) {
 	return readHead(ctx, "ethereum.HeadReader.Head", r.contract, r.binding, r.timeout)
 }
 
+func (r *HeadReader) Reachable(ctx context.Context) error {
+	ctx, cancel := context.WithTimeout(ctx, r.timeout)
+	defer cancel()
+
+	if _, err := bind.Call(
+		r.contract,
+		&bind.CallOpts{Context: ctx},
+		r.binding.PackNextEpoch(),
+		r.binding.UnpackNextEpoch,
+	); err != nil {
+		return unavailable("ethereum.HeadReader.Reachable", err)
+	}
+
+	return nil
+}
+
 func readHead(
 	ctx context.Context,
 	op string,

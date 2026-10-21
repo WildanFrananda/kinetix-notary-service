@@ -7,6 +7,7 @@ import (
 	"github.com/WildanFrananda/kinetix-notary-service/internal/answering"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/delivering"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/epochwatch"
+	"github.com/WildanFrananda/kinetix-notary-service/internal/ethereum"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/evidencing"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/httpapi"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/metrics"
@@ -34,6 +35,7 @@ type metricsResult struct {
 	Sponsors  sponsoring.Observer
 	Evidence  evidencing.Observer
 	Delivery  delivering.Observer
+	RPC       ethereum.RPCObserver
 }
 
 func provideMetrics(p metricsParams) metricsResult {
@@ -55,5 +57,14 @@ func provideMetrics(p metricsParams) metricsResult {
 	m.SeedCall("review", reviewv1.ReviewEvidenceService_ReviewsSince_FullMethodName)
 	m.SeedCall("notification", notificationv1.NotificationService_Notify_FullMethodName)
 
-	return metricsResult{Metrics: m, Observer: m, Watching: m, Answering: m, Sponsors: m, Evidence: m, Delivery: m}
+	return metricsResult{
+		Metrics:   m,
+		Observer:  m,
+		Watching:  m,
+		Answering: m,
+		Sponsors:  m,
+		Evidence:  m,
+		Delivery:  m,
+		RPC:       m,
+	}
 }

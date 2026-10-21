@@ -2,6 +2,7 @@ package ethereum
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/ethereum/go-ethereum/accounts/abi/bind/v2"
@@ -38,7 +39,11 @@ func (r *ProofReader) Depth(ctx context.Context) (int, error) {
 
 	depth, err := bind.Call(r.contract, &bind.CallOpts{Context: ctx}, r.binding.PackDepth(), r.binding.UnpackDepth)
 	if err != nil {
-		return 0, notary.Errf(notary.KindWrongLedger, op, err, "the ledger does not answer as a scheme-2 ledger")
+		if _, reverted := revertData(err); reverted || isBareRevert(err) || errors.Is(err, bind.ErrNoCode) {
+			return 0, notary.Errf(notary.KindWrongLedger, op, err, "the ledger does not answer as a scheme-2 ledger")
+		}
+
+		return 0, unavailable(op, err)
 	}
 
 	return int(depth), nil

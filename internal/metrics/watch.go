@@ -21,6 +21,7 @@ const (
 
 type Watch struct {
 	edge
+	rpc
 
 	registry  *prometheus.Registry
 	approvals *prometheus.CounterVec
@@ -47,6 +48,7 @@ func NewWatch(build Build) *Watch {
 
 	w := &Watch{
 		edge:     newEdge(),
+		rpc:      newRPC(),
 		registry: registry,
 		approvals: prometheus.NewCounterVec(
 			prometheus.CounterOpts{
@@ -63,7 +65,8 @@ func NewWatch(build Build) *Watch {
 			[]string{"grpc_method", "grpc_code"},
 		),
 	}
-	w.register(factory)
+	w.edge.register(factory)
+	w.rpc.register(factory)
 	factory(w.approvals)
 	factory(w.served)
 

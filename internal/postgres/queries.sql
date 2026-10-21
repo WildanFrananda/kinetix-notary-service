@@ -412,3 +412,37 @@ SELECT
     count(*) FILTER (WHERE planned_at < sqlc.arg(planned_before)::timestamptz) AS overdue
 FROM statement_deliveries
 WHERE state = 'pending';
+
+-- name: WithholdingScanFrom :one
+SELECT next_block FROM withholding_scans WHERE chain_id = sqlc.arg(chain_id)::bigint AND court = sqlc.arg(court)::bytea;
+
+-- name: AdvanceWithholdingScan :exec
+INSERT INTO withholding_scans (chain_id, court, next_block)
+VALUES (sqlc.arg(chain_id)::bigint, sqlc.arg(court)::bytea, sqlc.arg(next_block)::bigint)
+ON CONFLICT (chain_id, court) DO UPDATE
+SET next_block = GREATEST(withholding_scans.next_block, EXCLUDED.next_block), updated_at = now();
+
+-- name: InsertWithholdingRequests :exec
+INSERT INTO withholding_requests (chain_id, court, registration, epoch_number, account, holder, due_at)
+SELECT
+    sqlc.arg(chain_id)::bigint,
+    sqlc.arg(court)::bytea,
+    unnest(sqlc.arg(registrations)::bytea[]),
+    unnest(sqlc.arg(epochs)::bigint[]),
+    unnest(sqlc.arg(accounts)::bytea[]),
+    unnest(sqlc.arg(holders)::bytea[]),
+    unnest(sqlc.arg(due_ats)::bigint[])
+ON CONFLICT DO NOTHING;
+
+-- name: OpenWithholdingRequests :many
+SELECT registration, epoch_number, account, holder, due_at
+FROM withholding_requests
+WHERE chain_id = sqlc.arg(chain_id)::bigint AND court = sqlc.arg(court)::bytea
+ORDER BY due_at, epoch_number, registration;
+
+-- name: CloseWithholdingRequest :exec
+DELETE FROM withholding_requests
+WHERE chain_id = sqlc.arg(chain_id)::bigint
+  AND court = sqlc.arg(court)::bytea
+  AND registration = sqlc.arg(registration)::bytea
+  AND epoch_number = sqlc.arg(epoch)::bigint;

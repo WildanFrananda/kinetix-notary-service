@@ -747,8 +747,19 @@ Prometheus had never scraped the notary, so the stall, abandon, runway and prove
 silent since step 4. That is fixed in infrastructure, and `bin/prod-deploy` now refuses a service that
 Prometheus does not scrape. **6b**, pushing statements to holders, is notification's work.
 
-**6b, designed and built 2026-10-20 (uncommitted).** notification owns delivery, so notary decides only who is told
-and when, and notification sends it.
+**6b, designed and built 2026-10-20, live the same day.** notification owns delivery, so notary decides only who is
+told and when, and notification sends it.
+
+**Live 2026-10-20 17:49 UTC: notary v1.7.0 (`sha256:bbd9da0d…2d53`) with notification v1.1.1.** The first try
+(run 39462957258) rolled back to v1.6.1. notary's first `Notify` was the first gRPC call notification v1.1.0 had
+ever served, and its metrics interceptors killed the process (notification `CLAUDE.md`). The four epoch-186
+statements planned then waited as `pending` and were sent within two seconds of the redeploy (run 39469270743):
+- each is `sent` with a `notification_id`;
+- `kinetix_notary_statements_total{outcome="sent"}` is 4;
+- pending and overdue are 0.
+
+notification mailed two of them and recorded two as `FAILED`: Resend refuses the `example.com` addresses the seed
+accounts carry, with a 422. Epoch 187 opened 2026-10-21 WIB and planned nothing, because no balance had changed.
 
 *Ruled by the user on 2026-10-20:*
 - **The message carries no amount.** It says that the holder's statement for an epoch is signed and links the public
@@ -2321,6 +2332,39 @@ production runs, and none runs scheme 2 yet.
   7. the infra release: generation 2's contracts, no scheme override, `mem_limit: 1600m`;
   8. the first council anchor, then `bin/retire-anchorer base-sepolia-2 <tx> --broadcast` and
      `KINETIX_NOTARY_ANCHORER_ROLE_HOLDERS`.
+
+### The RPC budget. **Built 2026-10-21, not released.**
+
+On 2026-10-20 notaryd and notary-watch drew 49 `429 … 25/second request limit reached` from sepolia.base.org.
+None lost an epoch: one sponsorship check per refusal failed, and one cluster held epoch 187's anchor back about two
+minutes. The cause and the four fixes are in CLAUDE.md, "A public RPC endpoint limits requests per IP". In short:
+
+- every request is paced to `KINETIX_NOTARY_RPC_RATE`, and a 429 is retried;
+- the paymaster's identity is read once;
+- the withholding scan resumes from Postgres (migration 00008);
+- the watch's readiness costs one call;
+- a throttled `Depth` read is `ledger_unavailable`, not `wrong_ledger`.
+
+**Proof so far:**
+
+- `tests/ethereum` drives `ethereum.Dial` against a local JSON-RPC endpoint:
+  - a 429 is waited out and sent again;
+  - one that keeps refusing gives up after three retries;
+  - a caller's deadline is never overrun;
+  - a 502 is not retried;
+  - 11 calls at 20 a second take at least 450 ms;
+  - the paymaster's identity costs no request after its first success.
+- `tests/answering`: a restarted answerer resumes at the recorded block and still answers a request found before the
+  restart; a scan the store could not record is read again.
+- `tests/postgres` covers the two tables, `tests/wiring` proves the watch's readiness is one request, and the whole
+  suite, integration included, passed on 2026-10-21.
+
+**Release:** infra commits `KINETIX_NOTARY_RPC_RATE` first, because a notaryd without it refuses to start. The lab
+gets 50, and production 12 for notaryd and 4 for the watch. The alert `kinetix-notary-rpc-throttled` lands in the
+same commit. Then the notary tag.
+
+**Exit:** a production day with `increase(kinetix_notary_rpc_throttled_total[24h])` at 0 for both processes. The
+WASM verifier links this code, so the release changes its hash and the docs must pin it.
 
 ### Step 14 — the next service: product passport
 

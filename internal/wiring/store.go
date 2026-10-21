@@ -38,6 +38,7 @@ type storeResult struct {
 	Evidence       notary.EvidenceStore
 	EvidenceProofs notary.EvidenceProofSource
 	Statements     notary.StatementStore
+	Withholding    notary.WithholdingScans
 }
 
 func provideStore(p storeParams) storeResult {
@@ -50,5 +51,6 @@ func provideStore(p storeParams) storeResult {
 		Evidence:       store,
 		EvidenceProofs: store,
 		Statements:     store,
+		Withholding:    store,
 	}
 }

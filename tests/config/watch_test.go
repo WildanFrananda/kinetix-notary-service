@@ -18,6 +18,7 @@ func watchValues() map[string]string {
 		config.LedgerAddressKey:  "0x4e869a55031de3b0d030aebecc66e523686761a2",
 		config.CourtAddressKey:   "0x00000000000000000000000000000000c0c0c0c0",
 		config.RPCTimeoutKey:     "10s",
+		config.RPCRateKey:        "4",
 		config.CouncilAddressKey: "0x00000000000000000000000000000000c0c0c0c1",
 		config.WatchKeyKey:       watchKey,
 		config.PaymentAddressKey: "kinetix-payment-service:50056",

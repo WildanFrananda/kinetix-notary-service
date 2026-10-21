@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"sync"
 	"time"
 
 	"github.com/ethereum/go-ethereum/accounts/abi/bind/v2"
@@ -25,6 +26,8 @@ type Paymaster struct {
 	address     notary.Address
 	interfaceID [4]byte
 	timeout     time.Duration
+	mu          sync.Mutex
+	known       *notary.PaymasterIdentity
 }
 
 var _ notary.Paymaster = (*Paymaster)(nil)
@@ -44,6 +47,25 @@ func NewPaymaster(client *ethclient.Client, chainID uint64, address notary.Addre
 }
 
 func (p *Paymaster) Identity(ctx context.Context) (notary.PaymasterIdentity, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	if p.known == nil {
+		identity, err := p.readIdentity(ctx)
+		if err != nil {
+			return notary.PaymasterIdentity{}, err
+		}
+
+		p.known = &identity
+	}
+
+	identity := *p.known
+	identity.Ceiling = new(big.Int).Set(p.known.Ceiling)
+
+	return identity, nil
+}
+
+func (p *Paymaster) readIdentity(ctx context.Context) (notary.PaymasterIdentity, error) {
 	const op = "ethereum.Paymaster.Identity"
 
 	ctx, cancel := context.WithTimeout(ctx, p.timeout)

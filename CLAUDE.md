@@ -104,6 +104,13 @@ notaryd also needs `KINETIX_NOTARY_WITHHOLDING_COURT_ADDRESS`, `KINETIX_NOTARY_W
 the withholding court was deployed in), `KINETIX_NOTARY_ANSWERER_PRIVATE_KEY` and `KINETIX_NOTARY_RPC_LOG_RANGE`
 (the most blocks the RPC endpoint answers in one `eth_getLogs`).
 
+notaryd and notary-watch both need `KINETIX_NOTARY_RPC_RATE`, the most requests a second the process sends the RPC
+endpoint (1 to 1000). Both refuse a `ws` or `wss` endpoint, because only HTTP requests can be paced. `ethereum.Dial`
+sends every request of the process through one `rate.Limiter` with a burst of one, so no second holds more than
+rate + 1 of them. A 429 that still comes is waited out for a second and sent again, up to three times, unless the
+caller's deadline is nearer. The verifiers and `notary-sponsor` get the retry without a rate. Each process exports
+`kinetix_notary_rpc_requests_total`, `kinetix_notary_rpc_throttled_total` and `kinetix_notary_rpc_paced_seconds_total`.
+
 It refuses to start unless:
 - the withholding court stands beside its court;
 - it reads the notary's ledger;
@@ -640,6 +647,20 @@ A failure must never be reported as a definite answer. In this service that mean
   cutover's first start refused with `CheckSRSFile … permission denied`. Scheme 1 never opens the file, so v1.6.0 ran
   green on it for an hour. The final stage creates the directory with `install -d -m 0755` before the copy, and
   build-and-push opens the SRS in the built image as `notary` before it pushes.
+- **A public RPC endpoint limits requests per IP, and every loop ticked on the same 15 s grid.** sepolia.base.org
+  allows 25 a second. On 2026-10-20 notaryd and notary-watch, on one host, drew 49 `429`s: each idle tick sent about
+  21 calls in under a second, the watch's readiness 6 more, and every restart re-read 100 000 blocks of the
+  withholding court in 500 `eth_getLogs` back to back. Nothing paced or retried them. Four fixes, one release:
+  - Every request is paced and a 429 retried (above).
+  - The paymaster's identity is read once. All of it is `immutable`, and re-reading it was 8 of the 21 calls.
+  - The withholding scan keeps its position and its open requests in Postgres (`withholding_scans`,
+    `withholding_requests`, migration 00008), so a restart resumes where the last pass stopped. A request leaves the
+    table only when it is closed on chain, past its deadline, or answered by a mined transaction. A cursor kept
+    without the requests would have lost every request found before the restart.
+  - The watch's readiness reads `nextEpoch()` once instead of the whole head.
+
+  `ProofReader.Depth` reported a 429 as `wrong_ledger`. Only a revert or an address without code is that now; any
+  other failure is `ledger_unavailable`.
 - **A fake server that drops what it cannot place hides the reader's refusal.** The first evidence feed
   fake skipped a record with no position, so the reader's "without a position" refusal was never
   reached. Fakes send what they are given; the reader refuses.
@@ -649,8 +670,8 @@ A failure must never be reported as a definite answer. In this service that mean
 Steps 1–13 are live; PLAN.md records each one's release and proof. The last, scheme 2, has run in production since
 2026-10-20 on notary v1.6.1: generation 2 from epoch 183, its council `0xB165…A45A` the ledger's only anchorer. What
 the plan still holds is outside this repository:
-- 6b's delivery itself is notification's (decision 14); the notary side, which decides who is told and when, is built
-  here (uncommitted), on kinetix-contracts v1.7.0, which carries `TEMPLATE_LIABILITY_STATEMENT`;
+- 6b's delivery itself is notification's (decision 14). The notary side, which decides who is told and when, has been
+  live since 2026-10-20 in notary v1.7.0 with notification v1.1.1, on kinetix-contracts v1.7.0;
 - step 14, the product passport, is a service of its own, and it starts with owner-side work in warehouse and buyer
   wallets.
 

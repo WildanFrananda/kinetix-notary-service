@@ -21,7 +21,7 @@ import (
 
 const (
 	databaseURLKey = "KINETIX_NOTARY_TEST_DATABASE_URL"
-	schemaVersion  = int64(7)
+	schemaVersion  = int64(8)
 )
 
 var ledgerID = notary.LedgerIdentity{ChainID: 84532, Address: notary.Address{0x4e, 0x86}}
