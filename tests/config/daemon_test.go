@@ -37,6 +37,7 @@ func daemonValues() map[string]string {
 		config.PaymasterAddressKey: "0x00000000000000000000000000000000fafafafa",
 		config.WatchAddressKey:     "kinetix-notary-watch:50070",
 		config.RPCTimeoutKey:       "10s",
+		config.RPCRateKey:          "12",
 		config.DatabaseURLKey:      "postgres://notary@kinetix-notary-db:5432/notary",
 		config.AnchorerKeyKey:      anchorerKey,
 		config.PaymentAddressKey:   "kinetix-payment-service:50056",

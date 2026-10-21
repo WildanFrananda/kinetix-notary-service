@@ -26,6 +26,7 @@ func complete() map[string]string {
 		config.LedgerAddressKey: mixedCaseLedger,
 		config.CourtAddressKey:  "0x00000000000000000000000000000000C0C0c0c0",
 		config.RPCTimeoutKey:    "10s",
+		config.RPCRateKey:       "12",
 	}
 }
 
@@ -42,6 +43,7 @@ func TestACompleteEnvironmentLoads(t *testing.T) {
 			Ledger:     notary.LedgerIdentity{ChainID: 84532, Address: address},
 			Court:      notary.Address{16: 0xc0, 17: 0xc0, 18: 0xc0, 19: 0xc0},
 			RPCTimeout: 10 * time.Second,
+			RPCRate:    12,
 		},
 		cfg,
 	)
@@ -58,6 +60,7 @@ func TestEveryMissingKeyIsNamedAtOnce(t *testing.T) {
 		config.LedgerAddressKey,
 		config.CourtAddressKey,
 		config.RPCTimeoutKey,
+		config.RPCRateKey,
 	}
 	for _, key := range keys {
 		require.Contains(t, err.Error(), key+" is not set")
@@ -80,6 +83,7 @@ func TestInvalidValuesAreRefused(t *testing.T) {
 		config.LedgerAddressKey: "0x0000000000000000000000000000000000000000",
 		config.CourtAddressKey:  "0xc0",
 		config.RPCTimeoutKey:    "10m",
+		config.RPCRateKey:       "0",
 	}
 	for key, value := range cases {
 		t.Run(key, func(t *testing.T) {
@@ -91,6 +95,25 @@ func TestInvalidValuesAreRefused(t *testing.T) {
 			require.ErrorContains(t, err, key)
 		})
 	}
+}
+
+func TestARateAboveTheCeilingIsRefused(t *testing.T) {
+	values := complete()
+	values[config.RPCRateKey] = "1001"
+
+	_, err := config.LoadChain(lookup(values))
+
+	require.ErrorContains(t, err, config.RPCRateKey)
+}
+
+func TestAWebSocketEndpointIsRefusedBecauseOnlyHTTPIsPaced(t *testing.T) {
+	values := complete()
+	values[config.RPCURLKey] = "wss://rpc.example.org/v2/secret-api-key"
+
+	_, err := config.LoadChain(lookup(values))
+
+	require.ErrorContains(t, err, config.RPCURLKey+" must be http or https")
+	require.NotContains(t, err.Error(), "secret-api-key")
 }
 
 func TestTheRPCURLNeverAppearsInAnError(t *testing.T) {

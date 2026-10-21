@@ -33,6 +33,7 @@ type Metrics struct {
 	edge
 	evidence
 	statements
+	rpc
 
 	registry     *prometheus.Registry
 	lastEpoch    prometheus.Gauge
@@ -87,6 +88,7 @@ func New(build Build) *Metrics {
 		edge:       newEdge(),
 		evidence:   newEvidence(),
 		statements: newStatements(),
+		rpc:        newRPC(),
 		registry:   registry,
 		lastEpoch: prometheus.NewGauge(prometheus.GaugeOpts{
 			Name: "kinetix_notary_last_finalized_epoch",
@@ -179,6 +181,7 @@ func New(build Build) *Metrics {
 	m.edge.register(factory)
 	m.evidence.register(factory)
 	m.statements.register(factory)
+	m.rpc.register(factory)
 
 	for _, c := range []prometheus.Collector{
 		m.lastEpoch,

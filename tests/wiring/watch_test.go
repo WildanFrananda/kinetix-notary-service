@@ -30,6 +30,7 @@ func TestTheWatchGraphResolvesAndServesOnlyItsOwnMetrics(t *testing.T) {
 			config.LedgerAddressKey:  anvilLedger,
 			config.CourtAddressKey:   anvilCourt,
 			config.RPCTimeoutKey:     "2s",
+			config.RPCRateKey:        "4",
 			config.CouncilAddressKey: "0x9fe46736679d2d9a65f0992f2272de9f3c7fa6e0",
 			config.WatchKeyKey:       "0x7c0883a69102937d6231471b5dbb6204fe5129617082792ae468d01a3f362318",
 			config.PaymentAddressKey: "127.0.0.1:1",
@@ -76,6 +77,16 @@ func TestTheWatchGraphResolvesAndServesOnlyItsOwnMetrics(t *testing.T) {
 			ready := httptest.NewRecorder()
 			handler.ServeHTTP(ready, httptest.NewRequest(http.MethodGet, "/health/ready", nil))
 			require.Equal(t, http.StatusServiceUnavailable, ready.Code, "no ledger answers at 127.0.0.1:1")
+
+			after := httptest.NewRecorder()
+			handler.ServeHTTP(after, httptest.NewRequest(http.MethodGet, "/metrics", nil))
+			require.Contains(
+				t,
+				after.Body.String(),
+				"\nkinetix_notary_rpc_requests_total 1\n",
+				"readiness reads the ledger once",
+			)
+			require.Contains(t, after.Body.String(), "\nkinetix_notary_rpc_throttled_total 0\n")
 		},
 	)
 

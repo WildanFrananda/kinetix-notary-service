@@ -12,6 +12,7 @@ import (
 type Answerer struct {
 	venues        []Venue
 	cursors       []cursor
+	scans         notary.WithholdingScans
 	source        notary.ProofSource
 	registrations notary.RegistrationStore
 	scheme        notary.Scheme
@@ -26,6 +27,7 @@ type Answerer struct {
 
 func NewAnswerer(
 	venues []Venue,
+	scans notary.WithholdingScans,
 	source notary.ProofSource,
 	registrations notary.RegistrationStore,
 	scheme notary.Scheme,
@@ -38,6 +40,7 @@ func NewAnswerer(
 	return &Answerer{
 		venues:        venues,
 		cursors:       make([]cursor, len(venues)),
+		scans:         scans,
 		source:        source,
 		registrations: registrations,
 		scheme:        scheme,
@@ -141,12 +144,9 @@ func (a *Answerer) scanVenue(ctx context.Context, i int, venue Venue) error {
 
 	position := &a.cursors[i]
 	if !position.started {
-		position.next = venue.FromBlock
-		if latest > a.policy.Lookback && latest-a.policy.Lookback > position.next {
-			position.next = latest - a.policy.Lookback
+		if err := a.resume(ctx, i, venue, latest); err != nil {
+			return err
 		}
-
-		position.started = true
 	}
 
 	for position.next <= latest {
@@ -157,15 +157,58 @@ func (a *Answerer) scanVenue(ctx context.Context, i int, venue Venue) error {
 			return err
 		}
 
+		if err := a.scans.RecordScan(ctx, venue.Identity, to+1, requests); err != nil {
+			return err
+		}
+
 		for _, request := range requests {
-			key := requestKey{venue: i, registration: request.Registration, epoch: request.Epoch}
-			a.pending[key] = waiting{venue: i, request: request}
+			a.wait(i, request)
 		}
 
 		position.next = to + 1
 	}
 
 	return nil
+}
+
+func (a *Answerer) resume(ctx context.Context, i int, venue Venue, latest uint64) error {
+	next, found, err := a.scans.ScanFrom(ctx, venue.Identity)
+	if err != nil {
+		return err
+	}
+
+	if !found || next < venue.FromBlock {
+		next = venue.FromBlock
+	}
+
+	if latest > a.policy.Lookback && latest-a.policy.Lookback > next {
+		next = latest - a.policy.Lookback
+	}
+
+	open, err := a.scans.OpenRequests(ctx, venue.Identity)
+	if err != nil {
+		return err
+	}
+
+	for _, request := range open {
+		a.wait(i, request)
+	}
+
+	a.cursors[i] = cursor{next: next, started: true}
+
+	return nil
+}
+
+func (a *Answerer) wait(venue int, request notary.WithholdingRequest) {
+	key := requestKey{venue: venue, registration: request.Registration, epoch: request.Epoch}
+	a.pending[key] = waiting{venue: venue, request: request}
+}
+
+func (a *Answerer) close(ctx context.Context, key requestKey) error {
+	delete(a.pending, key)
+	delete(a.unanswerable, key)
+
+	return a.scans.CloseRequest(ctx, a.venues[key.venue].Identity, key.registration, key.epoch)
 }
 
 func (a *Answerer) ordered() []waiting {
@@ -192,10 +235,7 @@ func (a *Answerer) settle(ctx context.Context, open waiting) error {
 	}
 
 	if state != notary.RequestOpen {
-		delete(a.pending, key)
-		delete(a.unanswerable, key)
-
-		return nil
+		return a.close(ctx, key)
 	}
 
 	if a.clock().After(dueAt.Time()) {
@@ -209,10 +249,8 @@ func (a *Answerer) settle(ctx context.Context, open waiting) error {
 			"due_at",
 			dueAt.Time(),
 		)
-		delete(a.pending, key)
-		delete(a.unanswerable, key)
 
-		return nil
+		return a.close(ctx, key)
 	}
 
 	if _, known := a.unanswerable[key]; known {
@@ -239,9 +277,8 @@ func (a *Answerer) settle(ctx context.Context, open waiting) error {
 		"tx",
 		hash.Hex(),
 	)
-	delete(a.pending, key)
 
-	return nil
+	return a.close(ctx, key)
 }
 
 func (a *Answerer) refuse(ctx context.Context, key requestKey, request notary.WithholdingRequest, err error) error {

@@ -14,6 +14,7 @@ import (
 type chainClientParams struct {
 	dig.In
 	Settings ethereum.Settings
+	Observer ethereum.RPCObserver `optional:"true"`
 }
 
 type chainClientResult struct {
@@ -22,7 +23,7 @@ type chainClientResult struct {
 }
 
 func provideChainClient(p chainClientParams) (chainClientResult, error) {
-	client, err := ethereum.Dial(p.Settings)
+	client, err := ethereum.Dial(p.Settings, p.Observer)
 	if err != nil {
 		return chainClientResult{}, err
 	}

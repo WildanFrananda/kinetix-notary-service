@@ -16,8 +16,10 @@ const (
 	LedgerAddressKey = "KINETIX_NOTARY_LEDGER_ADDRESS"
 	CourtAddressKey  = "KINETIX_NOTARY_COURT_ADDRESS"
 	RPCTimeoutKey    = "KINETIX_NOTARY_RPC_TIMEOUT"
+	RPCRateKey       = "KINETIX_NOTARY_RPC_RATE"
 
 	maxRPCTimeout = 5 * time.Minute
+	maxRPCRate    = 1000
 )
 
 type Chain struct {
@@ -25,6 +27,7 @@ type Chain struct {
 	Ledger     notary.LedgerIdentity
 	Court      notary.Address
 	RPCTimeout time.Duration
+	RPCRate    int
 }
 
 func LoadChain(lookup Lookup) (Chain, error) {
@@ -37,8 +40,13 @@ func LoadChain(lookup Lookup) (Chain, error) {
 		Ledger:     notary.LedgerIdentity{ChainID: chainID(read(ChainIDKey), &problems)},
 		Court:      address(CourtAddressKey, read(CourtAddressKey), &problems),
 		RPCTimeout: rpcTimeout(read(RPCTimeoutKey), &problems),
+		RPCRate:    rpcRate(read(RPCRateKey), &problems),
 	}
 	cfg.Ledger.Address = address(LedgerAddressKey, read(LedgerAddressKey), &problems)
+
+	if parsed, err := url.Parse(cfg.RPCURL); err == nil && (parsed.Scheme == "ws" || parsed.Scheme == "wss") {
+		problems = append(problems, RPCURLKey+" must be http or https: "+RPCRateKey+" paces HTTP requests")
+	}
 
 	if len(problems) > 0 {
 		return Chain{}, errors.New("configuration refused: " + strings.Join(problems, "; "))
@@ -116,6 +124,22 @@ func rpcTimeout(raw string, problems *[]string) time.Duration {
 	}
 
 	return timeout
+}
+
+func rpcRate(raw string, problems *[]string) int {
+	if raw == "" {
+		return 0
+	}
+
+	perSecond, err := strconv.Atoi(raw)
+	if err != nil || perSecond < 1 || perSecond > maxRPCRate {
+		*problems = append(
+			*problems,
+			RPCRateKey+" must be the most requests a second this process sends, from 1 to 1000",
+		)
+	}
+
+	return perSecond
 }
 
 func supportedScheme(scheme string) bool {

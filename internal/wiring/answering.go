@@ -47,6 +47,7 @@ type answererParams struct {
 	Chain         notary.AnswerChain
 	Writer        *ethereum.AnswerWriter
 	Earlier       []notary.Generation `name:"earlier"`
+	Scans         notary.WithholdingScans
 	Source        notary.ProofSource
 	Registrations notary.RegistrationStore
 	Scheme        notary.Scheme
@@ -58,17 +59,24 @@ type answererParams struct {
 }
 
 func provideAnswerer(p answererParams) *answering.Answerer {
-	venues := []answering.Venue{{Court: p.Court, Chain: p.Chain, FromBlock: p.Config.WithholdingFrom}}
+	venues := []answering.Venue{{
+		Identity:  notary.CourtIdentity{ChainID: p.Settings.Ledger.ChainID, Address: p.Settings.Withholding},
+		Court:     p.Court,
+		Chain:     p.Chain,
+		FromBlock: p.Config.WithholdingFrom,
+	}}
 
 	for _, generation := range p.Earlier {
 		venues = append(venues, answering.Venue{
-			Court: ethereum.NewWithholdingCourt(p.Client, settingsOf(p.Settings, generation)),
-			Chain: p.Writer.At(generation.Withholding),
+			Identity: notary.CourtIdentity{ChainID: generation.ChainID, Address: generation.Withholding},
+			Court:    ethereum.NewWithholdingCourt(p.Client, settingsOf(p.Settings, generation)),
+			Chain:    p.Writer.At(generation.Withholding),
 		})
 	}
 
 	return answering.NewAnswerer(
 		venues,
+		p.Scans,
 		p.Source,
 		p.Registrations,
 		p.Scheme,

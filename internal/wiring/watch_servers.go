@@ -10,10 +10,10 @@ import (
 	"github.com/WildanFrananda/kinetix-notary-service/internal/approving"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/config"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/epochwatch"
+	"github.com/WildanFrananda/kinetix-notary-service/internal/ethereum"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/httpapi"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/mesh"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/metrics"
-	"github.com/WildanFrananda/kinetix-notary-service/internal/notary"
 )
 
 const watchCaller = "notary"
@@ -21,12 +21,12 @@ const watchCaller = "notary"
 type watchHTTPParams struct {
 	dig.In
 	Metrics *metrics.Watch
-	Heads   notary.LedgerHeads
+	Heads   *ethereum.HeadReader
 }
 
 func provideWatchHTTP(p watchHTTPParams) http.Handler {
 	ready := func(r *http.Request) error {
-		if _, err := p.Heads.Head(r.Context()); err != nil {
+		if err := p.Heads.Reachable(r.Context()); err != nil {
 			return fmt.Errorf("the ledger cannot be read: %w", err)
 		}
 

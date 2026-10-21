@@ -27,6 +27,7 @@ type watchMetricsResult struct {
 	dig.Out
 	Metrics  *metrics.Watch
 	Observer approving.Observer
+	RPC      ethereum.RPCObserver
 }
 
 func provideWatchMetrics(p watchMetricsParams) watchMetricsResult {
@@ -39,7 +40,7 @@ func provideWatchMetrics(p watchMetricsParams) watchMetricsResult {
 	m.SeedCall("payment", paymentv1.LiabilityRecordService_GetLiabilitySnapshotRecord_FullMethodName)
 	m.SeedServed(notaryv1.EpochWatchService_ApproveEpoch_FullMethodName)
 
-	return watchMetricsResult{Metrics: m, Observer: m}
+	return watchMetricsResult{Metrics: m, Observer: m, RPC: m}
 }
 
 type watchSignerParams struct {

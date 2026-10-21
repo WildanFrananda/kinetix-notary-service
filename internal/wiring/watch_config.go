@@ -36,5 +36,6 @@ func provideWatchLedgerSettings(p watchLedgerSettingsParams) ethereum.Settings {
 		Court:   chain.Court,
 		Council: p.Config.Council,
 		Timeout: chain.RPCTimeout,
+		Rate:    chain.RPCRate,
 	}
 }

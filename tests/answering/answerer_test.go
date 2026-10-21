@@ -46,6 +46,7 @@ func (o *observed) Pass(served bool) {
 
 type rig struct {
 	court         *notarytest.WithholdingCourt
+	scans         *notarytest.WithholdingScans
 	chain         *notarytest.AnswerChain
 	source        *notarytest.ProofSource
 	registrations *notarytest.Registrations
@@ -86,6 +87,7 @@ func newRig(t *testing.T) *rig {
 
 	return &rig{
 		court: court,
+		scans: notarytest.NewWithholdingScans(),
 		chain: &notarytest.AnswerChain{Address: notary.Address{0xa5}, BalanceValue: big.NewInt(42)},
 		source: &notarytest.ProofSource{
 			Records: map[uint64]notary.EpochRecord{epoch: record},
@@ -101,7 +103,11 @@ func newRig(t *testing.T) *rig {
 
 func (r *rig) answerer() *answering.Answerer {
 	return answering.NewAnswerer(
-		append([]answering.Venue{{Court: r.court, Chain: r.chain, FromBlock: r.from}}, r.earlier...),
+		append(
+			[]answering.Venue{{Identity: identity, Court: r.court, Chain: r.chain, FromBlock: r.from}},
+			r.earlier...,
+		),
+		r.scans,
 		r.source,
 		r.registrations,
 		keccak.NewScheme(),
@@ -212,7 +218,7 @@ func TestARequestToAnEarlierGenerationsCourtIsAnsweredThereAndItsSilencesCount(t
 	earlier.MaxRange = 201
 	earlier.Silences = 3
 	chain := &notarytest.AnswerChain{Address: r.chain.Address}
-	r.earlier = []answering.Venue{{Court: earlier, Chain: chain}}
+	r.earlier = []answering.Venue{{Identity: earlier.IdentityValue, Court: earlier, Chain: chain}}
 	r.court.Latest = 400_000
 	r.court.Silences = 2
 	account := r.account(5)
@@ -269,6 +275,69 @@ func TestTheScanStartsALookbackBehindTheHeadButNeverBeforeTheDeployBlock(t *test
 	r.from = 240_000
 	require.NoError(t, r.answerer().Tick(context.Background()))
 	require.Equal(t, uint64(240_000), r.court.Scanned[0][0])
+}
+
+func TestARestartResumesTheScanWhereItStoppedAndStillAnswersWhatItFound(t *testing.T) {
+	r := newRig(t)
+	r.court.Latest = 250_000
+	r.request(t, r.account(3).ID, 1, 249_000)
+	r.chain.Err = notary.Errf(notary.KindLedgerUnavailable, "test", nil, "")
+
+	require.Equal(t, notary.KindLedgerUnavailable, notary.KindOf(r.answerer().Tick(context.Background())))
+	require.Equal(t, uint64(250_001), r.scans.Next[identity])
+	require.Len(t, r.scans.Open[identity], 1)
+
+	r.chain.Err = nil
+	r.court.Scanned = nil
+	r.court.Latest = 250_010
+
+	require.NoError(t, r.answerer().Tick(context.Background()))
+
+	require.Equal(t, [][2]uint64{{250_001, 250_010}}, r.court.Scanned)
+	require.Len(t, r.chain.Answers, 1)
+	require.Empty(t, r.scans.Open[identity])
+	require.Equal(t, 0, r.observer.open)
+}
+
+func TestARestartFarBehindTheHeadStillStartsNoMoreThanALookbackBack(t *testing.T) {
+	r := newRig(t)
+	r.scans.Next[identity] = 10_000
+	r.court.Latest = 250_000
+	r.from = 5_000
+
+	require.NoError(t, r.answerer().Tick(context.Background()))
+	require.Equal(t, uint64(150_000), r.court.Scanned[0][0])
+
+	r = newRig(t)
+	r.scans.Next[identity] = 249_500
+	r.court.Latest = 250_000
+	r.from = 249_900
+
+	require.NoError(t, r.answerer().Tick(context.Background()))
+	require.Equal(t, uint64(249_900), r.court.Scanned[0][0])
+}
+
+func TestAScanThatCannotBeRecordedIsReadAgain(t *testing.T) {
+	r := newRig(t)
+	r.court.Latest = 250_000
+	r.request(t, r.account(3).ID, 1, 150_100)
+	a := r.answerer()
+
+	require.NoError(t, a.Tick(context.Background()))
+	require.Len(t, r.chain.Answers, 1)
+
+	r.scans.Err = notary.Errf(notary.KindStoreUnavailable, "test", nil, "")
+	r.court.Scanned = nil
+	r.court.Latest = 250_010
+
+	require.Equal(t, notary.KindStoreUnavailable, notary.KindOf(a.Tick(context.Background())))
+
+	r.scans.Err = nil
+	r.court.Scanned = nil
+
+	require.NoError(t, a.Tick(context.Background()))
+	require.Equal(t, [][2]uint64{{250_001, 250_010}}, r.court.Scanned)
+	require.Equal(t, uint64(250_011), r.scans.Next[identity])
 }
 
 func TestAnAccountMissingFromItsEpochIsUnanswerableAndHoldsNothingUp(t *testing.T) {

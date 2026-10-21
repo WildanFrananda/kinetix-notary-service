@@ -38,5 +38,6 @@ func provideDaemonLedgerSettings(p daemonLedgerSettingsParams) ethereum.Settings
 		Council:     p.Config.Council,
 		Directory:   notary.DirectoryIdentity{ChainID: chain.Ledger.ChainID, Address: p.Config.Directory},
 		Timeout:     chain.RPCTimeout,
+		Rate:        chain.RPCRate,
 	}
 }

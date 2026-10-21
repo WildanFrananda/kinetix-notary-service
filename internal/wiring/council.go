@@ -25,9 +25,12 @@ func provideCouncil(p councilParams) councilResult {
 
 type headReaderResult struct {
 	dig.Out
-	Heads notary.LedgerHeads
+	Heads  notary.LedgerHeads
+	Reader *ethereum.HeadReader
 }
 
 func provideHeadReader(p councilParams) headReaderResult {
-	return headReaderResult{Heads: ethereum.NewHeadReader(p.Client, p.Settings)}
+	reader := ethereum.NewHeadReader(p.Client, p.Settings)
+
+	return headReaderResult{Heads: reader, Reader: reader}
 }
