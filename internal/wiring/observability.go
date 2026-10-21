@@ -42,12 +42,7 @@ func provideMetrics(p metricsParams) metricsResult {
 	m := metrics.New(p.Build)
 
 	for _, route := range httpapi.Routes {
-		method := "GET"
-		if route == httpapi.RegistrationsRoute {
-			method = "POST"
-		}
-
-		m.SeedRoute(method, route)
+		m.SeedRoute(route.Method, route.Path)
 	}
 
 	m.SeedCall("payment", paymentv1.LiabilityService_StreamLiabilitySnapshot_FullMethodName)

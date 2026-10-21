@@ -117,12 +117,7 @@ func (r *rig) register(t *testing.T, principal string) (registering.Issued, erro
 
 	request := r.request(t, principal, r.now.Add(-time.Minute))
 
-	return r.registrar.Register(
-		context.Background(),
-		notarytest.Holder(t, principal),
-		request,
-		sign(t, r.holderKey, request),
-	)
+	return r.registrar.Register(context.Background(), request, sign(t, r.holderKey, request))
 }
 
 func TestEachAccountOfThePrincipalGetsARegistrationTheCourtsSignerSigned(t *testing.T) {
@@ -172,30 +167,40 @@ func TestARequestTheHoldersKeyDidNotSignIsRefused(t *testing.T) {
 	request := r.request(t, "principal-0001", r.now)
 	otherKey, _ := notarytest.StatementKey(t, "someone-else")
 
-	_, err := r.registrar.Register(
-		context.Background(),
-		notarytest.Holder(t, "principal-0001"),
-		request,
-		sign(t, otherKey, request),
-	)
+	_, err := r.registrar.Register(context.Background(), request, sign(t, otherKey, request))
 
 	require.Equal(t, notary.KindRegistrationRefused, notary.KindOf(err))
 	require.Empty(t, r.store.Saved)
 }
 
-func TestARequestForAnotherPrincipalIsRefused(t *testing.T) {
+func TestARequestTheHolderSignedForAnotherPrincipalIsRefused(t *testing.T) {
 	r := newRig(t)
-	request := r.request(t, "principal-0001", r.now)
+	signed := r.request(t, "principal-0001", r.now)
+	asked := r.request(t, "principal-0000", r.now)
 
-	_, err := r.registrar.Register(
-		context.Background(),
-		notarytest.Holder(t, "principal-0000"),
-		request,
-		sign(t, r.holderKey, request),
-	)
+	_, err := r.registrar.Register(context.Background(), asked, sign(t, r.holderKey, signed))
 
 	require.Equal(t, notary.KindRegistrationRefused, notary.KindOf(err))
+	require.Contains(t, notary.MessageOf(err), "not by "+r.holder.Hex())
 	require.Empty(t, r.store.Saved)
+
+	_, err = r.registrar.Register(context.Background(), signed, sign(t, r.holderKey, signed))
+	require.NoError(t, err)
+}
+
+func TestTheDomainIsTheWithholdingCourtsOwn(t *testing.T) {
+	r := newRig(t)
+
+	require.Equal(
+		t,
+		notary.TypedDataDomain{
+			Name:              keccak.WithholdingCourtName,
+			Version:           keccak.WithholdingCourtVersion,
+			ChainID:           withholdingIdentity.ChainID,
+			VerifyingContract: withholdingIdentity.Address,
+		},
+		r.registrar.Domain(),
+	)
 }
 
 func TestARequestOutsideItsFiveMinutesIsRefused(t *testing.T) {
@@ -208,24 +213,14 @@ func TestARequestOutsideItsFiveMinutesIsRefused(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			request := r.request(t, "principal-0001", issuedAt)
 
-			_, err := r.registrar.Register(
-				context.Background(),
-				notarytest.Holder(t, "principal-0001"),
-				request,
-				sign(t, r.holderKey, request),
-			)
+			_, err := r.registrar.Register(context.Background(), request, sign(t, r.holderKey, request))
 
 			require.Equal(t, notary.KindRegistrationRefused, notary.KindOf(err))
 		})
 	}
 
 	request := r.request(t, "principal-0001", r.now.Add(-registering.MaxRequestAge))
-	_, err := r.registrar.Register(
-		context.Background(),
-		notarytest.Holder(t, "principal-0001"),
-		request,
-		sign(t, r.holderKey, request),
-	)
+	_, err := r.registrar.Register(context.Background(), request, sign(t, r.holderKey, request))
 	require.NoError(t, err)
 }
 

@@ -242,6 +242,29 @@ func TestEveryFailureHasItsOwnStatus(t *testing.T) {
 			status: 500,
 			code:   "disagreement",
 		},
+		"identity cannot be asked": {
+			path: "latest",
+			auth: notary.Errf(
+				notary.KindIdentityUnavailable,
+				"tokens.Authenticator.Principal",
+				errors.New("dial tcp 10.0.0.9"),
+				"identity's signing keys cannot be read",
+			),
+			status:  503,
+			code:    "identity_unavailable",
+			message: "the notary cannot check tokens right now",
+		},
+		"an invalid argument behind the request": {
+			path: "7",
+			err: notary.Errf(
+				notary.KindInvalidArgument,
+				"postgres.Store",
+				nil,
+				"snapshot id secret internal detail",
+			),
+			status: 500,
+			code:   "internal",
+		},
 		"anything else": {path: "7", err: errors.New("secret internal detail"), status: 500, code: "internal"},
 	}
 	for name, c := range cases {
@@ -256,6 +279,8 @@ func TestEveryFailureHasItsOwnStatus(t *testing.T) {
 
 			if c.status == http.StatusUnauthorized {
 				require.Contains(t, response.Header().Get("WWW-Authenticate"), "Bearer")
+			} else {
+				require.Empty(t, response.Header().Get("WWW-Authenticate"))
 			}
 
 			if c.message != "" {
@@ -272,10 +297,87 @@ func TestEveryFailureHasItsOwnStatus(t *testing.T) {
 }
 
 func TestOnlyGETReachesTheProofs(t *testing.T) {
+	i := &issuer{}
 	request := httptest.NewRequest(http.MethodPost, "/api/v1/proofs/liabilities/latest", nil)
 	response := httptest.NewRecorder()
 
-	router(&auth{}, &issuer{}).ServeHTTP(response, request)
+	router(&auth{}, i).ServeHTTP(response, request)
 
 	require.Equal(t, http.StatusMethodNotAllowed, response.Code)
+	require.Equal(t, "GET, HEAD", response.Header().Get("Allow"))
+	require.Equal(t, "application/json", response.Header().Get("Content-Type"))
+	require.JSONEq(t, `{"error":"method_not_allowed","message":"this path answers GET, HEAD"}`, response.Body.String())
+	require.Empty(t, i.asked)
+}
+
+func TestAPathNothingServesIsAJSONNotFound(t *testing.T) {
+	for _, request := range []*http.Request{
+		httptest.NewRequest(http.MethodGet, "/api/v1/proofs", nil),
+		httptest.NewRequest(http.MethodGet, "/api/v1/proofs/registrations/0x01", nil),
+		httptest.NewRequest(http.MethodGet, "/", nil),
+		httptest.NewRequest(http.MethodPost, "/api/v1/proofs/liabilities", nil),
+		httptest.NewRequest(http.MethodDelete, "/nowhere", nil),
+	} {
+		t.Run(request.Method+" "+request.URL.Path, func(t *testing.T) {
+			response := httptest.NewRecorder()
+
+			router(&auth{}, &issuer{}).ServeHTTP(response, request)
+
+			require.Equal(t, http.StatusNotFound, response.Code)
+			require.Equal(t, "application/json", response.Header().Get("Content-Type"))
+			require.JSONEq(
+				t,
+				`{"error":"not_found","message":"nothing is served at this path"}`,
+				response.Body.String(),
+			)
+		})
+	}
+}
+
+func TestOnlyTheMethodsARouteServesAreCountedUnderTheirOwnName(t *testing.T) {
+	var counted []string
+
+	instrument := func(route string, next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			counted = append(counted, r.Method+" "+route)
+			next.ServeHTTP(w, r)
+		})
+	}
+	discard := slog.New(slog.NewTextHandler(io.Discard, nil))
+	handler := httpapi.NewRouter(
+		instrument,
+		http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) }),
+		func(*http.Request) error { return nil },
+		httpapi.NewProofHandler(&auth{}, &issuer{}, keccak.NewScheme(), discard),
+		httpapi.NewRegistrationHandler(&auth{}, &registrant{}, discard),
+		httpapi.NewOrderEvidenceHandler(&auth{}, &evidenceIssuer{}, discard),
+		httpapi.NewReviewEvidenceHandler(&auth{}, &evidenceIssuer{}, discard),
+	)
+
+	for _, route := range httpapi.Routes {
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, httptest.NewRequest(route.Method, routePath(route.Path), nil))
+
+		require.NotEqual(t, http.StatusNotFound, response.Code, route)
+		require.NotEqual(t, http.StatusMethodNotAllowed, response.Code, route)
+	}
+
+	for _, request := range []*http.Request{
+		httptest.NewRequest(http.MethodGet, "/nowhere", nil),
+		httptest.NewRequest("BREW", "/nowhere", nil),
+		httptest.NewRequest(http.MethodPut, "/metrics", nil),
+	} {
+		handler.ServeHTTP(httptest.NewRecorder(), request)
+	}
+
+	want := make([]string, 0, len(httpapi.Routes)+1)
+	for _, route := range httpapi.Routes {
+		want = append(want, route.Method+" "+route.Path)
+	}
+
+	require.Equal(t, append(want, "GET unmatched"), counted)
+}
+
+func routePath(pattern string) string {
+	return strings.NewReplacer("{epoch}", "latest", "{order}", "ORD-1", "{review}", "review-1").Replace(pattern)
 }

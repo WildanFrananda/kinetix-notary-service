@@ -33,6 +33,15 @@ func (Scheme) AccountCommitment(account notary.Digest, salt notary.Salt) notary.
 	return digest(packed)
 }
 
+func (Scheme) RegistrationDomain(court notary.CourtIdentity) notary.TypedDataDomain {
+	return notary.TypedDataDomain{
+		Name:              withholdingDomain.name,
+		Version:           withholdingDomain.version,
+		ChainID:           court.ChainID,
+		VerifyingContract: court.Address,
+	}
+}
+
 func (Scheme) RegistrationDigest(court notary.CourtIdentity, registration notary.Registration) notary.Digest {
 	structure := words(
 		digest([]byte(registrationType)),

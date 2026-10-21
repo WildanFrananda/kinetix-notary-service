@@ -4,11 +4,13 @@ import (
 	"encoding/json"
 	"io"
 	"log/slog"
+	"math/big"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
+	"github.com/ethereum/go-ethereum/signer/core/apitypes"
 	"github.com/stretchr/testify/require"
 
 	"github.com/WildanFrananda/kinetix-notary-service/internal/httpapi"
@@ -68,7 +70,6 @@ func TestARegistrationIsIssuedForTheTokensPrincipal(t *testing.T) {
 	response := post(registrationRouter(&auth{holder: principal}, r), validBody())
 
 	require.Equal(t, http.StatusOK, response.Code)
-	require.Equal(t, principal, r.principal)
 	require.Equal(t, principal, r.request.Principal)
 	require.Equal(t, registrationHolder, r.request.Holder.Hex())
 	require.Equal(t, uint64(1760000000), r.request.IssuedAt.Seconds())
@@ -112,10 +113,13 @@ func TestARegistrationWithoutAValidTokenNeverReachesTheRegistrar(t *testing.T) {
 }
 
 func TestABrokenRegistrationBodyIsABadRequest(t *testing.T) {
+	zeroHolder := notary.Address{}.Hex()
+
 	bodies := map[string]string{
 		"not json":         `{`,
 		"an unknown field": `{"holder":"` + registrationHolder + `","issuedAt":"1","signature":"` + registrationSignature + `","principal":"x"}`,
 		"a bad holder":     `{"holder":"0x12","issuedAt":"1760000000","signature":"` + registrationSignature + `"}`,
+		"the zero holder":  `{"holder":"` + zeroHolder + `","issuedAt":"1760000000","signature":"` + registrationSignature + `"}`,
 		"a bad time":       `{"holder":"` + registrationHolder + `","issuedAt":"soon","signature":"` + registrationSignature + `"}`,
 		"a bad signature":  `{"holder":"` + registrationHolder + `","issuedAt":"1760000000","signature":"0x1b"}`,
 		"two documents":    validBody() + validBody(),
@@ -143,12 +147,7 @@ func TestEachRefusalHasItsOwnStatusAndNoInternalsLeak(t *testing.T) {
 	}{
 		{notary.KindRegistrationRefused, http.StatusForbidden, "registration_refused", "detail for the holder"},
 		{notary.KindNoAccount, http.StatusNotFound, "no_account", "detail for the holder"},
-		{
-			notary.KindRegistrationNotOpen,
-			http.StatusServiceUnavailable,
-			"registration_not_open",
-			"detail for the holder",
-		},
+		{notary.KindRegistrationNotOpen, http.StatusConflict, "registration_not_open", "detail for the holder"},
 		{
 			notary.KindStoreUnavailable,
 			http.StatusServiceUnavailable,
@@ -173,6 +172,12 @@ func TestEachRefusalHasItsOwnStatusAndNoInternalsLeak(t *testing.T) {
 			"disagreement",
 			"the registration could not be issued",
 		},
+		{
+			notary.KindInvalidArgument,
+			http.StatusInternalServerError,
+			"internal",
+			"the registration could not be issued",
+		},
 	}
 	for _, c := range cases {
 		t.Run(c.code, func(t *testing.T) {
@@ -187,13 +192,90 @@ func TestEachRefusalHasItsOwnStatusAndNoInternalsLeak(t *testing.T) {
 	}
 }
 
-func TestRegistrationsAreOnlyPosted(t *testing.T) {
+func TestAnIdentityOutageIsNeitherARefusedTokenNorARegistration(t *testing.T) {
+	a := &auth{err: notary.Errf(notary.KindIdentityUnavailable, "test", nil, "identity's signing keys cannot be read")}
+
+	for name, request := range map[string]*http.Request{
+		"register": httptest.NewRequest(http.MethodPost, httpapi.RegistrationsRoute, strings.NewReader(validBody())),
+		"template": httptest.NewRequest(http.MethodGet, httpapi.RegistrationsRoute, nil),
+	} {
+		t.Run(name, func(t *testing.T) {
+			r := &registrant{}
+			response := httptest.NewRecorder()
+
+			registrationRouter(a, r).ServeHTTP(response, request)
+
+			require.Equal(t, http.StatusServiceUnavailable, response.Code)
+			require.JSONEq(
+				t,
+				`{"error":"identity_unavailable","message":"the notary cannot check tokens right now"}`,
+				response.Body.String(),
+			)
+			require.Empty(t, response.Header().Get("WWW-Authenticate"))
+			require.Zero(t, r.calls)
+		})
+	}
+}
+
+func TestTheTemplateIsTheTypedDataTheHolderSigns(t *testing.T) {
+	principal := notarytest.Holder(t, "principal-0007")
+	court := notary.CourtIdentity{ChainID: 84532, Address: notary.Address{0xd0, 0x0d}}
+	r := &registrant{domain: keccak.NewScheme().RegistrationDomain(court)}
+
+	response := get(registrationRouter(&auth{holder: principal}, r), httpapi.RegistrationsRoute)
+
+	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+	require.Zero(t, r.calls)
+
+	var typed apitypes.TypedData
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &typed))
+	require.Equal(t, "RegistrationRequest", typed.PrimaryType)
+	require.Equal(t, keccak.WithholdingCourtName, typed.Domain.Name)
+	require.Equal(t, keccak.WithholdingCourtVersion, typed.Domain.Version)
+	require.Equal(t, int64(84532), (*big.Int)(typed.Domain.ChainId).Int64())
+	require.Equal(t, court.Address.Hex(), typed.Domain.VerifyingContract)
+	require.Equal(t, apitypes.TypedDataMessage{"principal": principal.String()}, typed.Message)
+
+	typed.Message["holder"] = registrationHolder
+	typed.Message["issuedAt"] = "1760000000"
+	signed, _, err := apitypes.TypedDataAndHash(typed)
+	require.NoError(t, err)
+
+	holder, err := notary.ParseAddress(registrationHolder)
+	require.NoError(t, err)
+
+	request := notary.RegistrationRequest{
+		Holder:    holder,
+		Principal: principal,
+		IssuedAt:  notarytest.Unix(t, 1760000000),
+	}
+	require.Equal(t, keccak.NewScheme().RegistrationRequestDigest(court, request), notary.Digest(signed))
+}
+
+func TestTheTemplateGoesOnlyToAnAuthenticatedCaller(t *testing.T) {
 	r := &registrant{}
-	request := httptest.NewRequest(http.MethodGet, httpapi.RegistrationsRoute, nil)
+	a := &auth{err: notary.Errf(notary.KindUnauthenticated, "test", nil, "token expired")}
+
+	response := get(registrationRouter(a, r), httpapi.RegistrationsRoute)
+
+	require.Equal(t, http.StatusUnauthorized, response.Code)
+	require.Equal(t, `Bearer realm="kinetix"`, response.Header().Get("WWW-Authenticate"))
+	require.JSONEq(t, `{"error":"unauthenticated","message":"token expired"}`, response.Body.String())
+}
+
+func TestRegistrationsAnswerOnlyGETAndPOST(t *testing.T) {
+	r := &registrant{}
+	request := httptest.NewRequest(http.MethodDelete, httpapi.RegistrationsRoute, nil)
 	response := httptest.NewRecorder()
 
 	registrationRouter(&auth{}, r).ServeHTTP(response, request)
 
-	require.Equal(t, http.StatusNotFound, response.Code)
+	require.Equal(t, http.StatusMethodNotAllowed, response.Code)
+	require.Equal(t, "GET, HEAD, POST", response.Header().Get("Allow"))
+	require.JSONEq(
+		t,
+		`{"error":"method_not_allowed","message":"this path answers GET, HEAD, POST"}`,
+		response.Body.String(),
+	)
 	require.Zero(t, r.calls)
 }

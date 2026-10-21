@@ -17,55 +17,51 @@ func NewRouter(
 	orderEvidence *EvidenceHandler,
 	reviewEvidence *EvidenceHandler,
 ) http.Handler {
-	mux := http.NewServeMux()
+	routes := newRouteTable(instrument)
 
-	mux.Handle("GET "+ProofsRoute, instrument(ProofsRoute, proofs))
-	mux.Handle("POST "+RegistrationsRoute, instrument(RegistrationsRoute, registrations))
-	mux.Handle("GET "+OrderEvidenceRoute, instrument(OrderEvidenceRoute, orderEvidence))
-	mux.Handle("GET "+ReviewEvidenceRoute, instrument(ReviewEvidenceRoute, reviewEvidence))
-	operational(mux, instrument, metrics, ready)
+	routes.handle(http.MethodGet, ProofsRoute, proofs)
+	routes.handle(http.MethodGet, RegistrationsRoute, http.HandlerFunc(registrations.ServeTemplate))
+	routes.handle(http.MethodPost, RegistrationsRoute, registrations)
+	routes.handle(http.MethodGet, OrderEvidenceRoute, orderEvidence)
+	routes.handle(http.MethodGet, ReviewEvidenceRoute, reviewEvidence)
+	operational(routes, metrics, ready)
 
-	return mux
+	return routes.handler()
 }
 
 func NewWatchRouter(instrument Instrument, metrics http.Handler, ready Check) http.Handler {
-	mux := http.NewServeMux()
-	operational(mux, instrument, metrics, ready)
+	routes := newRouteTable(instrument)
+	operational(routes, metrics, ready)
 
-	return mux
+	return routes.handler()
 }
 
-func operational(mux *http.ServeMux, instrument Instrument, metrics http.Handler, ready Check) {
-	mux.Handle(
-		"GET /health/live",
-		instrument(
-			"/health/live",
-			http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-				writeJSON(w, http.StatusOK, map[string]string{"status": "live"})
-			}),
-		),
+func operational(routes *routeTable, metrics http.Handler, ready Check) {
+	routes.handle(
+		http.MethodGet,
+		"/health/live",
+		http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			writeJSON(w, http.StatusOK, map[string]string{"status": "live"})
+		}),
 	)
 
-	mux.Handle(
-		"GET /health/ready",
-		instrument(
-			"/health/ready",
-			http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				if err := ready(r); err != nil {
-					writeJSON(
-						w,
-						http.StatusServiceUnavailable,
-						map[string]string{"status": "not_ready", "reason": err.Error()},
-					)
+	routes.handle(
+		http.MethodGet,
+		"/health/ready",
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if err := ready(r); err != nil {
+				writeJSON(
+					w,
+					http.StatusServiceUnavailable,
+					map[string]string{"status": "not_ready", "reason": err.Error()},
+				)
 
-					return
-				}
+				return
+			}
 
-				writeJSON(w, http.StatusOK, map[string]string{"status": "ready"})
-			}),
-		),
+			writeJSON(w, http.StatusOK, map[string]string{"status": "ready"})
+		}),
 	)
 
-	mux.Handle("GET /metrics", instrument("/metrics", metrics))
-	mux.Handle("GET /", instrument("unmatched", http.NotFoundHandler()))
+	routes.handle(http.MethodGet, "/metrics", metrics)
 }

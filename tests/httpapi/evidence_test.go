@@ -133,6 +133,7 @@ func TestEvidenceRequestsFailWithoutSayingWhatIsKept(t *testing.T) {
 		{notary.Errf(notary.KindNoEvidence, "test", nil, "none"), http.StatusNotFound, "no_evidence"},
 		{notary.Errf(notary.KindStoreUnavailable, "test", nil, "db down"), http.StatusServiceUnavailable, "unavailable"},
 		{notary.Errf(notary.KindDisagreement, "test", nil, "tree"), http.StatusInternalServerError, "disagreement"},
+		{notary.Errf(notary.KindInvalidArgument, "test", nil, "tree"), http.StatusInternalServerError, "internal"},
 	} {
 		response := get(evidenceRouter(a, &evidenceIssuer{err: c.err}), "/api/v1/proofs/evidence/orders/ORD-1")
 		require.Equal(t, c.status, response.Code)
@@ -154,5 +155,37 @@ func TestAnOverlongReferenceIsRefusedBeforeAnyLookup(t *testing.T) {
 	response := get(evidenceRouter(a, e), "/api/v1/proofs/evidence/orders/"+strings.Repeat("A", 256))
 
 	require.Equal(t, http.StatusBadRequest, response.Code)
+	require.Empty(t, e.asked)
+}
+
+func TestAProofTheNotaryCannotEncodeIsItsOwnFaultNotTheCallers(t *testing.T) {
+	a := &auth{holder: notarytest.Holder(t, "principal-0005")}
+	claims := evidenceBundle(t).Claims
+	claims[1].Record = strangeRecord{}
+	e := &evidenceIssuer{bundle: evidencing.Bundle{Claims: claims}}
+
+	response := get(evidenceRouter(a, e), "/api/v1/proofs/evidence/orders/ORD-1")
+
+	require.Equal(t, http.StatusInternalServerError, response.Code)
+	require.JSONEq(
+		t,
+		`{"error":"internal","message":"the evidence proofs could not be produced"}`,
+		response.Body.String(),
+	)
+}
+
+func TestAnIdentityOutageIsNotARefusedToken(t *testing.T) {
+	a := &auth{err: notary.Errf(notary.KindIdentityUnavailable, "test", nil, "identity's signing keys cannot be read")}
+	e := &evidenceIssuer{}
+
+	response := get(evidenceRouter(a, e), "/api/v1/proofs/evidence/reviews/review-7")
+
+	require.Equal(t, http.StatusServiceUnavailable, response.Code)
+	require.Empty(t, response.Header().Get("WWW-Authenticate"))
+	require.JSONEq(
+		t,
+		`{"error":"identity_unavailable","message":"the notary cannot check tokens right now"}`,
+		response.Body.String(),
+	)
 	require.Empty(t, e.asked)
 }

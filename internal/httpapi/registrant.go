@@ -8,9 +8,9 @@ import (
 )
 
 type Registrant interface {
+	Domain() notary.TypedDataDomain
 	Register(
 		ctx context.Context,
-		principal notary.Holder,
 		request notary.RegistrationRequest,
 		signature notary.Signature,
 	) (registering.Issued, error)

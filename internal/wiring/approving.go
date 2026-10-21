@@ -34,7 +34,7 @@ func provideWatchMetrics(p watchMetricsParams) watchMetricsResult {
 	m := metrics.NewWatch(p.Build)
 
 	for _, route := range httpapi.WatchRoutes {
-		m.SeedRoute("GET", route)
+		m.SeedRoute(route.Method, route.Path)
 	}
 
 	m.SeedCall("payment", paymentv1.LiabilityRecordService_GetLiabilitySnapshotRecord_FullMethodName)

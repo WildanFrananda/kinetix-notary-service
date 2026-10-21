@@ -43,6 +43,7 @@ const (
 	KindRecipientUnreachable
 	KindNotifierRefused
 	KindNotifierUnavailable
+	KindIdentityUnavailable
 )
 
 func (k Kind) String() string {
@@ -125,6 +126,8 @@ func (k Kind) String() string {
 		return "notifier_refused"
 	case KindNotifierUnavailable:
 		return "notifier_unavailable"
+	case KindIdentityUnavailable:
+		return "identity_unavailable"
 	default:
 		return "unknown"
 	}

@@ -2,7 +2,9 @@ package tokens
 
 import (
 	"context"
+	"errors"
 	"log/slog"
+	"net/http"
 	"strings"
 	"time"
 
@@ -22,6 +24,7 @@ const (
 
 type Authenticator struct {
 	keys   keyfunc.Keyfunc
+	health *keySetHealth
 	parser *jwt.Parser
 }
 
@@ -31,15 +34,19 @@ func NewAuthenticator(ctx context.Context, settings Settings, log *slog.Logger) 
 		every = defaultRefreshEvery
 	}
 
+	health := &keySetHealth{next: http.DefaultTransport}
+
 	keys, err := keyfunc.NewDefaultOverrideCtx(
 		ctx,
 		[]string{settings.JWKSURL},
 		keyfunc.Override{
+			Client:            &http.Client{Transport: health},
 			HTTPTimeout:       jwksTimeout,
 			RateLimitWaitMax:  refreshWaitMax,
 			RefreshUnknownKID: rate.NewLimiter(rate.Every(every), 1),
 			RefreshErrorHandlerFunc: func(url string) func(context.Context, error) {
 				return func(ctx context.Context, err error) {
+					health.reachable.Store(false)
 					log.WarnContext(
 						ctx,
 						"identity's signing keys could not be refreshed",
@@ -63,7 +70,8 @@ func NewAuthenticator(ctx context.Context, settings Settings, log *slog.Logger) 
 	}
 
 	return &Authenticator{
-		keys: keys,
+		keys:   keys,
+		health: health,
 		parser: jwt.NewParser(
 			jwt.WithValidMethods([]string{"RS256"}),
 			jwt.WithIssuer(settings.Issuer),
@@ -85,6 +93,15 @@ func (a *Authenticator) Principal(authorization string) (notary.Holder, error) {
 
 	claims := jwt.MapClaims{}
 	if _, err := a.parser.ParseWithClaims(strings.TrimSpace(raw), claims, a.keys.Keyfunc); err != nil {
+		if errors.Is(err, jwt.ErrTokenUnverifiable) && !a.health.reachable.Load() {
+			return notary.Holder{}, notary.Errf(
+				notary.KindIdentityUnavailable,
+				op,
+				err,
+				"identity's signing keys cannot be read",
+			)
+		}
+
 		return notary.Holder{}, notary.Errf(notary.KindUnauthenticated, op, err, "the token was refused")
 	}
 

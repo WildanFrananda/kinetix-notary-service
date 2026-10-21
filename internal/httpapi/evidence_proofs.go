@@ -36,7 +36,6 @@ func NewReviewEvidenceHandler(auth Authenticator, issuer EvidenceIssuer, log *sl
 func (h *EvidenceHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	holder, err := h.auth.Principal(r.Header.Get("Authorization"))
 	if err != nil {
-		w.Header().Set("WWW-Authenticate", `Bearer realm="kinetix"`)
 		h.fail(w, r, err)
 
 		return
@@ -44,11 +43,7 @@ func (h *EvidenceHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	reference := r.PathValue(h.parameter)
 	if reference == "" || len(reference) > maxReferenceBytes {
-		h.fail(
-			w,
-			r,
-			notary.Errf(notary.KindInvalidArgument, "httpapi.EvidenceHandler", nil, "the %s is not named", h.parameter),
-		)
+		writeError(w, http.StatusBadRequest, "invalid_reference", "the "+h.parameter+" is not named")
 
 		return
 	}
@@ -95,20 +90,24 @@ func (h *EvidenceHandler) fail(w http.ResponseWriter, r *http.Request, err error
 		)
 
 		message = "the evidence proofs could not be produced"
-		if code == "unavailable" {
+
+		switch code {
+		case "unavailable":
 			message = "the notary cannot read its records right now"
+		case "identity_unavailable":
+			message = identityUnavailableMessage
 		}
 	}
 
-	writeJSON(w, status, map[string]string{"error": code, "message": message})
+	writeError(w, status, code, message)
 }
 
 func evidenceStatusOf(kind notary.Kind) (int, string) {
 	switch kind {
 	case notary.KindUnauthenticated:
 		return http.StatusUnauthorized, "unauthenticated"
-	case notary.KindInvalidArgument:
-		return http.StatusBadRequest, "invalid_reference"
+	case notary.KindIdentityUnavailable:
+		return http.StatusServiceUnavailable, "identity_unavailable"
 	case notary.KindNoEvidence:
 		return http.StatusNotFound, "no_evidence"
 	case notary.KindStoreUnavailable:
