@@ -110,12 +110,16 @@ func TestAForgedKeyIDNeverHoldsARequest(t *testing.T) {
 	}
 }
 
-func TestIdentityBeingDownAtStartDoesNotStopTheNotary(t *testing.T) {
+func TestIdentityBeingDownAtStartIsAnOutageNotARefusedToken(t *testing.T) {
 	identity := notarytest.NewIdentity(t)
 	identity.Down.Store(true)
 	auth := authenticator(t, identity)
 
 	_, err := auth.Principal("Bearer " + identity.Token(t, principal))
+	require.Equal(t, notary.KindIdentityUnavailable, notary.KindOf(err))
+	require.Equal(t, "identity's signing keys cannot be read", notary.MessageOf(err))
+
+	_, err = auth.Principal("Bearer not-a-token")
 	require.Equal(t, notary.KindUnauthenticated, notary.KindOf(err))
 
 	identity.Down.Store(false)
@@ -126,6 +130,39 @@ func TestIdentityBeingDownAtStartDoesNotStopTheNotary(t *testing.T) {
 			holder, err := auth.Principal("Bearer " + identity.Token(t, principal))
 
 			return err == nil && holder.String() == principal
+		},
+		5*time.Second,
+		50*time.Millisecond,
+	)
+}
+
+func TestIdentityGoingDownKeepsTheKeysItServedAndCallsAnUnknownKeyAnOutage(t *testing.T) {
+	identity := notarytest.NewIdentity(t)
+	auth := authenticator(t, identity)
+
+	_, err := auth.Principal("Bearer " + identity.Token(t, principal))
+	require.NoError(t, err)
+
+	identity.Down.Store(true)
+
+	_, err = auth.Principal("Bearer " + forgedToken(t, identity, "rotated-key"))
+	require.Equal(t, notary.KindIdentityUnavailable, notary.KindOf(err))
+
+	_, err = auth.Principal("Bearer " + identity.Stranger(t, principal))
+	require.Equal(t, notary.KindUnauthenticated, notary.KindOf(err))
+
+	holder, err := auth.Principal("Bearer " + identity.Token(t, principal))
+	require.NoError(t, err)
+	require.Equal(t, principal, holder.String())
+
+	identity.Down.Store(false)
+
+	require.Eventually(
+		t,
+		func() bool {
+			_, err := auth.Principal("Bearer " + forgedToken(t, identity, "rotated-key"))
+
+			return notary.KindOf(err) == notary.KindUnauthenticated
 		},
 		5*time.Second,
 		50*time.Millisecond,

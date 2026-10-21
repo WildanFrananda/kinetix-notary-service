@@ -21,19 +21,6 @@ type ProofHandler struct {
 	log    *slog.Logger
 }
 
-type proofResponse struct {
-	Epoch  string            `json:"epoch"`
-	AsOf   string            `json:"asOf"`
-	Digest string            `json:"digest"`
-	Ledger ledgerResponse    `json:"ledger"`
-	Proofs []json.RawMessage `json:"proofs"`
-}
-
-type ledgerResponse struct {
-	ChainID string `json:"chainId"`
-	Address string `json:"address"`
-}
-
 func NewProofHandler(auth Authenticator, issuer ProofIssuer, scheme notary.Scheme, log *slog.Logger) *ProofHandler {
 	return &ProofHandler{auth: auth, issuer: issuer, scheme: scheme.Version(), log: log}
 }
@@ -41,7 +28,6 @@ func NewProofHandler(auth Authenticator, issuer ProofIssuer, scheme notary.Schem
 func (h *ProofHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	holder, err := h.auth.Principal(r.Header.Get("Authorization"))
 	if err != nil {
-		w.Header().Set("WWW-Authenticate", `Bearer realm="kinetix"`)
 		h.fail(w, r, err)
 
 		return
@@ -49,7 +35,7 @@ func (h *ProofHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	ref, err := proving.ParseEpochRef(r.PathValue("epoch"))
 	if err != nil {
-		h.fail(w, r, err)
+		writeError(w, http.StatusBadRequest, "invalid_epoch", notary.MessageOf(err))
 
 		return
 	}
@@ -118,18 +104,20 @@ func (h *ProofHandler) fail(w http.ResponseWriter, r *http.Request, err error) {
 			message = "the notary cannot sign a statement for this epoch right now"
 		case "chain_unavailable":
 			message = "the notary cannot reach the chain right now"
+		case "identity_unavailable":
+			message = identityUnavailableMessage
 		}
 	}
 
-	writeJSON(w, status, map[string]string{"error": code, "message": message})
+	writeError(w, status, code, message)
 }
 
 func statusOf(kind notary.Kind) (int, string) {
 	switch kind {
 	case notary.KindUnauthenticated:
 		return http.StatusUnauthorized, "unauthenticated"
-	case notary.KindInvalidArgument:
-		return http.StatusBadRequest, "invalid_epoch"
+	case notary.KindIdentityUnavailable:
+		return http.StatusServiceUnavailable, "identity_unavailable"
 	case notary.KindEpochNotAnchored:
 		return http.StatusNotFound, "epoch_not_found"
 	case notary.KindEpochNotFinal:
@@ -147,11 +135,4 @@ func statusOf(kind notary.Kind) (int, string) {
 	default:
 		return http.StatusInternalServerError, "internal"
 	}
-}
-
-func writeJSON(w http.ResponseWriter, status int, body any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Cache-Control", "no-store")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(body)
 }

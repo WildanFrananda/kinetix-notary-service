@@ -2333,7 +2333,7 @@ production runs, and none runs scheme 2 yet.
   8. the first council anchor, then `bin/retire-anchorer base-sepolia-2 <tx> --broadcast` and
      `KINETIX_NOTARY_ANCHORER_ROLE_HOLDERS`.
 
-### The RPC budget. **Built 2026-10-21, not released.**
+### The RPC budget. **Live 2026-10-21** (notary v1.8.0, from 02:23 UTC).
 
 On 2026-10-20 notaryd and notary-watch drew 49 `429 … 25/second request limit reached` from sepolia.base.org.
 None lost an epoch: one sponsorship check per refusal failed, and one cluster held epoch 187's anchor back about two
@@ -2359,12 +2359,23 @@ minutes. The cause and the four fixes are in CLAUDE.md, "A public RPC endpoint l
 - `tests/postgres` covers the two tables, `tests/wiring` proves the watch's readiness is one request, and the whole
   suite, integration included, passed on 2026-10-21.
 
-**Release:** infra commits `KINETIX_NOTARY_RPC_RATE` first, because a notaryd without it refuses to start. The lab
-gets 50, and production 12 for notaryd and 4 for the watch. The alert `kinetix-notary-rpc-throttled` lands in the
-same commit. Then the notary tag.
+**Release:** infra committed `KINETIX_NOTARY_RPC_RATE` first, because a notaryd without it refuses to start, with
+the alert `kinetix-notary-rpc-throttled`. The lab gets 50, and production 12 for notaryd and 4 for the watch. Then
+the tag v1.8.0, live from 02:23 UTC on 2026-10-21.
 
-**Exit:** a production day with `increase(kinetix_notary_rpc_throttled_total[24h])` at 0 for both processes. The
-WASM verifier links this code, so the release changes its hash and the docs must pin it.
+**First minutes in production:** by 02:26 UTC notaryd had sent 823 requests, mostly the one-off catch-up of both
+courts' withholding scans, since the tables started empty. It was paced for 22.6 s, and nothing was refused. The
+watch sent 18. At 02:27 both courts' scans were recorded at block 48390671, with no open request. Migration 8 is
+applied, and Grafana loaded the new rule without error.
+
+**Exit:** a production day with `increase(kinetix_notary_rpc_throttled_total[24h])` at 0 for both processes, due
+2026-10-22 02:23 UTC.
+
+**The verifier pin need not move.** The browser verifier dials through `ethereum.Dial`, so v1.8.0's
+`notary-verify.wasm` differs from v1.7.0's. On the verification path the only change is that a 429 is waited out and
+sent again. The verifier dials with no rate, so nothing is paced, and `Depth` is not on that path. A browser on its
+own IP rarely meets the 25-a-second limit. Moving the pin is the docs' call, made by reading the diff, not the hash
+(kinetix-docs CLAUDE.md).
 
 ### Step 14 — the next service: product passport
 

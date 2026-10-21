@@ -8,22 +8,24 @@ import (
 )
 
 type registrant struct {
+	domain    notary.TypedDataDomain
 	issued    registering.Issued
 	err       error
-	principal notary.Holder
 	request   notary.RegistrationRequest
 	signature notary.Signature
 	calls     int
 }
 
+func (r *registrant) Domain() notary.TypedDataDomain {
+	return r.domain
+}
+
 func (r *registrant) Register(
 	_ context.Context,
-	principal notary.Holder,
 	request notary.RegistrationRequest,
 	signature notary.Signature,
 ) (registering.Issued, error) {
 	r.calls++
-	r.principal = principal
 	r.request = request
 	r.signature = signature
 

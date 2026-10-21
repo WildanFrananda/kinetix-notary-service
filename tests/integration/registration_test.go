@@ -17,12 +17,11 @@ import (
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/signer/core/apitypes"
 	"github.com/stretchr/testify/require"
 
 	"github.com/WildanFrananda/kinetix-notary-service/internal/contractgen/withholding"
-	"github.com/WildanFrananda/kinetix-notary-service/internal/keccak"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/notary"
-	"github.com/WildanFrananda/kinetix-notary-service/tests/notarytest"
 )
 
 type issuedBody struct {
@@ -66,15 +65,28 @@ func (e *estate) register(
 ) *httptest.ResponseRecorder {
 	t.Helper()
 
-	holder := notary.Address(crypto.PubkeyToAddress(key.PublicKey))
-	request := notary.RegistrationRequest{
-		Holder:    holder,
-		Principal: notarytest.Holder(t, subject),
-		IssuedAt:  notarytest.Unix(t, uint64(issuedAt.Unix())),
-	}
-	court := notary.CourtIdentity{ChainID: e.ledger.ChainID, Address: e.withholding}
-	digest := keccak.NewScheme().RegistrationRequestDigest(court, request)
-	raw, err := crypto.Sign(digest[:], key)
+	token := "Bearer " + e.identity.Token(t, subject)
+	ask := httptest.NewRequest(http.MethodGet, "/api/v1/proofs/registrations", nil)
+	ask.Header.Set("Authorization", token)
+
+	template := httptest.NewRecorder()
+	r.Handler.ServeHTTP(template, ask)
+	require.Equal(t, http.StatusOK, template.Code, template.Body.String())
+
+	var typed apitypes.TypedData
+	require.NoError(t, json.Unmarshal(template.Body.Bytes(), &typed))
+	require.Equal(t, e.withholding.Hex(), typed.Domain.VerifyingContract)
+	require.Equal(t, e.ledger.ChainID, (*big.Int)(typed.Domain.ChainId).Uint64())
+	require.Equal(t, subject, typed.Message["principal"])
+
+	holder := crypto.PubkeyToAddress(key.PublicKey)
+	typed.Message["holder"] = holder.Hex()
+	typed.Message["issuedAt"] = strconv.FormatInt(issuedAt.Unix(), 10)
+
+	digest, _, err := apitypes.TypedDataAndHash(typed)
+	require.NoError(t, err)
+
+	raw, err := crypto.Sign(digest, key)
 	require.NoError(t, err)
 
 	raw[64] += 27
@@ -82,7 +94,7 @@ func (e *estate) register(
 		`","signature":"` + hexutil.Encode(raw) + `"}`
 
 	post := httptest.NewRequest(http.MethodPost, "/api/v1/proofs/registrations", strings.NewReader(body))
-	post.Header.Set("Authorization", "Bearer "+e.identity.Token(t, subject))
+	post.Header.Set("Authorization", token)
 
 	response := httptest.NewRecorder()
 	r.Handler.ServeHTTP(response, post)
@@ -99,7 +111,7 @@ func TestAHolderRegistersThroughTheAPIAndTheCourtAcceptsTheirRequest(t *testing.
 	require.NoError(t, r.Registrar.CheckWithholding(ctx))
 
 	early := e.register(t, r, "principal-3", key, e.clock())
-	require.Equal(t, http.StatusServiceUnavailable, early.Code, early.Body.String())
+	require.Equal(t, http.StatusConflict, early.Code, early.Body.String())
 	require.Contains(t, early.Body.String(), `"error":"registration_not_open"`)
 
 	e.tickUntil(t, r, 0, "mined")

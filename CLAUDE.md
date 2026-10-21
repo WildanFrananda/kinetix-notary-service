@@ -371,6 +371,29 @@ A failure must never be reported as a definite answer. In this service that mean
   a wrong address can never produce "epoch not found".
 - A contract that answers with nothing, or reverts, when asked for its interface is `wrong_ledger`,
   not `unknown`: the call succeeded and the answer was no.
+- A JWKS outage is `identity_unavailable` (503), never 401. `tokens` records whether identity's last JWKS answer
+  was readable (its transport and keyfunc's refresh error handler), and a token whose key could not be found
+  (`jwt.ErrTokenUnverifiable`) while that answer failed is an outage. A key already read keeps verifying, and a bad
+  signature stays 401. Only a 401 carries `WWW-Authenticate`.
+- In `httpapi` only what the handler parsed itself is 400. A `KindInvalidArgument` from behind the request (the
+  issuer, the registrar, the proof codec) is the notary's own fault: 500 `internal`, its message never shown.
+- `registration_not_open` is 409, a state like `epoch_not_final`, not an outage.
+
+## The HTTP API
+
+Every answer is JSON, errors as `{"error", "message"}`. A path nothing serves is 404 `not_found`, a served path asked
+with another method is 405 `method_not_allowed` with `Allow`. `httpapi.Routes` is the list the router serves and the
+metrics seed; `tests/httpapi` holds the two to each other. Only GET and HEAD of an unknown path are counted, as
+`unmatched`, because the method label of anything else is whatever the caller sends.
+
+`GET /api/v1/proofs/registrations` (bearer token) answers the EIP-712 typed data a holder signs before they post a
+registration: `types`, `primaryType`, `domain` (the withholding court's name, version, `chainId` as a JSON number,
+`verifyingContract`) and `message.principal`, the token's subject. The client adds `holder` and `issuedAt` and signs it
+as it is (`eth_signTypedData_v4`). The domain is `keccak`'s, which `CheckWithholding` proves equal to the court's at
+start; `tests/httpapi` hashes the served template with go-ethereum's `apitypes` against `keccak`, and the integration
+test signs from it and has the court accept the registration. The signature binds the principal: the handler puts the
+token's subject into the request, so a request signed for another principal recovers to another address and is
+`registration_refused`.
 
 ## Traps found while building the foundation
 

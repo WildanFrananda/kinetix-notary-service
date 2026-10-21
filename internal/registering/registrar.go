@@ -93,15 +93,18 @@ func (r *Registrar) CheckWithholding(ctx context.Context) error {
 	return nil
 }
 
+func (r *Registrar) Domain() notary.TypedDataDomain {
+	return r.withholding.RegistrationDomain(r.identity)
+}
+
 func (r *Registrar) Register(
 	ctx context.Context,
-	principal notary.Holder,
 	request notary.RegistrationRequest,
 	signature notary.Signature,
 ) (Issued, error) {
 	const op = "registering.Registrar.Register"
 
-	if err := r.admit(principal, request, signature); err != nil {
+	if err := r.admit(request, signature); err != nil {
 		return Issued{}, err
 	}
 
@@ -124,7 +127,7 @@ func (r *Registrar) Register(
 	mine := make([]notary.Account, 0, 2)
 
 	for _, account := range accounts {
-		if account.Liability.Holder != principal {
+		if account.Liability.Holder != request.Principal {
 			continue
 		}
 
@@ -196,23 +199,15 @@ func (r *Registrar) Register(
 		})
 	}
 
-	if err := r.store.SaveRegistrations(ctx, principal, issued); err != nil {
+	if err := r.store.SaveRegistrations(ctx, request.Principal, issued); err != nil {
 		return Issued{}, err
 	}
 
 	return Issued{Court: r.identity, Epoch: number, Registrations: issued}, nil
 }
 
-func (r *Registrar) admit(
-	principal notary.Holder,
-	request notary.RegistrationRequest,
-	signature notary.Signature,
-) error {
+func (r *Registrar) admit(request notary.RegistrationRequest, signature notary.Signature) error {
 	const op = "registering.Registrar.admit"
-
-	if request.Principal != principal {
-		return notary.Errf(notary.KindRegistrationRefused, op, nil, "the request is signed for another principal")
-	}
 
 	if request.Holder.IsZero() {
 		return notary.Errf(notary.KindInvalidArgument, op, nil, "a registration names the address that will request")
