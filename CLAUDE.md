@@ -378,6 +378,13 @@ A failure must never be reported as a definite answer. In this service that mean
 - In `httpapi` only what the handler parsed itself is 400. A `KindInvalidArgument` from behind the request (the
   issuer, the registrar, the proof codec) is the notary's own fault: 500 `internal`, its message never shown.
 - `registration_not_open` is 409, a state like `epoch_not_final`, not an outage.
+- What the store could never hold is refused by the handler before any lookup, because behind the request it reads as
+  the notary's own fault. An epoch is `latest` or a decimal from 0 to `proving.MaxEpochNumber` (9223372036854775807,
+  the BIGINT the store keys by) without a leading zero, else 400 `invalid_epoch`. An evidence reference is 1 to 255
+  bytes of UTF-8 without a NUL byte, else 400 `invalid_reference`; the store also refuses such a name as
+  `KindInvalidArgument` before it asks Postgres. Until 2026-10-22 an epoch past the BIGINT answered 500 `internal`, and
+  a `%00` or invalid UTF-8 reference reached Postgres, which refuses the text (SQLSTATE 22021), and answered 503
+  `unavailable`.
 
 ## The HTTP API
 

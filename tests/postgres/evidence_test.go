@@ -356,6 +356,23 @@ func TestAnOrdersAndAReviewsEvidenceIsFoundByName(t *testing.T) {
 	require.Equal(t, notary.KindInvalidArgument, notary.KindOf(err))
 }
 
+func TestANamePostgresCannotCompareIsTheCallersMistakeNotAnOutage(t *testing.T) {
+	d := open(t)
+	ctx := context.Background()
+
+	for _, name := range []string{"ORD\x001", "\x00", "ORD-\xff", "\xc3\x28"} {
+		_, err := d.store.OrderEvidence(ctx, name)
+		require.Equal(t, notary.KindInvalidArgument, notary.KindOf(err), "%q", name)
+
+		_, err = d.store.ReviewEvidence(ctx, name)
+		require.Equal(t, notary.KindInvalidArgument, notary.KindOf(err), "%q", name)
+	}
+
+	order, err := d.store.OrderEvidence(ctx, "ORD-\u00e9")
+	require.NoError(t, err)
+	require.Empty(t, order)
+}
+
 func TestTheEvidenceTablesRefuseWhatTheSchemeCannotHold(t *testing.T) {
 	d := open(t)
 

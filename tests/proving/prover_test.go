@@ -275,15 +275,48 @@ func TestAProvenEpochIsBuiltOnceAndRecentOnesStayCached(t *testing.T) {
 	require.Equal(t, 7, s.AccountsReads)
 }
 
-func TestAnEpochReferenceIsANumberOrLatest(t *testing.T) {
-	for _, valid := range []string{"latest", "0", "42", "18446744073709551615"} {
-		_, err := proving.ParseEpochRef(valid)
-		require.NoError(t, err, valid)
+func TestAnEpochReferenceIsLatestOrADecimalNumberABigintHolds(t *testing.T) {
+	for text, want := range map[string]proving.EpochRef{
+		"latest":              proving.Latest(),
+		"0":                   proving.Number(0),
+		"42":                  proving.Number(42),
+		"9223372036854775807": proving.Number(math.MaxInt64),
+	} {
+		ref, err := proving.ParseEpochRef(text)
+		require.NoError(t, err, text)
+		require.Equal(t, want, ref, text)
 	}
 
-	for _, invalid := range []string{"", "Latest", "-1", "1.5", "0x10", "18446744073709551616"} {
+	for _, invalid := range []string{
+		"",
+		"Latest",
+		"-1",
+		"+1",
+		" 1",
+		"1_0",
+		"1.5",
+		"0x10",
+		"00",
+		"007",
+		"9223372036854775808",
+		"18446744073709551615",
+		"18446744073709551616",
+		"99999999999999999999999999",
+	} {
 		_, err := proving.ParseEpochRef(invalid)
 		require.Equal(t, notary.KindInvalidArgument, notary.KindOf(err), invalid)
+	}
+}
+
+func TestEachRefusedEpochReferenceIsToldWhatIsWrongWithIt(t *testing.T) {
+	for text, want := range map[string]string{
+		"first":                `"first" is neither an epoch number nor latest`,
+		"9223372036854775808":  `"9223372036854775808" is above 9223372036854775807, the highest epoch number`,
+		"18446744073709551616": `"18446744073709551616" is above 9223372036854775807, the highest epoch number`,
+		"007":                  `"007" is written with a leading zero; an epoch number has none`,
+	} {
+		_, err := proving.ParseEpochRef(text)
+		require.Equal(t, want, notary.MessageOf(err), text)
 	}
 }
 

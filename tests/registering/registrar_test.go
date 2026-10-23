@@ -203,19 +203,27 @@ func TestTheDomainIsTheWithholdingCourtsOwn(t *testing.T) {
 	)
 }
 
-func TestARequestOutsideItsFiveMinutesIsRefused(t *testing.T) {
+func TestARequestOutsideItsFiveMinutesIsRefusedAndToldWhichSideItFellOn(t *testing.T) {
 	r := newRig(t)
+	old := r.now.Add(-registering.MaxRequestAge - time.Second)
+	ahead := r.now.Add(registering.MaxRequestSkew + time.Second)
 
-	for name, issuedAt := range map[string]time.Time{
-		"older than five minutes": r.now.Add(-registering.MaxRequestAge - time.Second),
-		"from the future":         r.now.Add(registering.MaxRequestSkew + time.Second),
+	for name, c := range map[string]struct {
+		issuedAt time.Time
+		reason   string
+	}{
+		"older than five minutes": {issuedAt: old, reason: "; it must be at most 5m0s old"},
+		"from the future":         {issuedAt: ahead, reason: ", more than 1m0s ahead of the notary's clock"},
 	} {
 		t.Run(name, func(t *testing.T) {
-			request := r.request(t, "principal-0001", issuedAt)
+			request := r.request(t, "principal-0001", c.issuedAt)
 
 			_, err := r.registrar.Register(context.Background(), request, sign(t, r.holderKey, request))
 
 			require.Equal(t, notary.KindRegistrationRefused, notary.KindOf(err))
+
+			want := "the request was issued at " + c.issuedAt.UTC().Format(time.RFC3339) + c.reason
+			require.Equal(t, want, notary.MessageOf(err))
 		})
 	}
 

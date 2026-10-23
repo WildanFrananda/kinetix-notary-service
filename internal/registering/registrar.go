@@ -216,7 +216,7 @@ func (r *Registrar) admit(request notary.RegistrationRequest, signature notary.S
 	now := r.clock()
 	issuedAt := request.IssuedAt.Time()
 
-	if issuedAt.Before(now.Add(-MaxRequestAge)) || issuedAt.After(now.Add(MaxRequestSkew)) {
+	if issuedAt.Before(now.Add(-MaxRequestAge)) {
 		return notary.Errf(
 			notary.KindRegistrationRefused,
 			op,
@@ -224,6 +224,17 @@ func (r *Registrar) admit(request notary.RegistrationRequest, signature notary.S
 			"the request was issued at %s; it must be at most %s old",
 			issuedAt.UTC().Format(time.RFC3339),
 			MaxRequestAge,
+		)
+	}
+
+	if issuedAt.After(now.Add(MaxRequestSkew)) {
+		return notary.Errf(
+			notary.KindRegistrationRefused,
+			op,
+			nil,
+			"the request was issued at %s, more than %s ahead of the notary's clock",
+			issuedAt.UTC().Format(time.RFC3339),
+			MaxRequestSkew,
 		)
 	}
 

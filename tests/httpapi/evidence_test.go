@@ -155,7 +155,48 @@ func TestAnOverlongReferenceIsRefusedBeforeAnyLookup(t *testing.T) {
 	response := get(evidenceRouter(a, e), "/api/v1/proofs/evidence/orders/"+strings.Repeat("A", 256))
 
 	require.Equal(t, http.StatusBadRequest, response.Code)
+	require.JSONEq(
+		t,
+		`{"error":"invalid_reference","message":"the order reference is 256 bytes, more than 255"}`,
+		response.Body.String(),
+	)
 	require.Empty(t, e.asked)
+}
+
+func TestAReferencePostgresCannotHoldIsRefusedBeforeAnyLookup(t *testing.T) {
+	a := &auth{holder: notarytest.Holder(t, "principal-0004")}
+
+	for path, message := range map[string]string{
+		"/api/v1/proofs/evidence/orders/ORD%001":    "the order reference carries a NUL byte",
+		"/api/v1/proofs/evidence/orders/%00":        "the order reference carries a NUL byte",
+		"/api/v1/proofs/evidence/orders/ORD-%FF":    "the order reference is not valid UTF-8",
+		"/api/v1/proofs/evidence/reviews/review%00": "the review reference carries a NUL byte",
+		"/api/v1/proofs/evidence/reviews/%C3%28":    "the review reference is not valid UTF-8",
+	} {
+		t.Run(path, func(t *testing.T) {
+			e := &evidenceIssuer{err: notary.Errf(notary.KindStoreUnavailable, "test", nil, "invalid byte sequence")}
+
+			response := get(evidenceRouter(a, e), path)
+
+			require.Equal(t, http.StatusBadRequest, response.Code, response.Body.String())
+			require.JSONEq(
+				t,
+				`{"error":"invalid_reference","message":"`+message+`"}`,
+				response.Body.String(),
+			)
+			require.Empty(t, e.asked)
+		})
+	}
+}
+
+func TestAMultibyteUTF8ReferenceIsLookedUpAsItIs(t *testing.T) {
+	a := &auth{holder: notarytest.Holder(t, "principal-0004")}
+	e := &evidenceIssuer{bundle: evidencing.Bundle{Pending: 1}}
+
+	response := get(evidenceRouter(a, e), "/api/v1/proofs/evidence/orders/ORD-%C3%A9")
+
+	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+	require.Equal(t, []string{"order:principal-0004:ORD-\u00e9"}, e.asked)
 }
 
 func TestAProofTheNotaryCannotEncodeIsItsOwnFaultNotTheCallers(t *testing.T) {

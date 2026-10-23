@@ -2368,8 +2368,10 @@ courts' withholding scans, since the tables started empty. It was paced for 22.6
 watch sent 18. At 02:27 both courts' scans were recorded at block 48390671, with no open request. Migration 8 is
 applied, and Grafana loaded the new rule without error.
 
-**Exit:** a production day with `increase(kinetix_notary_rpc_throttled_total[24h])` at 0 for both processes, due
-2026-10-22 02:23 UTC.
+**Exit: met on 2026-10-22.** At 02:47 UTC, `increase(kinetix_notary_rpc_throttled_total[24h])` read 0 for
+`kinetix-notary-service` and for `kinetix-notary-watch-service`, and so did each counter's total. Neither process
+had restarted: `process_start_time_seconds` is 2026-10-21 02:23 UTC for both, so the counters cover the whole
+production day.
 
 **The verifier pin need not move.** The browser verifier dials through `ethereum.Dial`, so v1.8.0's
 `notary-verify.wasm` differs from v1.7.0's. On the verification path the only change is that a 429 is waited out and

@@ -320,8 +320,8 @@ func (s *Store) EvidenceBatchLeaves(
 func (s *Store) OrderEvidence(ctx context.Context, orderNumber string) ([]notary.StoredEvidence, error) {
 	const op = "postgres.Store.OrderEvidence"
 
-	if orderNumber == "" {
-		return nil, notary.Errf(notary.KindInvalidArgument, op, nil, "an order is named by its number")
+	if err := named(op, "an order", orderNumber); err != nil {
+		return nil, err
 	}
 
 	lifecycle, err := s.queries.LifecycleRecordsOfOrder(ctx, orderNumber)
@@ -360,8 +360,8 @@ func (s *Store) OrderEvidence(ctx context.Context, orderNumber string) ([]notary
 func (s *Store) ReviewEvidence(ctx context.Context, reviewID string) ([]notary.StoredEvidence, error) {
 	const op = "postgres.Store.ReviewEvidence"
 
-	if reviewID == "" {
-		return nil, notary.Errf(notary.KindInvalidArgument, op, nil, "a review is named by its id")
+	if err := named(op, "a review", reviewID); err != nil {
+		return nil, err
 	}
 
 	rows, err := s.queries.ReviewRecordsOfReview(ctx, reviewID)

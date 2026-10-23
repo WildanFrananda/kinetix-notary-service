@@ -296,6 +296,36 @@ func TestEveryFailureHasItsOwnStatus(t *testing.T) {
 	}
 }
 
+func TestAnEpochNoBigintHoldsIsTheCallersMistakeNotTheNotarysFault(t *testing.T) {
+	overflow := notary.Errf(
+		notary.KindOverflow,
+		"postgres.Store.Epoch",
+		nil,
+		"9223372036854775808 does not fit a BIGINT column",
+	)
+
+	for path, message := range map[string]string{
+		"9223372036854775808":  `"9223372036854775808" is above 9223372036854775807, the highest epoch number`,
+		"18446744073709551615": `"18446744073709551615" is above 9223372036854775807, the highest epoch number`,
+		"18446744073709551616": `"18446744073709551616" is above 9223372036854775807, the highest epoch number`,
+		"0007":                 `"0007" is written with a leading zero; an epoch number has none`,
+	} {
+		t.Run(path, func(t *testing.T) {
+			i := &issuer{err: overflow}
+
+			response := get(router(&auth{}, i), "/api/v1/proofs/liabilities/"+path)
+
+			require.Equal(t, http.StatusBadRequest, response.Code, response.Body.String())
+
+			var body map[string]string
+			require.NoError(t, json.Unmarshal(response.Body.Bytes(), &body))
+			require.Equal(t, "invalid_epoch", body["error"])
+			require.Equal(t, message, body["message"])
+			require.Empty(t, i.asked)
+		})
+	}
+}
+
 func TestOnlyGETReachesTheProofs(t *testing.T) {
 	i := &issuer{}
 	request := httptest.NewRequest(http.MethodPost, "/api/v1/proofs/liabilities/latest", nil)

@@ -3,6 +3,8 @@ package postgres
 import (
 	"encoding/hex"
 	"math"
+	"strings"
+	"unicode/utf8"
 
 	"github.com/jackc/pgx/v5/pgtype"
 
@@ -16,6 +18,20 @@ func signed(op string, value uint64) (int64, error) {
 	}
 
 	return int64(value), nil
+}
+
+func named(op, what, name string) error {
+	if name == "" || !utf8.ValidString(name) || strings.ContainsRune(name, 0) {
+		return notary.Errf(
+			notary.KindInvalidArgument,
+			op,
+			nil,
+			"%s is named by non-empty UTF-8 text without a NUL byte",
+			what,
+		)
+	}
+
+	return nil
 }
 
 func unsigned(op string, value int64) (uint64, error) {
