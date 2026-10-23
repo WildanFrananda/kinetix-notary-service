@@ -3,8 +3,11 @@ package httpapi
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net/http"
+	"strings"
+	"unicode/utf8"
 
 	"github.com/WildanFrananda/kinetix-notary-service/internal/evidencing"
 	"github.com/WildanFrananda/kinetix-notary-service/internal/notary"
@@ -42,8 +45,8 @@ func (h *EvidenceHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	reference := r.PathValue(h.parameter)
-	if reference == "" || len(reference) > maxReferenceBytes {
-		writeError(w, http.StatusBadRequest, "invalid_reference", "the "+h.parameter+" is not named")
+	if problem := h.problemWith(reference); problem != "" {
+		writeError(w, http.StatusBadRequest, "invalid_reference", problem)
 
 		return
 	}
@@ -69,6 +72,21 @@ func (h *EvidenceHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, response)
+}
+
+func (h *EvidenceHandler) problemWith(reference string) string {
+	switch {
+	case reference == "":
+		return "the " + h.parameter + " is not named"
+	case len(reference) > maxReferenceBytes:
+		return fmt.Sprintf("the %s reference is %d bytes, more than %d", h.parameter, len(reference), maxReferenceBytes)
+	case !utf8.ValidString(reference):
+		return "the " + h.parameter + " reference is not valid UTF-8"
+	case strings.ContainsRune(reference, 0):
+		return "the " + h.parameter + " reference carries a NUL byte"
+	default:
+		return ""
+	}
 }
 
 func (h *EvidenceHandler) fail(w http.ResponseWriter, r *http.Request, err error) {
