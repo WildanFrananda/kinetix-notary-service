@@ -1,5 +1,4 @@
 /notary-verify
-/internal/contractgen/
 /contracts/out/
 /contracts/cache/
 /contracts/dependencies/
@@ -10,8 +9,6 @@ coverage.html
 .DS_Store
 /contracts/broadcast/*/*/dry-run/
 /.contracts/
-/internal/protogen/
-/internal/storegen/
 /notaryd
 /notary-migrate
 /dist/

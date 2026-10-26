@@ -13,6 +13,12 @@ echo "== generated code"
   forge soldeer install
 )
 sh bin/generate
+drift="$(git -c safe.directory="$HERE" status --porcelain -- internal/contractgen internal/protogen internal/storegen)"
+if [ -n "$drift" ]; then
+  echo "generated code differs from what is committed; run bin/generate and commit the result:"
+  echo "$drift"
+  exit 1
+fi
 
 echo "== go"
 unformatted="$(gofmt -l cmd internal tests)"
