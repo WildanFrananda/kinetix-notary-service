@@ -311,8 +311,13 @@ Package names say what a package provides (`keccak.NewScheme`, `ethereum.NewLedg
 - **The ledger holds the generated `PlonkVerifier` type, never an interface of ours.** Slither reports an interface
   method named `Verify` as a naming violation, and the name is fixed by gnark's selector.
 - **Every adapter carries a compile-time assertion** (`var _ notary.Ledger = (*Ledger)(nil)`).
-- **Generated bindings are never committed.** `bin/generate-bindings` builds them from the forge
-  artifacts into `internal/contractgen/`; the Dockerfile and `bin/ci` run it every time.
+- **Generated code is committed, and CI proves it is current.** `internal/contractgen/` (abigen, from the forge
+  artifacts), `internal/protogen/` (protoc, from the pinned kinetix-contracts tag) and `internal/storegen/` (sqlc)
+  are in git since 2026-10-26, at the user's choice: Dependabot runs `go mod tidy` on a bare clone and cannot run
+  `bin/generate`, so with them ignored every Go update failed on `internal/storegen: no matching versions for query
+  "latest"`. `bin/ci-go` regenerates them and fails when the tree differs from what is committed, so they cannot
+  drift from their sources. The images still generate their own (`.dockerignore` keeps the three out), and
+  `.contracts/` (the vendored `.proto`) stays ignored: no `.proto` is committed here.
 
 ## Conventions
 
