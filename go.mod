@@ -6,7 +6,7 @@ require (
 	github.com/MicahParks/keyfunc/v3 v3.8.2
 	github.com/consensys/gnark v0.16.4
 	github.com/consensys/gnark-crypto v0.22.0
-	github.com/ethereum/go-ethereum v1.17.9
+	github.com/ethereum/go-ethereum v1.17.10
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/holiman/uint256 v1.3.2
 	github.com/jackc/pgx/v5 v5.11.0
@@ -16,7 +16,7 @@ require (
 	go.uber.org/dig v1.19.0
 	golang.org/x/crypto v0.58.0
 	golang.org/x/time v0.16.0
-	google.golang.org/grpc v1.84.0
+	google.golang.org/grpc v1.85.0
 	google.golang.org/protobuf v1.36.12
 )
 
