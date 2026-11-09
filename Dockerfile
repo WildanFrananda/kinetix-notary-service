@@ -1,4 +1,4 @@
-FROM golang:1.27-bookworm@sha256:972b4110ba0f47539a975c31e52c64765e1ff19f2d74469ae4a595c6676e80a5 AS build
+FROM golang:1.27-bookworm@sha256:dc0963f32053e4bc451d24d87e3892d42d01021b61f093e98eb95c0352bb84b0 AS build
 
 ENV GOTOOLCHAIN=local \
     CGO_ENABLED=0
@@ -38,7 +38,7 @@ ADD --checksum=sha256:63cdfe7a45db5ac0bf760fb0245abf5dde16fa9b745636d80449e8c50f
     https://github.com/WildanFrananda/kinetix-notary-service/releases/download/srs-ignition-d8/ignition-d8.srs \
     /ignition-d8.srs
 
-FROM debian:bookworm-slim@sha256:7ff6ba31527b9e336162fa061746c366c4b2032f4d2cff2078bea43f78efe3f8 AS final
+FROM debian:bookworm-slim@sha256:734a72b3d6142a71993b4bc580ca01d8ca687f77a2c422d96a961d3376b179bc AS final
 
 RUN apt-get update \
     && apt-get upgrade -y --no-install-recommends \
